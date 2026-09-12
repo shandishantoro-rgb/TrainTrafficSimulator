@@ -9,7 +9,7 @@
 
 ## Posisi Sekarang
 
-- **Tahap aktif:** Tahap 0 — Fondasi Kendali
+- **Tahap aktif:** Tidak ada — Tahap 0 selesai, menunggu perintah eksplisit Pemilik Proyek untuk memulai Tahap 1
 - **Diperbarui terakhir:** 12 September 2026
 - **Oleh sesi:** ChatGPT, 12 September 2026
 
@@ -19,7 +19,7 @@
 
 | Tahap | Nama | Tanggal diverifikasi |
 |---|---|---|
-| — | _(belum ada)_ | — |
+| Tahap 0 | Fondasi Kendali | 12 September 2026 |
 
 ---
 
@@ -27,39 +27,33 @@
 
 | Butir | Keterangan | Sisa pekerjaan |
 |---|---|---|
-| Tahap 0 | Dokumen kendali disiapkan, kerangka web dibuat, dan kode Python lama dipindahkan sebagai referensi | Menunggu verifikasi Pemilik Proyek melalui `app/index.html` |
+| — | Tidak ada tahap aktif | Menunggu perintah eksplisit Pemilik Proyek untuk memulai Tahap 1 |
 
 ---
 
 ## Kondisi Repo Terakhir
 
 - Repo: `TrainTrafficSimulator`
-- Commit terakhir sebelum Tahap 0: `aebbe6f — Add TTC v0.1 application source`
-- Isi Python desktop v0.1 dipindahkan ke `referensi-python/` — **status: referensi saja** (lihat K6)
-- Aplikasi web di `app/`: `index.html` sudah dibuat untuk bukti Tahap 0
+- Tahap 0 sudah diverifikasi langsung oleh Pemilik Proyek melalui `app/index.html`
+- Bukti visual: browser menampilkan tulisan persis **TTC — Train Traffic Simulator**
+- Isi Python desktop v0.1 tetap berada di `referensi-python/` — **status: referensi saja** (lihat K6)
+- `ROADMAP.md` sudah menandai Tahap 0 sebagai `[x]`
 
 ---
 
 ## Keputusan Baru yang Diambil dalam Sesi (jika ada)
 
-_(AI menuliskan di sini setiap keputusan yang disetujui Pemilik Proyek dalam sesi,
-lalu menyalinnya ke PROJECT.md bagian Keputusan Terkunci bila bersifat permanen.)_
-
-- Tidak ada keputusan baru; pelaksanaan mengikuti K1–K7 pada `PROJECT.md`.
+- Pemilik Proyek menyatakan: **Tahap 0 selesai**.
+- Belum ada perintah untuk memulai Tahap 1.
 
 ---
 
 ## Masalah / Macet
 
-_(AI menuliskan hal yang gagal atau belum bisa diselesaikan, beserta sebabnya.)_
-
-- Belum ada masalah teknis pada pekerjaan Tahap 0.
-- Tahap 0 **belum boleh ditandai selesai** sebelum Pemilik Proyek membuka `app/index.html` dan menyatakan hasil sesuai.
+- Tidak ada masalah teknis terbuka pada Tahap 0.
 
 ---
 
 ## Usulan Tertunda (ide bagus di luar tahap aktif — JANGAN dikerjakan sekarang)
 
-_(Tempat menampung ide supaya tidak hilang dan tidak mengganggu urutan kerja.)_
-
-- Penyempurnaan UI berdasarkan desain acuan K5 ditunda hingga tahap yang relevan; tidak dikerjakan pada Tahap 0.
+- Penyempurnaan UI berdasarkan desain acuan K5 tetap ditunda hingga tahap yang relevan.
