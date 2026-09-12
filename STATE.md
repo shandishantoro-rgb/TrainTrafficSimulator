@@ -27,49 +27,49 @@
 
 | Butir | Keterangan | Sisa pekerjaan |
 |---|---|---|
-| Tahap 1 | Struktur data Stasiun dan Petak Jalan sudah diimplementasikan. Fungsi Simpan/Buka proyek `.json` dan contoh 5 stasiun sudah tersedia di `app/`. | Verifikasi Pemilik Proyek: muat/isi 5 stasiun → Simpan `.json` → buka ulang aplikasi → Buka proyek → pastikan 5 stasiun muncul kembali sama |
+| Tahap 1 | Struktur data Stasiun dan Petak Jalan sudah diimplementasikan. Fungsi Simpan/Buka proyek `.json` dan contoh 5 stasiun tersedia di `app/`. Preview web juga dicerminkan ke repo Cloudflare-connected `Gangguan-Sarana`. | Verifikasi Pemilik Proyek melalui preview Cloudflare: muat/isi 5 stasiun → Simpan `.json` → buka ulang → Buka proyek → pastikan 5 stasiun muncul kembali sama |
 
 ---
 
 ## Kondisi Repo Terakhir
 
-- Repo: `TrainTrafficSimulator`
-- Repo saat ini berstatus **public**.
+- Repo utama proyek: `TrainTrafficSimulator`.
 - Tahap 0 sudah selesai dan diverifikasi langsung oleh Pemilik Proyek.
 - `ROADMAP.md` menandai Tahap 1 sebagai `[~]`.
-- `app/index.html` sudah menjadi layar Tahap 1.
-- `app/app.js` menyimpan data Stasiun, Petak Jalan, Simpan proyek JSON, Buka proyek JSON, dan data contoh untuk pengujian.
-- `app/styles.css` memberi tampilan dasar agar data mudah dibaca.
-- Workflow preview GitHub Pages tersedia di `.github/workflows/pages.yml` dan hanya mempublikasikan isi folder `app/`.
+- `app/index.html`, `app/app.js`, dan `app/styles.css` adalah sumber aplikasi Tahap 1.
+- Repo preview Cloudflare: `shandishantoro-rgb/Gangguan-Sarana`.
+- Sebelum dipakai sebagai preview TTC, isi `Gangguan-Sarana` diamankan pada branch `backup-gangguan-sarana-before-ttc-20260912`.
+- Root `Gangguan-Sarana/index.html` sekarang menampilkan TTC Tahap 1 dan menggunakan root `app.js` serta `styles.css` yang dicerminkan dari repo utama.
+- File lama `Gangguan-Sarana` yang tidak diperlukan TTC tidak dihapus; backup branch menyimpan kondisi aplikasi Gangguan Sarana sebelum perubahan.
 - Isi Python desktop v0.1 tetap berada di `referensi-python/` — **status: referensi saja** (lihat K6).
 
 ---
 
 ## Hasil Uji AI
 
-- Pemeriksaan sintaks JavaScript dengan Node.js: **lulus**.
-- Pemeriksaan hubungan elemen halaman dengan JavaScript: **lulus**; semua 22 elemen yang dipanggil JavaScript tersedia di halaman uji.
-- Uji Chromium headless pada lingkungan kerja AI tidak berhasil selesai karena proses browser macet di lingkungan container; ini bukan bukti aplikasi gagal. Verifikasi browser nyata tetap harus dilakukan Pemilik Proyek sesuai ROADMAP.
-- Workflow GitHub Pages sudah terpicu otomatis.
-- Workflow gagal tepat pada langkah **Siapkan GitHub Pages** karena GitHub melaporkan bahwa Pages belum diaktifkan dan belum dikonfigurasi untuk build menggunakan GitHub Actions.
-- Langkah checkout berhasil; upload dan deployment belum dijalankan karena konfigurasi Pages belum aktif.
+- Pemeriksaan sintaks JavaScript Tahap 1 sebelumnya: **lulus**.
+- Pemeriksaan hubungan elemen halaman dengan JavaScript sebelumnya: **lulus**.
+- Mirror Cloudflare sudah dipush ke branch `main` repo `Gangguan-Sarana`.
+- Commit terakhir yang mengganti halaman root menjadi TTC: `e23ab9717ca2606b57f265ae01bd197b149fe0b8`.
+- GitHub tidak menampilkan status deployment Cloudflare pada commit tersebut, sehingga bukti visual dari URL Cloudflare tetap diperlukan Pemilik Proyek.
 
 ---
 
 ## Keputusan Baru yang Diambil dalam Sesi (jika ada)
 
 - Pemilik Proyek memerintahkan: **mulai Tahap 1**.
-- Pemilik Proyek memberi izin eksplisit: **GitHub Pages boleh dipakai mulai sekarang hanya sebagai preview pengembangan; Tahap 1 tetap aktif**.
-- Izin preview ini tidak berarti Tahap 10 dimulai dan tidak mengubah urutan ROADMAP.
+- Pemilik Proyek mengizinkan preview pengembangan lebih awal tanpa mengubah urutan ROADMAP.
+- Pemilik Proyek memilih repo `Gangguan-Sarana` yang sudah terhubung ke Cloudflare sebagai tempat preview TTC.
+- `TrainTrafficSimulator` tetap menjadi repo utama/sumber kebenaran; `Gangguan-Sarana` hanya menjadi mirror preview Cloudflare.
+- Preview Cloudflare ini tidak berarti Tahap 10 dimulai dan Tahap 1 tetap aktif.
 
 ---
 
 ## Masalah / Macet
 
 - Tidak ada error sintaks atau struktur yang ditemukan pada Tahap 1.
-- Bukti Selesai Tahap 1 belum terpenuhi karena belum diverifikasi langsung oleh Pemilik Proyek di browser.
-- Preview GitHub Pages menunggu satu pengaturan manual oleh Pemilik Proyek: **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-- Setelah sumber Pages diaktifkan, AI dapat menjalankan ulang workflow yang gagal dan memeriksa hasil deployment.
+- Bukti Selesai Tahap 1 belum terpenuhi karena belum diverifikasi langsung oleh Pemilik Proyek pada preview/browser.
+- URL Cloudflare aktif belum tercatat di repo, sehingga AI belum dapat memastikan dari GitHub saja bahwa deployment terbaru sudah tampil.
 
 ---
 
