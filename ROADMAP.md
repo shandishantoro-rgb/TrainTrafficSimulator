@@ -11,7 +11,7 @@ Status: `[ ]` belum · `[~]` sedang dikerjakan · `[x]` selesai & diverifikasi P
 
 ---
 
-## Tahap 0 — Fondasi Kendali `[~]`
+## Tahap 0 — Fondasi Kendali `[x]`
 
 Menaruh dokumen kendali di repo dan membersihkan struktur.
 
