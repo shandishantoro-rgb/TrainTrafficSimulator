@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "train-traffic-simulator"
+version = "0.1.0"
+description = "Train Traffic Simulator (TTC) - simulator lalu lintas kereta berbahasa Indonesia"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.7,<7",
+]
+
+[project.scripts]
+ttc = "ttc.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
