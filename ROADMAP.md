@@ -25,7 +25,7 @@ Saya buka file `app/index.html` di browser → muncul halaman putih bertuliskan 
 
 ---
 
-## Tahap 1 — Data Jaringan Lintas `[ ]`
+## Tahap 1 — Data Jaringan Lintas `[~]`
 
 Aplikasi bisa menyimpan data prasarana.
 
