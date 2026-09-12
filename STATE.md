@@ -27,7 +27,7 @@
 
 | Butir | Keterangan | Sisa pekerjaan |
 |---|---|---|
-| Tahap 1 | Membuat struktur data Stasiun dan Petak Jalan serta fungsi Simpan/Buka proyek `.json` | Implementasi, pengujian, lalu verifikasi Pemilik Proyek sesuai Bukti Selesai ROADMAP |
+| Tahap 1 | Struktur data Stasiun dan Petak Jalan sudah diimplementasikan. Fungsi Simpan/Buka proyek `.json` dan contoh 5 stasiun sudah tersedia di `app/`. | Verifikasi Pemilik Proyek: muat/isi 5 stasiun → Simpan `.json` → buka ulang aplikasi → Buka proyek → pastikan 5 stasiun muncul kembali sama |
 
 ---
 
@@ -35,9 +35,19 @@
 
 - Repo: `TrainTrafficSimulator`
 - Tahap 0 sudah selesai dan diverifikasi langsung oleh Pemilik Proyek
-- Tahap 1 dimulai atas perintah eksplisit Pemilik Proyek pada 12 September 2026
-- Isi Python desktop v0.1 tetap berada di `referensi-python/` — **status: referensi saja** (lihat K6)
 - `ROADMAP.md` menandai Tahap 1 sebagai `[~]`
+- `app/index.html` sudah menjadi layar Tahap 1
+- `app/app.js` menyimpan data Stasiun, Petak Jalan, Simpan proyek JSON, Buka proyek JSON, dan data contoh untuk pengujian
+- `app/styles.css` memberi tampilan dasar agar data mudah dibaca
+- Isi Python desktop v0.1 tetap berada di `referensi-python/` — **status: referensi saja** (lihat K6)
+
+---
+
+## Hasil Uji AI
+
+- Pemeriksaan sintaks JavaScript dengan Node.js: **lulus**.
+- Pemeriksaan hubungan elemen halaman dengan JavaScript: **lulus**; semua 22 elemen yang dipanggil JavaScript tersedia di halaman uji.
+- Uji Chromium headless pada lingkungan kerja AI tidak berhasil selesai karena proses browser macet di lingkungan container; ini bukan bukti aplikasi gagal. Verifikasi browser nyata tetap harus dilakukan Pemilik Proyek sesuai ROADMAP.
 
 ---
 
@@ -49,7 +59,8 @@
 
 ## Masalah / Macet
 
-- Belum ada masalah teknis terbuka pada Tahap 1.
+- Tidak ada error sintaks atau struktur yang ditemukan.
+- Bukti Selesai Tahap 1 belum terpenuhi karena belum diverifikasi langsung oleh Pemilik Proyek di browser.
 
 ---
 
