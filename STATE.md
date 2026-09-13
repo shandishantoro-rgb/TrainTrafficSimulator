@@ -9,9 +9,10 @@
 
 ## Posisi Sekarang
 
-- **Tahap aktif:** Tahap 1 — Data Jaringan Lintas
-- **Diperbarui terakhir:** 12 September 2026
-- **Oleh sesi:** ChatGPT, 12 September 2026
+- **Tahap aktif administratif:** Tahap 1 — Data Jaringan Lintas
+- **Pentahapan:** sementara ditahan atas perintah eksplisit Pemilik Proyek; pekerjaan saat ini memprioritaskan alur UI dan fondasi aplikasi.
+- **Diperbarui terakhir:** 13 September 2026
+- **Oleh sesi:** ChatGPT, 13 September 2026
 
 ---
 
@@ -27,54 +28,57 @@
 
 | Butir | Keterangan | Sisa pekerjaan |
 |---|---|---|
-| Tahap 1 | Struktur data Stasiun dan Petak Jalan sudah diimplementasikan. Fungsi Simpan/Buka proyek `.json` dan contoh 5 stasiun tersedia di `app/`. Preview web juga dicerminkan ke repo Cloudflare-connected `Gangguan-Sarana`. | Verifikasi Pemilik Proyek melalui preview Cloudflare: muat/isi 5 stasiun → Simpan `.json` → buka ulang → Buka proyek → pastikan 5 stasiun muncul kembali sama |
+| Alur Proyek | Pemilik Proyek memerintahkan agar TTC selalu masuk ke **Proyek Saya** terlebih dahulu, baru setelah memilih/membuat proyek masuk ke menu prasarana, sarana, jadwal, GAPEKA, simulasi, dan lainnya. | Verifikasi langsung oleh Pemilik Proyek pada preview Cloudflare. |
+| Penyimpanan browser | Beberapa proyek kini disimpan di browser melalui **IndexedDB** dengan fallback `localStorage`. Perubahan proyek aktif disalin otomatis ke penyimpanan browser. | Verifikasi persistensi setelah refresh/tutup-buka browser pada perangkat Pemilik Proyek. |
+| Backup proyek | Tombol **Simpan JSON** tetap dipertahankan sebagai backup dan sarana pindah perangkat. Impor JSON tersedia dari halaman Proyek Saya. | Uji impor/ekspor oleh Pemilik Proyek. |
 
 ---
 
 ## Kondisi Repo Terakhir
 
-- Repo utama proyek: `TrainTrafficSimulator`.
-- Tahap 0 sudah selesai dan diverifikasi langsung oleh Pemilik Proyek.
-- `ROADMAP.md` menandai Tahap 1 sebagai `[~]`.
-- `app/index.html`, `app/app.js`, dan `app/styles.css` adalah sumber aplikasi Tahap 1.
-- Repo preview Cloudflare: `shandishantoro-rgb/Gangguan-Sarana`.
-- Sebelum dipakai sebagai preview TTC, isi `Gangguan-Sarana` diamankan pada branch `backup-gangguan-sarana-before-ttc-20260912`.
-- Root `Gangguan-Sarana/index.html` sekarang menampilkan TTC Tahap 1 dan menggunakan root `app.js` serta `styles.css` yang dicerminkan dari repo utama.
-- File lama `Gangguan-Sarana` yang tidak diperlukan TTC tidak dihapus; backup branch menyimpan kondisi aplikasi Gangguan Sarana sebelum perubahan.
-- Isi Python desktop v0.1 tetap berada di `referensi-python/` — **status: referensi saja** (lihat K6).
+- Repo utama dokumen kendali tetap: `shandishantoro-rgb/TrainTrafficSimulator`.
+- Repo aplikasi/preview Cloudflare saat ini: `shandishantoro-rgb/TRAIN-TRAFFIC`.
+- Paket aplikasi TTC lengkap dari Claude telah dipasang di repo `TRAIN-TRAFFIC` dengan modul terpisah untuk model, dinamika, sinyal, blok, emplasemen, jadwal, konflik, GAPEKA, ekspor, simulasi operasi, dan UI.
+- Modul baru `js/ttc-proyek.js` menyimpan banyak proyek di browser.
+- Modul baru `js/ttc-project-manager.js` membuat halaman **Proyek Saya**, membuka proyek, membuat proyek, impor JSON, duplikat, hapus, dan autosave.
+- `js/ttc-ekspor.js` memuat modul manajemen proyek tersebut tanpa mengubah struktur utama aplikasi TTC.
+- Tombol global **+ Baru**, **Buka**, dan **Contoh** disembunyikan dari workspace. Pembuatan proyek baru hanya dilakukan dari halaman **Proyek Saya**.
+- Di dalam workspace tersedia tombol **← Proyek Saya** dan **Simpan JSON**.
 
 ---
 
 ## Hasil Uji AI
 
-- Pemeriksaan sintaks JavaScript Tahap 1 sebelumnya: **lulus**.
-- Pemeriksaan hubungan elemen halaman dengan JavaScript sebelumnya: **lulus**.
-- Mirror Cloudflare sudah dipush ke branch `main` repo `Gangguan-Sarana`.
-- Commit terakhir yang mengganti halaman root menjadi TTC: `e23ab9717ca2606b57f265ae01bd197b149fe0b8`.
-- GitHub tidak menampilkan status deployment Cloudflare pada commit tersebut, sehingga bukti visual dari URL Cloudflare tetap diperlukan Pemilik Proyek.
+- Semua JavaScript paket TTC yang dipakai: **lulus pemeriksaan sintaks**.
+- Penyimpanan proyek fallback telah diuji: **buat → daftar → buka → ubah → duplikat → hapus** berjalan.
+- Uji browser terisolasi alur baru: **Proyek Saya → buka/buat proyek → workspace → ubah nama → autosave → kembali ke Proyek Saya** berjalan tanpa runtime error.
+- Uji dengan proyek contoh: 24 stasiun tetap dapat dirender setelah manajemen proyek ditambahkan.
+- GitHub sudah berisi `js/ttc-proyek.js` dan `js/ttc-project-manager.js` serta loader pada `js/ttc-ekspor.js`.
+- Deployment Cloudflare terbaru belum diverifikasi langsung oleh AI pada sesi ini; verifikasi visual tetap dilakukan oleh Pemilik Proyek melalui `traintrafficcontrol.site`.
 
 ---
 
-## Keputusan Baru yang Diambil dalam Sesi (jika ada)
+## Keputusan Baru yang Diambil dalam Sesi
 
-- Pemilik Proyek memerintahkan: **mulai Tahap 1**.
-- Pemilik Proyek mengizinkan preview pengembangan lebih awal tanpa mengubah urutan ROADMAP.
-- Pemilik Proyek memilih repo `Gangguan-Sarana` yang sudah terhubung ke Cloudflare sebagai tempat preview TTC.
-- `TrainTrafficSimulator` tetap menjadi repo utama/sumber kebenaran; `Gangguan-Sarana` hanya menjadi mirror preview Cloudflare.
-- Preview Cloudflare ini tidak berarti Tahap 10 dimulai dan Tahap 1 tetap aktif.
+- Pemilik Proyek memerintahkan: **jangan tampilkan tombol + Baru di seluruh workspace**.
+- Alur resmi UI yang dipilih Pemilik Proyek: **Buka TTC → Proyek Saya → pilih/buat proyek → masuk workspace TTC**.
+- Menu prasarana, sarana, jadwal, GAPEKA, dan simulasi baru dipakai setelah proyek aktif dipilih.
+- Proyek disimpan otomatis di browser, tetapi file `.json` tetap dipertahankan sebagai backup utama dan untuk memindahkan proyek antar perangkat.
+- Daftar proyek menampilkan nama proyek, waktu terakhir diubah, ringkasan stasiun/petak/sarana/KA, serta aksi Buka, Duplikat, dan Hapus.
+- Pemilik Proyek sebelumnya memerintahkan pentahapan ditahan sementara untuk membangun UI dan alur aplikasi terlebih dahulu. Status ROADMAP belum diubah pada sesi ini.
 
 ---
 
 ## Masalah / Macet
 
-- Tidak ada error sintaks atau struktur yang ditemukan pada Tahap 1.
-- Bukti Selesai Tahap 1 belum terpenuhi karena belum diverifikasi langsung oleh Pemilik Proyek pada preview/browser.
-- URL Cloudflare aktif belum tercatat di repo, sehingga AI belum dapat memastikan dari GitHub saja bahwa deployment terbaru sudah tampil.
+- Tidak ada error sintaks yang ditemukan pada implementasi manajemen proyek.
+- Perlu bukti langsung bahwa Cloudflare telah mengambil commit terbaru dan IndexedDB berjalan normal pada browser/perangkat Pemilik Proyek.
+- Penyimpanan browser bersifat lokal pada browser/perangkat. Menghapus data situs/browser dapat menghapus proyek lokal; karena itu **Simpan JSON** tetap diperlukan sebagai backup.
 
 ---
 
-## Usulan Tertunda (ide bagus di luar tahap aktif — JANGAN dikerjakan sekarang)
+## Usulan Tertunda
 
-- Editor tabel lengkap, ubah/hapus/urutkan data, dan validasi kode stasiun kembar tetap Tahap 2.
-- Mesin waktu tempuh dan fitur setelahnya belum dikerjakan.
-- Penyempurnaan UI berdasarkan desain acuan K5 tetap ditunda hingga tahap yang relevan.
+- Sinkronisasi proyek antar perangkat/server belum dibuat dan tetap di luar lingkup saat ini.
+- Fitur login/multi-user tetap di luar lingkup sesuai PROJECT.md.
+- Pentahapan ROADMAP akan dilanjutkan kembali setelah Pemilik Proyek memerintahkan melanjutkan tahapan.
