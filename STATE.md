@@ -31,8 +31,8 @@
 | Alur Proyek | TTC masuk ke **Proyek Saya** terlebih dahulu, baru setelah memilih/membuat proyek masuk ke menu prasarana, sarana, jadwal, GAPEKA, simulasi, dan lainnya. | Verifikasi langsung oleh Pemilik Proyek pada preview Cloudflare. |
 | Penyimpanan browser | Beberapa proyek disimpan di browser melalui **IndexedDB** dengan fallback `localStorage`. Perubahan proyek aktif disalin otomatis ke penyimpanan browser. | Verifikasi persistensi setelah refresh/tutup-buka browser pada perangkat Pemilik Proyek. |
 | Backup proyek | Tombol **Simpan JSON** tetap dipertahankan sebagai backup dan sarana pindah perangkat. Impor JSON tersedia dari halaman Proyek Saya. | Uji impor/ekspor oleh Pemilik Proyek. |
-| Simulasi jadwal | Tampilan diperlebar; program jadwal menjadi garis abu-abu, sedangkan garis aktual muncul progresif mengikuti waktu simulasi. Nomor KA dipindahkan ke badan garis. Koreksi tambahan menyamakan tinggi koordinat label kiri, sumbu waktu, grafik, kursor, dan garis aktual pada **520 px** agar tidak melenceng setelah kanvas diperbesar. | Verifikasi visual dan kenyamanan baca oleh Pemilik Proyek. |
-| Simulasi sinyal & rute | Diagram strip lurus kecil diganti dengan visual topologi jaringan yang lebih besar. Rute dasar memakai graf Petak Jalan sehingga percabangan dapat dipilih berdasarkan keterhubungan jaringan. Junction, rute aktif, okupansi petak, sinyal, dan posisi KA divisualkan. | Verifikasi pada jaringan yang benar-benar memiliki cabang dan penyempurnaan penempatan sinyal per cabang bila diperlukan. |
+| Simulasi jadwal | Tampilan diperlebar; program jadwal menjadi garis abu-abu, sedangkan garis aktual muncul progresif mengikuti waktu simulasi. Nomor KA dipindahkan ke badan garis. Koreksi tambahan menyamakan tinggi koordinat label kiri, sumbu waktu, grafik, kursor, dan garis aktual pada **520 px** agar tidak melenceng setelah kanvas diperbesar. Ditambahkan kontrol zoom **− / 100% / + / Pas** serta Ctrl/Cmd + scroll. | Verifikasi visual, alignment, dan kenyamanan zoom oleh Pemilik Proyek. |
+| Simulasi sinyal & rute | Diagram strip lurus kecil diganti dengan visual topologi jaringan yang lebih besar. Rute dasar memakai graf Petak Jalan sehingga percabangan dapat dipilih berdasarkan keterhubungan jaringan. Junction, rute aktif, okupansi petak, sinyal, dan posisi KA divisualkan. Diagram topologi juga memiliki kontrol zoom **− / 100% / + / Pas** dan Ctrl/Cmd + scroll. | Verifikasi pada jaringan yang benar-benar memiliki cabang dan penyempurnaan penempatan sinyal per cabang bila diperlukan. |
 
 ---
 
@@ -44,7 +44,8 @@
 - `js/ttc-proyek.js` menyimpan banyak proyek di browser.
 - `js/ttc-project-manager.js` membuat halaman **Proyek Saya**, membuka proyek, membuat proyek, impor JSON, duplikat, hapus, dan autosave.
 - `js/ttc-sim-visual.js` menambahkan penyempurnaan simulasi tanpa menghapus mesin yang sudah ada: rute berbasis graf, label KA di badan garis, program vs aktual, dan topologi bercabang untuk Simulasi Sinyal.
-- `js/ttc-sim-alignment-fix.js` mengoreksi ketidaksamaan ukuran koordinat simulasi setelah kanvas diperlebar; tinggi label kiri, grafik, sumbu waktu, dan overlay diseragamkan.
+- `js/ttc-sim-alignment-fix.js` mengoreksi ketidaksamaan ukuran koordinat simulasi setelah kanvas diperlebar; tinggi label kiri, grafik, sumbu waktu, dan overlay diseragamkan. Modul ini sekarang memuat modul zoom setelah alignment siap.
+- `js/ttc-sim-zoom.js` menambahkan zoom pada Simulasi dan Simulasi Sinyal tanpa mengubah koordinat dasar SVG, sehingga label/sumbu tetap sejajar.
 - `js/ttc-ekspor.js` memuat modul manajemen proyek, modul penyempurnaan simulasi, lalu modul koreksi alignment.
 - Tombol global **+ Baru**, **Buka**, dan **Contoh** disembunyikan dari workspace. Pembuatan proyek baru hanya dilakukan dari halaman **Proyek Saya**.
 - Di dalam workspace tersedia tombol **← Proyek Saya** dan **Simpan JSON**.
@@ -56,11 +57,12 @@
 - Semua JavaScript paket TTC yang dipakai sebelumnya: **lulus pemeriksaan sintaks**.
 - `js/ttc-sim-visual.js`: **lulus `node --check`**.
 - `js/ttc-sim-alignment-fix.js`: **lulus `node --check`**.
+- `js/ttc-sim-zoom.js`: **lulus `node --check`** sebelum dipush ke GitHub.
 - Logika pencarian lintasan berbasis graf diuji pada jaringan bercabang sederhana dan menghasilkan lintasan terhubung yang benar.
 - Penyimpanan proyek fallback telah diuji: **buat → daftar → buka → ubah → duplikat → hapus** berjalan.
 - Uji browser terisolasi alur proyek: **Proyek Saya → buka/buat proyek → workspace → ubah nama → autosave → kembali ke Proyek Saya** berjalan tanpa runtime error.
 - Uji dengan proyek contoh: 24 stasiun tetap dapat dirender setelah manajemen proyek ditambahkan.
-- Deployment Cloudflare terbaru untuk koreksi alignment simulasi belum diverifikasi langsung oleh AI pada sesi ini; verifikasi visual tetap dilakukan oleh Pemilik Proyek melalui `traintrafficcontrol.site`.
+- Deployment Cloudflare terbaru untuk zoom simulasi belum diverifikasi langsung oleh AI pada sesi ini; verifikasi visual tetap dilakukan oleh Pemilik Proyek melalui `traintrafficcontrol.site`.
 
 ---
 
@@ -81,6 +83,7 @@
 - Simulasi Sinyal dan Rute harus mampu menampilkan **percabangan**, bukan hanya strip lintas lurus.
 - Tampilan Simulasi Sinyal dibuat lebih informatif dan lebih besar, dengan pembeda jaringan, rute aktif, okupansi, sinyal, junction, dan KA.
 - Pemilik Proyek menemukan frame kiri dan sumbu atas simulasi melenceng setelah kanvas diperlebar. Koreksi dilakukan dengan menyamakan ukuran koordinat internal dan ukuran tampil SVG, bukan sekadar memperbesar CSS.
+- Pemilik Proyek meminta **fitur zoom**. Zoom ditambahkan pada Simulasi dan Simulasi Sinyal dengan kontrol **− / 100% / + / Pas**, serta Ctrl/Cmd + scroll untuk zoom cepat.
 - Pemilik Proyek sebelumnya memerintahkan pentahapan ditahan sementara untuk membangun UI dan alur aplikasi terlebih dahulu. Status ROADMAP tidak diubah pada sesi ini.
 
 ---
