@@ -170,3 +170,21 @@ KA generator yang sengaja dihapus dicatat pada `jadwal.pengecualianGenerator` ag
 - Belum dibuat: tambah/hubungkan langsung di kanvas dan Rapikan Otomatis. Temuan audit jadwal/konflik/simulasi belum diperbaiki dalam sesi ini.
 - Status: implementasi awal Peta Jalur tersedia di repo, menunggu verifikasi pemilik. ROADMAP tidak dicentang; tahap administratif tetap sebagaimana sebelumnya.
 - Pekerjaan berikutnya: verifikasi Peta Jalur pada browser pengguna; selesaikan masalah yang ditemukan sebelum memperluas editor jaringan.
+
+
+---
+
+## Sesi 17 September 2026 — Editor emplasemen snap to grid
+
+- Instruksi eksplisit Pemilik: wesel sebagai vertex yang dapat dihubungkan, bukan free draw; wajib snap to grid.
+- Implementasi dipush ke TRAIN-TRAFFIC commit a155df2ca26b4827b58ce0934786c54c30267db8.
+- Modul baru `js/ttc-emplasemen-graph.js` mengatur vertex wesel/ujung, port A/B/C/U, segmen dengan panjang/Vmax, validasi, dan pencarian lintasan dengan transisi internal A-B atau A-C.
+- Modul `js/ttc-emplasemen-editor.js` menambahkan editor per stasiun: Lihat/Edit, tambah wesel/ujung, Hubungkan, snap posisi ke kisi 20 unit, rotasi, properti, hapus dengan konfirmasi, undo/redo, pan/zoom, Tampilkan Semua, dan Periksa Lintasan.
+- Data rancangan tersimpan dalam `stasiun.diagramEmplasemen`, ikut proyek/JSON. Panjang meter dan km stasiun terpisah dari koordinat layar. Template lama dipertahankan.
+- Titik/port terhubung menggunakan identitas tetap; garis yang sekadar berpotongan tidak membuat koneksi. Satu segmen per port. B-C, self-link, angka tidak positif, pusat titik kembar, dan referensi rusak ditolak.
+- File diubah: index.html, js/ttc-ui.js. Ditambahkan dua modul, tests/emplasemen-graph.test.cjs, tests/emplasemen-editor.test.cjs dan EDITOR-EMPLASEMEN.md.
+- Uji lulus: aturan graf, interaksi DOM tiruan (tambah/sambung/drag/properti/hapus/undo), simpan-buka JSON, isolasi antarstasiun, invariansi template/km, dan regresi Peta Jalur.
+- Belum diuji: browser nyata/visual/pointer capture dan deployment situs. Tidak ada klaim selesai diverifikasi pemilik; ROADMAP tidak dicentang.
+- Batas integrasi disampaikan di UI: rancangan graf belum dipakai mesin konflik/simulasi; mesin masih memakai template perhitungan lama. Periksa Lintasan hanya menguji keterhubungan, bukan interlocking/okupansi/konflik.
+- Tertunda: konversi template ke graf, sinyal sebagai vertex, integrasi graf dengan rute operasional/mesin konflik/simulasi, dan manuver balik arah.
+- Berikutnya: verifikasi editor di browser pengguna sebelum mengintegrasikan graf ke mesin operasi.
