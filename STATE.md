@@ -11,8 +11,8 @@
 
 - **Tahap aktif administratif:** Tahap 1 — Data Jaringan Lintas
 - **Pentahapan:** sementara ditahan atas perintah eksplisit Pemilik Proyek; pekerjaan saat ini memprioritaskan alur UI dan fondasi aplikasi.
-- **Diperbarui terakhir:** 15 September 2026
-- **Oleh sesi:** ChatGPT, 15 September 2026
+- **Diperbarui terakhir:** 17 September 2026
+- **Oleh sesi:** ChatGPT, 17 September 2026
 
 ---
 
@@ -153,3 +153,20 @@ KA generator yang sengaja dihapus dicatat pada `jadwal.pengecualianGenerator` ag
 - Sinkronisasi proyek antar perangkat/server belum dibuat dan tetap di luar lingkup saat ini.
 - Fitur login/multi-user tetap di luar lingkup sesuai PROJECT.md.
 - Pentahapan ROADMAP akan dilanjutkan kembali setelah Pemilik Proyek memerintahkan melanjutkan tahapan.
+
+---
+
+## Sesi 17 September 2026 — Peta Jalur interaktif
+
+- Pemilik menyetujui implementasi bertahap Peta Jalur setelah audit: fokus geser/zoom, pilih objek, simpan posisi, Urungkan, dan mode Lihat/Edit.
+- Implementasi dipush ke repo aplikasi TRAIN-TRAFFIC, commit 4e1e84fc24e6fb0ef0f7f9386f3066713bb416d3.
+- Modul baru `js/ttc-peta.js`: pan latar, zoom scroll/tombol, drag stasiun hanya dalam mode Edit, garis petak mengikuti, properti stasiun/petak, Tampilkan Semua, undo/redo.
+- Posisi gambar disimpan dalam `stasiun.petaPos`; tampilan dalam `petaJalur.view`. Km dan jarak petak tidak berubah ketika digeser. Migrasi JSON mempertahankan data peta.
+- Editor stasiun mempertahankan layout dan posisi. Pengubahan kode ditolak sementara karena referensi lintas modul belum dimigrasikan otomatis.
+- Tombol Gambar ulang dihapus; peta merender otomatis saat dibuka atau data berubah.
+- Berkas yang berubah: index.html, js/ttc-model.js, js/ttc-ui.js; ditambahkan js/ttc-peta.js, tests/peta.test.cjs, PETA-JALUR.md.
+- Verifikasi: pemeriksaan sintaks lulus; tes DOM tiruan lulus untuk seleksi, pan, mode, drag/garis, properti, undo/redo, pembatalan drag, zoom, fit, simpan/migrasi, invariansi km/jarak, dan reset antar-proyek.
+- Batas verifikasi: browser Chromium tidak tersedia dan unduhan timeout; belum uji browser nyata, IndexedDB nyata, atau konfirmasi deployment Cloudflare.
+- Belum dibuat: tambah/hubungkan langsung di kanvas dan Rapikan Otomatis. Temuan audit jadwal/konflik/simulasi belum diperbaiki dalam sesi ini.
+- Status: implementasi awal Peta Jalur tersedia di repo, menunggu verifikasi pemilik. ROADMAP tidak dicentang; tahap administratif tetap sebagaimana sebelumnya.
+- Pekerjaan berikutnya: verifikasi Peta Jalur pada browser pengguna; selesaikan masalah yang ditemukan sebelum memperluas editor jaringan.
