@@ -1,8 +1,8 @@
 /**
  * Api.gs
  * Jembatan API untuk tampilan "Database KCI" yang tayang di
- * https://traintrafficcontrol.site/database/ (repo GitHub TRAIN-TRAFFIC,
- * hosting Cloudflare).
+ * https://traintrafficcontrol.site (repo GitHub TrainTrafficSimulator, folder site/,
+ * dilayani Worker Cloudflare).
  *
  * CARA PASANG (sekali saja):
  *   1. Buka proyek Apps Script "Database KCI - COTP".
