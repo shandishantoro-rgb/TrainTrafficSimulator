@@ -10932,6 +10932,7 @@
                 pptx.layout = 'LAYOUT_16x9';
                 pptx.author = 'PT Kereta Commuter Indonesia';
                 pptx.title = 'Summary Rekapitulasi Gangguan';
+                buatCoverKCI_(pptx, { sub: 'Summary Gangguan Operasional', keterangan: `${ctx.filterLabel} · ${ctx.tahunLabel} · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
 
                 const totalSlide = 3;
                 let nomor = 0;
@@ -11028,6 +11029,7 @@
                     { text: `${ctx.filterLabel} - ${ctx.wilayahLabel} - ${ctx.unitLabel} - ${ctx.tahunLabel}` }
                 ], { x: 5.32, y: 3.62, w: 4.1, h: 1.36, fontSize: 9, color: '1E293B', fontFace: 'Arial', valign: 'top', lineSpacingMultiple: 1.35 });
 
+                buatPenutupKCI_(pptx);
                 pptx.writeFile({ fileName: `Summary_Gangguan_KCI_${ctx.filterLabel}_${ctx.tahunLabel}.pptx` });
                 showToast('Summary berhasil diexport ke PowerPoint lengkap dengan grafik!');
             } catch (err) {
@@ -13230,61 +13232,104 @@
          * @param {Object} opsi {judul, subJudul, nomor, total, tanpaJudul}
          * @return {Object} objek slide, siap diisi konten mulai y ~1.15
          */
+        // ── TEMPLATE RESMI (26 Okt 2026) ──────────────────────────────────
+        // Latar slide diambil dari template PowerPoint resmi yang diunggah
+        // pengguna (folder site/ppt/): cover, isi, dan penutup. Gambar cover
+        // sudah dibersihkan dari tulisan, sehingga judul cover kini teks biasa
+        // yang bisa diedit di PowerPoint.
+        const KCI_TPL = {
+            cover: 'ppt/cover.jpg',
+            konten: 'ppt/konten.jpg',
+            penutup: 'ppt/penutup.jpg',
+            tagline: '“Semakin Melayani di Tengah Dinamika Perubahan”'
+        };
+        function urlTpl_(rel) { try { return new URL(rel, location.href).href; } catch (e) { return rel; } }
+
+        /**
+         * Slide cover bergaya template resmi. Semua tulisan berupa teks biasa
+         * (bisa diedit), di atas panel biru tua gambar latar.
+         * @param {Object} opsi {judul1, judul2, sub, keterangan}
+         */
+        function buatCoverKCI_(pptx, opsi) {
+            const s = pptx.addSlide();
+            s.background = { path: urlTpl_(KCI_TPL.cover) };
+            const skr = new Date();
+            const tgl = skr.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            s.addText(String(opsi.judul1 || 'REKAPITULASI').toUpperCase(), {
+                x: 0.38, y: 1.12, w: 5.6, h: 0.62, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 38, bold: true, color: 'FFFFFF', fontFace: 'Arial', objectName: 'Judul cover 1'
+            });
+            s.addText(String(opsi.judul2 || 'GANGGUAN').toUpperCase(), {
+                x: 0.38, y: 1.70, w: 5.6, h: 0.62, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 38, bold: true, color: 'E31E24', fontFace: 'Arial', objectName: 'Judul cover 2'
+            });
+            if (opsi.sub) {
+                s.addText(String(opsi.sub), {
+                    x: 0.40, y: 2.34, w: 5.2, h: 0.36, margin: 0, isTextBox: true, valign: 'middle',
+                    fontSize: 15, bold: true, color: 'FFFFFF', fontFace: 'Arial', objectName: 'Sub judul cover'
+                });
+            }
+            s.addShape(pptx.ShapeType.rect, { x: 0.40, y: 2.82, w: 0.95, h: 0.045, fill: { color: 'E31E24' }, line: { type: 'none' }, objectName: 'Garis merah' });
+            s.addShape(pptx.ShapeType.rect, { x: 1.35, y: 2.835, w: 1.95, h: 0.015, fill: { color: 'FFFFFF' }, line: { type: 'none' }, objectName: 'Garis putih' });
+
+            s.addShape(pptx.ShapeType.rect, { x: 0.40, y: 3.04, w: 0.04, h: 0.44, fill: { color: 'E31E24' }, line: { type: 'none' }, objectName: 'Penanda divisi' });
+            s.addText('TRAIN OPERATION DIVISION', {
+                x: 0.54, y: 3.02, w: 4.4, h: 0.26, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 13, bold: true, color: 'FFFFFF', fontFace: 'Arial'
+            });
+            s.addText('PT KAI COMMUTER', {
+                x: 0.54, y: 3.28, w: 4.4, h: 0.2, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 8, color: 'FFFFFF', fontFace: 'Arial', charSpacing: 6
+            });
+            s.addText(KCI_TPL.tagline, {
+                x: 0.40, y: 3.62, w: 5.0, h: 0.28, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 11, italic: true, color: 'FFFFFF', fontFace: 'Arial'
+            });
+            s.addText(String(opsi.keterangan || tgl), {
+                x: 0.40, y: 3.98, w: 5.0, h: 0.28, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 11, color: 'FFFFFF', fontFace: 'Arial', objectName: 'Tanggal cover'
+            });
+            return s;
+        }
+
+        /** Slide penutup "Terima Kasih" dari template resmi. */
+        function buatPenutupKCI_(pptx) {
+            const s = pptx.addSlide();
+            s.background = { path: urlTpl_(KCI_TPL.penutup) };
+            return s;
+        }
+
+        /**
+         * Slide isi bergaya template resmi: latar putih dengan pita logo di
+         * atas dan pita biru di bawah. Judul berada di pita atas, di antara
+         * garis miring kiri dan logo kanan. Isi slide tetap mulai di y ~0.86.
+         * @param {Object} opsi {judul, subJudul, nomor, total, tanpaJudul}
+         */
         function buatSlideKCI_(pptx, opsi) {
             const s = pptx.addSlide();
-            s.background = { color: 'FFFFFF' };
-
-            // ── KOP GAYA KORPORAT ─────────────────────────────────────────
-            // Diganti dari pita navy pekat menjadi kop berlatar terang dengan
-            // judul navy besar & garis merah pendek di bawahnya, mengikuti
-            // gaya paparan resmi. Isi slide tetap mulai di y ~1.15 seperti
-            // sebelumnya, jadi tidak ada pemanggil yang perlu disesuaikan.
-            //
-            // Pita diagonal di pojok kanan atas sengaja hanya berupa batang
-            // miring polos. Logo resmi TIDAK digambar ulang - catatan lama di
-            // atas masih berlaku: tiruan logo selalu terlihat janggal, dan
-            // identitasnya cukup dibawa oleh warna & tata letak.
-            [[KCI_PPT.MERAH_KAI, 8.92], [KCI_PPT.BIRU, 9.14], [KCI_PPT.BIRU_TUA, 9.36], ['D9E2EC', 9.58]]
-                .forEach(function (b) {
-                    s.addShape(pptx.ShapeType.rect, {
-                        x: b[1], y: -0.16, w: 0.1, h: 1.25, rotate: -24,
-                        fill: { color: b[0] }, line: { type: 'none' }
-                    });
-                });
-
-            s.addText('PT KERETA COMMUTER INDONESIA  ·  COTP DEPARTMENT', {
-                x: 0.45, y: 0.19, w: 6.2, h: 0.17,
-                fontSize: 7, bold: true, color: '8795AB', fontFace: 'Arial', charSpacing: 2.2
-            });
+            s.background = { path: urlTpl_(KCI_TPL.konten) };
 
             if (!opsi.tanpaJudul) {
                 s.addText(String(opsi.judul || ''), {
-                    x: 0.45, y: 0.35, w: 8.2, h: 0.42, valign: 'middle',
-                    fontSize: 22, bold: true, color: KCI_PPT.BIRU_TUA, fontFace: 'Arial'
+                    x: 2.45, y: 0.06, w: 5.0, h: 0.32, margin: 0, isTextBox: true, valign: 'middle',
+                    fontSize: 17, bold: true, color: KCI_PPT.BIRU_TUA, fontFace: 'Arial', fit: 'shrink'
                 });
                 if (opsi.subJudul) {
-                    s.addText(String(opsi.subJudul), {
-                        x: 0.47, y: 0.77, w: 8.2, h: 0.22, valign: 'middle',
-                        fontSize: 10.5, bold: true, color: '5A6B85', fontFace: 'Arial'
+                    s.addText(potongTeksPpt_(String(opsi.subJudul), 90), {
+                        x: 2.45, y: 0.37, w: 5.0, h: 0.17, margin: 0, isTextBox: true, valign: 'middle',
+                        fontSize: 8, bold: true, color: '5A6B85', fontFace: 'Arial'
                     });
                 }
-                // Garis merah pendek - penanda khas kop paparan resmi.
-                s.addShape(pptx.ShapeType.rect, {
-                    x: 0.47, y: opsi.subJudul ? 1.02 : 0.82, w: 0.46, h: 0.035,
-                    fill: { color: KCI_PPT.MERAH_KAI }, line: { type: 'none' }
-                });
             }
 
-            // ── KAKI: pita navy penuh, sama seperti paparan resmi ─────────
             const skr = new Date();
-            s.addShape(pptx.ShapeType.rect, { x: 0, y: 5.33, w: 10, h: 0.30, fill: { color: KCI_PPT.KEPALA_TABEL }, line: { type: 'none' } });
-            s.addText('COTP DEPARTMENT DATABASE  ·  CONFIDENTIAL', {
-                x: 0.45, y: 5.36, w: 4.6, h: 0.24, valign: 'middle',
-                fontSize: 7, color: 'C6D2E4', fontFace: 'Arial', charSpacing: 0.6
+            s.addText('PT KERETA COMMUTER INDONESIA  ·  COTP DEPARTMENT  ·  DOKUMEN INTERNAL', {
+                x: 0.45, y: 5.33, w: 5.2, h: 0.22, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 7, color: 'FFFFFF', fontFace: 'Arial', charSpacing: 0.6
             });
             s.addText(
                 `Dicetak ${skr.toLocaleDateString('id-ID')}` + (opsi.nomor && opsi.total ? `  ·  Halaman ${opsi.nomor} dari ${opsi.total}` : ''),
-                { x: 5.0, y: 5.36, w: 4.55, h: 0.24, align: 'right', valign: 'middle', fontSize: 7, color: 'C6D2E4', fontFace: 'Arial' }
+                { x: 5.4, y: 5.33, w: 2.7, h: 0.22, margin: 0, isTextBox: true, align: 'right', valign: 'middle', fontSize: 7, color: 'FFFFFF', fontFace: 'Arial' }
             );
             return s;
         }
@@ -13513,6 +13558,7 @@
                 pptx.layout = 'LAYOUT_16x9';
                 pptx.author = 'PT Kereta Commuter Indonesia';
                 pptx.title = 'Rincian Rekapitulasi Gangguan';
+                buatCoverKCI_(pptx, { sub: 'Rincian Gangguan Operasional', keterangan: `${data.length} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
 
                 const ROWS = 10;
                 const totalSlideTabel = Math.ceil(data.length / ROWS);
@@ -13643,6 +13689,7 @@
                     sT.addTable(baris, { x: 0.45, y: 0.86, w: 9.1, colW: lebarKolom, border: { type: 'solid', color: 'E2E8F0', pt: 0.75 }, autoPage: false, rowH: 0.36 });
                 }
 
+                buatPenutupKCI_(pptx);
                 pptx.writeFile({ fileName: 'Rincian_Gangguan_KCI_' + hariIniIso_() + '.pptx' });
                 showToast(`${data.length} baris diexport ke ${totalSlide} slide PowerPoint lengkap dengan grafik!`);
             } catch (err) {
@@ -14502,6 +14549,7 @@
                 pptx.layout = 'LAYOUT_16x9';
                 pptx.author = 'PT Kereta Commuter Indonesia';
                 pptx.title = 'Rekap Gangguan Sarana';
+                buatCoverKCI_(pptx, { judul2: 'GANGGUAN SARANA', sub: 'Rekap Gangguan Sarana', keterangan: `${data.length} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
 
                 const ROWS = 10;
                 const totalSlideTabel = Math.ceil(data.length / ROWS);
@@ -14661,6 +14709,7 @@
                     s.addTable(baris, { x: 0.45, y: 0.86, w: 9.1, colW: lebarKolom, border: { type: 'solid', color: 'E2E8F0', pt: 0.75 }, autoPage: false, rowH: 0.36 });
                 }
 
+                buatPenutupKCI_(pptx);
                 pptx.writeFile({ fileName: 'Rekap_Gangguan_Sarana_KCI_' + hariIniIso_() + '.pptx' });
                 showToast(`${data.length} baris diexport ke ${totalSlide} slide PowerPoint lengkap dengan grafik!`);
             } catch (err) {
