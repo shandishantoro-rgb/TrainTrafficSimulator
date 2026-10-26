@@ -1,3 +1,5 @@
+> **Situs saat ini:** traintrafficcontrol.site menayangkan **Database KCI – COTP** (folder `site/`, lihat `DATABASE-KCI.md`). Simulator TTC di folder `app/` untuk sementara tidak ditayangkan (perintah Pemilik Proyek, 26 Okt 2026).
+
 # TTC — Train Traffic Simulator
 
 TTC adalah alat bantu perencanaan operasi kereta api. Proyek ini sedang dibangun bertahap mengikuti `PROJECT.md`, `ROADMAP.md`, dan `STATE.md`.

@@ -205,3 +205,11 @@ KA generator yang sengaja dihapus dicatat pada `jadwal.pengecualianGenerator` ag
 | Hasil uji AI | Diuji di browser otomatis dengan API tiruan: login, masuk dashboard, 18 fungsi server terpanggil lewat jembatan, dan pindah menu berjalan. Di `app/`, menu Database KCI tampil, dan berpindah ke menu lain mengembalikan area kerja TTC tanpa galat. **Belum diuji ke Apps Script sungguhan**, karena Api.gs belum dipasang. |
 | Sisa pekerjaan Pemilik Proyek | (1) Pasang `Api.gs` di Apps Script dan terapkan versi baru. (2) Isi URL /exec di `database/config.js` atau di layar pengaturan. (3) Push cabang ke GitHub: sesi AI belum punya izin tulis karena Claude GitHub App belum terpasang. (4) Verifikasi langsung di traintrafficcontrol.site. |
 
+
+### Pembaruan 26 Oktober 2026 (lanjutan)
+
+- Pemilik Proyek memerintahkan: "simulator hapus dulu, fokus di dashboard gangguan". Repo `TRAIN-TRAFFIC` sudah dihapus Pemilik Proyek.
+- Database KCI dipindah ke folder **`site/`** dan menjadi situs utama. Menu Database KCI di `app/` dicabut, dan `app/index.html` dikembalikan seperti semula. **Simulator TTC tidak dihapus**, hanya tidak ditayangkan.
+- `.github/workflows/pages.yml` kini menayangkan `site/`, bukan `app/`.
+- `site/config.js` diisi URL Web App `…/AKfycbwJHdz-…/exec` (tujuan s.id/basecotp).
+- Sisa pekerjaan Pemilik Proyek: pasang `apps-script/Api.gs` dan terapkan ulang dengan akses **"Siapa saja"**; sambungkan Cloudflare ke repo ini dengan output `site` (lihat `DATABASE-KCI.md`).

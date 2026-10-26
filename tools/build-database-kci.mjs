@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * build-database-kci.mjs
- * Menyusun app/database/index.html dari sumber tampilan Apps Script di
+ * Menyusun site/index.html dari sumber tampilan Apps Script di
  * database-kci/src/ (salinan file .html proyek "Database KCI - COTP").
  *
  *   node tools/build-database-kci.mjs
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const akar = join(dirname(fileURLToPath(import.meta.url)), '..');
 const folderSumber = join(akar, 'database-kci', 'src');
-const berkasHasil = join(akar, "app", "database", "index.html");
+const berkasHasil = join(akar, "site", "index.html");
 const POLA_INCLUDE = /<\?!=\s*include\(\s*['"]([\w-]+)['"]\s*\)\s*;?\s*\?>/g;
 
 function baca(nama) {
@@ -49,4 +49,4 @@ html = html.replace(/<head>/i, [
 ].join('\n'));
 
 writeFileSync(berkasHasil, html);
-console.log('app/database/index.html dibuat (' + Math.round(html.length / 1024) + ' KB)');
+console.log('site/index.html dibuat (' + Math.round(html.length / 1024) + ' KB)');
