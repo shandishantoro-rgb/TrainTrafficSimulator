@@ -1,0 +1,2329 @@
+<!--
+  Script_PeraturanIzinAnggaran.html
+  Logic untuk modul Peraturan Perusahaan dan Izin Linpel & IOPS. SUDAH
+  tersambung ke backend nyata (Google Sheets, lewat Module_PeraturanIzin.gs).
+  Modul Serapan Anggaran pada desain awal masih statis (tidak ada data
+  dinamis/tabel), jadi tidak ada logic tambahan untuk itu.
+-->
+<script>
+        // ─── FUNGSI DASAR (cadangan mandiri) ─────────────────────────────
+        // Definisi cadangan fungsi umum yang dipakai file ini. Ditanam di
+        // SETIAP Script_*.html dengan pola idempotent (window.x = window.x
+        // || ...) supaya file ini TETAP BERFUNGSI walau SharedScripts.html
+        // kebetulan belum ter-update ke versi terbaru. Ini mencegah satu
+        // file yang ketinggalan versi merusak seluruh modul lain.
+        window.escapeHtml = window.escapeHtml || function (val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        };
+        window.startLoadingWatchdog = window.startLoadingWatchdog || function () { return null; };
+
+
+        // Cache data dari server - BUKAN dummy lagi.
+        let regulasiData = [];
+        let linpelData = [];
+        let iopsData = [];
+        let listPeraturanCategories = [];
+
+        let activeDeleteContext = "regulasi";
+        let documentToDeleteId = null;
+
+        // ─── LOAD DARI SERVER ─────────────────────────────────────────
+
+        /**
+         * Menu Peraturan Perusahaan sekarang memakai Arsip Dokumen v2
+         * (lima submenu). Nama fungsi ini dipertahankan karena dipanggil
+         * dari switchTab() di SharedScripts.html.
+         */
+        function loadPeraturanDokumen() { loadArsipDokumen(); }
+
+
+        // ════════════════════════════════════════════════════════════════
+        // AUDIT BERBAGI - dokumen yang masih terbuka untuk umum di Drive
+        // ════════════════════════════════════════════════════════════════
+        //
+        // Tiga pemeriksaan dijalankan sekaligus saat modal dibuka:
+        //   1. peraturan_arsip_auditBerbagi  - berkas arsip yang aksesnya
+        //      masih ANYONE / ANYONE_WITH_LINK di Google Drive.
+        //   2. peraturan_getDokumen          - sisa baris di sheet LAMA
+        //      'PeraturanDokumen', peninggalan rancangan sebelum arsip
+        //      berversi dipakai. Sheet itu tidak lagi dibaca menu mana pun,
+        //      jadi isinya tidak pernah terlihat - padahal ikut memakan
+        //      kuota sel & ikut tersalin tiap kali mencadangkan.
+        //   3. (tombol) peraturan_arsip_cabutAksesPublik - menutup semuanya.
+
+        let auditBerbagiHasil_ = null;
+
+        function bukaAuditBerbagi() {
+            if (typeof canDo === 'function' && !canDo('peraturan-dokumen', 'edit')) {
+                showToast('Hanya petugas yang boleh mengubah dokumen yang bisa menjalankan audit berbagi.');
+                return;
+            }
+            gambarModalAudit_('<div class="py-10 text-center text-slate-400 font-bold text-xs">' +
+                '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#0c1d37]"></i>' +
+                'Memeriksa berkas satu per satu di Google Drive...</div>');
+
+            let sisa = 2;
+            const hasil = { audit: null, lama: null };
+            const selesai = function () { if (--sisa === 0) { auditBerbagiHasil_ = hasil; gambarIsiAudit_(hasil); } };
+
+            google.script.run
+                .withSuccessHandler(function (res) { hasil.audit = res; selesai(); })
+                .withFailureHandler(function () { hasil.audit = { success: false, message: 'Pemeriksaan gagal dijalankan.' }; selesai(); })
+                .peraturan_arsip_auditBerbagi(currentSessionToken);
+
+            google.script.run
+                .withSuccessHandler(function (res) { hasil.lama = res; selesai(); })
+                .withFailureHandler(function () { hasil.lama = { success: false }; selesai(); })
+                .peraturan_getDokumen(currentSessionToken);
+        }
+
+        function gambarIsiAudit_(hasil) {
+            const a = hasil.audit || {};
+            if (!a.success) {
+                gambarModalAudit_('<div class="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-[11px] font-bold text-red-800">' +
+                    escapeHtml(a.message || 'Pemeriksaan gagal.') + '</div>');
+                return;
+            }
+
+            const terbuka = a.terbuka || [];
+            const bolehCabut = (typeof canDo !== 'function') || canDo('peraturan-dokumen', 'hapus');
+
+            const ringkas = terbuka.length
+                ? '<div class="p-3.5 rounded-2xl bg-red-50 border border-red-300">' +
+                    '<p class="text-xs font-black text-red-900"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>' +
+                    terbuka.length + ' dokumen terbuka untuk umum</p>' +
+                    '<p class="text-[11px] font-semibold text-red-800 mt-1 leading-relaxed">Siapa pun yang punya tautannya bisa membuka berkas ini tanpa login, ' +
+                    'termasuk orang di luar KCI. Dari ' + (a.jumlahDiperiksa || 0) + ' berkas yang diperiksa.</p></div>'
+                : '<div class="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200">' +
+                    '<p class="text-xs font-black text-emerald-800"><i class="fa-solid fa-circle-check mr-1.5"></i>Tidak ada dokumen yang terbuka untuk umum</p>' +
+                    '<p class="text-[11px] font-semibold text-emerald-700 mt-1">Seluruh ' + (a.jumlahDiperiksa || 0) + ' berkas arsip hanya bisa dibuka lewat aplikasi.</p></div>';
+
+            const daftar = terbuka.length
+                ? '<div><p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Dokumen Terbuka</p>' +
+                    terbuka.map(function (d) {
+                        return '<div class="p-2.5 bg-red-50 border border-red-200 rounded-xl mb-1.5">' +
+                            '<p class="text-[11px] font-black text-red-900">' + escapeHtml(d.judul || '(tanpa judul)') + '</p>' +
+                            '<p class="text-[10px] text-red-700 font-bold mt-0.5">' + escapeHtml(d.subMenu || '-') +
+                            ' &middot; <span class="font-mono">' + escapeHtml(d.akses || '') + '</span></p></div>';
+                    }).join('') + '</div>'
+                : '';
+
+            // ── Sisa data di sheet lama ──
+            const l = hasil.lama || {};
+            const jumlahLama = (l.success && l.data) ? l.data.length : 0;
+            const bagianLama = jumlahLama
+                ? '<div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">' +
+                    '<p class="text-[11px] font-black text-amber-900"><i class="fa-solid fa-box-archive mr-1.5"></i>' +
+                    jumlahLama + ' baris tersisa di sheet lama <span class="font-mono">PeraturanDokumen</span></p>' +
+                    '<p class="text-[11px] text-amber-800 font-semibold mt-1 leading-relaxed">Sheet itu peninggalan rancangan sebelum arsip berversi dipakai, ' +
+                    'dan sudah tidak dibaca menu mana pun. Cocokkan isinya dengan Document Repository; kalau semuanya sudah ada di sana, ' +
+                    'sheet itu aman dihapus lewat Google Sheets untuk membebaskan kuota sel.</p>' +
+                    '<p class="text-[10px] text-amber-700 font-bold mt-1.5">Contoh: ' +
+                    escapeHtml((l.data || []).slice(0, 3).map(function (x) { return x.title || x.number || x.id; }).join(' \u00B7 ')) + '</p></div>'
+                : '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-semibold text-slate-500">' +
+                    '<i class="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i>Sheet lama <span class="font-mono">PeraturanDokumen</span> sudah kosong.</div>';
+
+            const tombolCabut = terbuka.length
+                ? (bolehCabut
+                    ? '<button onclick="jalankanCabutAksesPublik()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">' +
+                      '<i class="fa-solid fa-lock"></i><span>Cabut Semua Akses Publik</span></button>'
+                    : '<span class="text-[11px] font-bold text-slate-400">Hanya role dengan izin hapus yang bisa mencabut akses.</span>')
+                : '';
+
+            gambarModalAudit_(ringkas + daftar + bagianLama, tombolCabut);
+        }
+
+        /**
+         * Mencabut akses publik seluruh dokumen arsip sekaligus.
+         *
+         * Setelah ini, dokumen HANYA bisa dibuka dari dalam aplikasi. Tautan
+         * ke Drive yang terlanjur dibagikan ke luar akan berhenti berfungsi -
+         * itu memang tujuannya, tapi perlu disebut lebih dulu supaya tidak
+         * mengagetkan.
+         */
+        function jalankanCabutAksesPublik() {
+            const jumlah = ((auditBerbagiHasil_ && auditBerbagiHasil_.audit && auditBerbagiHasil_.audit.terbuka) || []).length;
+
+            const lanjut = function () {
+                gambarModalAudit_('<div class="py-10 text-center text-slate-400 font-bold text-xs">' +
+                    '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#0c1d37]"></i>Menutup akses publik...</div>');
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (!res || !res.success) {
+                            showToast('Gagal mencabut akses: ' + ((res && res.message) || 'tidak diketahui.'));
+                            bukaAuditBerbagi();
+                            return;
+                        }
+                        showToast('Akses publik ' + res.dicabut + ' dokumen dicabut' +
+                            (res.gagal ? ', ' + res.gagal + ' berkas tidak terbaca.' : '.'));
+                        bukaAuditBerbagi();   // periksa ulang supaya hasilnya terlihat
+                    })
+                    .withFailureHandler(function () {
+                        showToast('Terjadi kesalahan saat mencabut akses publik.');
+                        bukaAuditBerbagi();
+                    })
+                    .peraturan_arsip_cabutAksesPublik(currentSessionToken);
+            };
+
+            if (typeof konfirmasi_ === 'function') {
+                konfirmasi_({
+                    judul: 'Cabut akses publik ' + jumlah + ' dokumen?',
+                    pesan: 'Dokumen hanya bisa dibuka dari dalam aplikasi setelah ini. Tautan Drive yang sudah terlanjur dibagikan ke luar akan berhenti berfungsi.',
+                    ya: 'Cabut Sekarang', ikonYa: 'fa-lock', ikon: 'fa-shield-halved'
+                }).then(function (ya) { if (ya) lanjut(); });
+            } else {
+                lanjut();
+            }
+        }
+
+        /** Modal audit dibangun saat dipakai, jadi tidak menambah berkas Modals_*. */
+        function gambarModalAudit_(isi, tombolAksi) {
+            let modal = document.getElementById('modal-audit-berbagi');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'modal-audit-berbagi';
+                modal.className = 'hidden fixed inset-0 z-[96] flex items-center justify-center p-4 modal-backdrop animate-fade-in';
+                document.body.appendChild(modal);
+            }
+            modal.innerHTML =
+                '<div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">' +
+                    '<div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">' +
+                        '<div><h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">' +
+                            '<i class="fa-solid fa-shield-halved text-[#d4af37]"></i><span>Audit Berbagi Dokumen</span></h3>' +
+                            '<p class="text-[11px] text-slate-400 font-medium mt-0.5">Siapa saja yang bisa membuka berkas arsip di Google Drive</p></div>' +
+                        '<button onclick="tutupAuditBerbagi()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>' +
+                    '</div>' +
+                    '<div class="p-6 space-y-4 overflow-y-auto flex-1">' + isi + '</div>' +
+                    '<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end items-center gap-2 shrink-0">' +
+                        (tombolAksi || '') +
+                        '<button onclick="tutupAuditBerbagi()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>' +
+                    '</div>' +
+                '</div>';
+            modal.classList.remove('hidden');
+        }
+
+        function tutupAuditBerbagi() {
+            const modal = document.getElementById('modal-audit-berbagi');
+            if (modal) modal.classList.add('hidden');
+        }
+
+
+
+        function loadLinpelData() {
+            const tbody = document.getElementById('linpel-table-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-400 font-bold">Memuat data...</td></tr>';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { linpelData = res.data; renderLinpelTable(); }
+                    else { showToast('Gagal memuat data: ' + (res.message || '')); if (tbody) tbody.innerHTML = ''; }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat data.'); })
+                .peraturan_getLinpel(currentSessionToken);
+        }
+
+        function loadIopsData() {
+            const tbody = document.getElementById('iops-table-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-400 font-bold">Memuat data...</td></tr>';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { iopsData = res.data; renderIopsTable(); }
+                    else { showToast('Gagal memuat data: ' + (res.message || '')); if (tbody) tbody.innerHTML = ''; }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat data.'); })
+                .peraturan_getIops(currentSessionToken);
+        }
+
+        /**
+         * Mengambil daftar kategori dari server, lalu mengisi SEMUA
+         * dropdown yang butuh daftar kategori (form upload & filter tabel).
+         */
+        function loadPeraturanKategori() {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        listPeraturanCategories = res.data.map(function (k) { return k.nama; });
+                        populateSelect('input-doc-category', listPeraturanCategories);
+                        populateSelect('filter-reg-doc-type', listPeraturanCategories, 'Semua', 'Semua Kategori');
+                        renderPeraturanCategories();
+                    } else {
+                        showToast('Gagal memuat kategori: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat kategori.'); })
+                .peraturan_getKategori(currentSessionToken);
+        }
+
+        // ─── DOKUMEN REGULASI ─────────────────────────────────────────
+
+        function renderPeraturanTable() {
+            const tbody = document.getElementById('peraturan-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            regulasiData.forEach((doc, idx) => {
+                const badge = { "Berlaku": "bg-emerald-100 text-emerald-800", "Dalam Revisi": "bg-amber-100 text-amber-800",
+                    "Tidak Berlaku": "bg-red-100 text-red-800" } [doc.status] || "bg-slate-100 text-slate-800";
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 transition text-center h-12">
+                        <td class="px-4 py-3 border-r border-slate-200 font-extrabold text-slate-400 text-center">${idx+1}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 font-mono text-[#0c1d37] font-extrabold text-center">${escapeHtml(doc.number)}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 text-left text-slate-800 text-xs">${escapeHtml(doc.title)}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 text-left text-slate-500 font-medium leading-normal">${escapeHtml(doc.desc)}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-center">
+                            <span class="px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${badge}">${escapeHtml(doc.status)}</span>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <div class="flex items-center justify-center space-x-1.5">
+                                <button onclick="openFullscreenReader('regulasi', '${doc.id}')" class="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg"><i class="fa-solid fa-eye text-xs"></i></button>
+                                <button onclick="triggerFileDownload('${doc.id}', 'regulasi')" class="p-2 bg-[#d4af37]/20 text-[#d4af37] hover:bg-[#d4af37]/40 rounded-lg"><i class="fa-solid fa-cloud-arrow-down text-xs"></i></button>
+                                <button onclick="openConfirmModal('regulasi', '${doc.id}')" class="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+            });
+            if (regulasiData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-400 font-bold">Belum ada dokumen.</td></tr>';
+            }
+        }
+
+
+        // ─── KATEGORI DOKUMEN ─────────────────────────────────────────
+
+        function renderPeraturanCategories() {
+            const container = document.getElementById('list-peraturan-categories');
+            if (!container) return;
+            container.innerHTML = '';
+            listPeraturanCategories.forEach((cat, idx) => {
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center justify-between bg-slate-50 p-2.5 border border-slate-200 rounded-xl font-bold text-xs animate-fade-in">
+                        <span>${cat}</span>
+                        <button onclick="removePeraturanCategory('${cat}')" class="text-slate-400 hover:text-red-600"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                `);
+            });
+        }
+
+        /**
+         * Sisa dari menu "Kategori Peraturan" yang sudah digantikan Summary
+         * Arsip. Elemennya tidak ada lagi, jadi fungsinya berhenti dengan
+         * aman - dibiarkan supaya pemanggilan lama (kalau ada) tidak error.
+         * Pengelolaan kategori kini ada di tombol Kelola Parameter tiap arsip.
+         */
+        function addPeraturanCategory() {
+            const input = document.getElementById('add-reg-cat-input');
+            if (!input) return;
+            const val = input.value.trim();
+            if (!val || listPeraturanCategories.includes(val)) return;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        input.value = '';
+                        showToast(`Kategori ${val} berhasil ditambahkan.`);
+                        loadPeraturanKategori();
+                    } else {
+                        showToast('Gagal menambah kategori: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menambah kategori.'); })
+                .peraturan_addKategori(currentSessionToken, val);
+        }
+
+        function removePeraturanCategory(nama) {
+            if (!confirm(`Yakin ingin menghapus kategori "${nama}"?`)) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        showToast("Kategori berhasil dihapus.");
+                        loadPeraturanKategori();
+                    } else {
+                        showToast('Gagal menghapus: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus kategori.'); })
+                .peraturan_deleteKategori(currentSessionToken, nama);
+        }
+
+        // ─── LINPEL / IOPS ──────────────────────────────────────────────
+
+        function renderLinpelTable() {
+            const tbody = document.getElementById('linpel-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            linpelData.forEach((doc, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 transition text-center h-12">
+                        <td class="px-4 py-3 border-r border-slate-200 font-extrabold text-slate-400 text-center">${idx+1}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 font-mono text-[#0c1d37] text-left font-extrabold">${escapeHtml(doc.number)}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 font-bold text-slate-800 text-xs">${escapeHtml(doc.validTill)}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 text-left text-slate-500 font-medium leading-normal">${escapeHtml(doc.desc)}</td>
+                        <td class="px-4 py-3 text-center">
+                            <div class="flex items-center justify-center space-x-1.5">
+                                <button onclick="openFullscreenReader('linpel', '${doc.id}')" class="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg"><i class="fa-solid fa-eye text-xs"></i></button>
+                                <button onclick="triggerFileDownload('${doc.id}', 'linpel')" class="p-2 bg-[#d4af37]/20 text-[#d4af37] hover:bg-[#d4af37]/40 rounded-lg"><i class="fa-solid fa-cloud-arrow-down text-xs"></i></button>
+                                <button onclick="openConfirmModal('linpel', '${doc.id}')" class="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+            });
+            if (linpelData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        function renderIopsTable() {
+            const tbody = document.getElementById('iops-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            iopsData.forEach((doc, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 transition text-center h-12">
+                        <td class="px-4 py-3 border-r border-slate-200 font-extrabold text-slate-400 text-center">${idx+1}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 font-mono text-[#0c1d37] text-left font-extrabold">${escapeHtml(doc.number)}</td>
+                        <td class="px-5 py-3 border-r border-slate-200 font-black text-[#e11d48] text-center font-mono">${escapeHtml(doc.frekuensi)} <span class="text-[9px] font-normal text-slate-400">KA</span></td>
+                        <td class="px-5 py-3 border-r border-slate-200 text-center text-emerald-600 font-black">${escapeHtml(doc.sinergi)}</td>
+                        <td class="px-4 py-3 text-center">
+                            <div class="flex items-center justify-center space-x-1.5">
+                                <button onclick="openFullscreenReader('iops', '${doc.id}')" class="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg"><i class="fa-solid fa-eye text-xs"></i></button>
+                                <button onclick="triggerFileDownload('${doc.id}', 'iops')" class="p-2 bg-[#d4af37]/20 text-[#d4af37] hover:bg-[#d4af37]/40 rounded-lg"><i class="fa-solid fa-cloud-arrow-down text-xs"></i></button>
+                                <button onclick="openConfirmModal('iops', '${doc.id}')" class="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+            });
+            let total = 0;
+            iopsData.forEach(item => total += Number(item.frekuensi) || 0);
+            const totalEl = document.getElementById('iops-total-registered');
+            if (totalEl) totalEl.innerText = total;
+            if (iopsData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        // ─── READER ──────────────────────────────────────────────────────
+
+        function openFullscreenReader(type, id) {
+            let doc = null;
+            if (type === 'regulasi') doc = regulasiData.find(d => d.id === id);
+            else if (type === 'linpel') doc = linpelData.find(d => d.id === id);
+            else if (type === 'iops') doc = iopsData.find(d => d.id === id);
+            if (!doc) return;
+            document.getElementById('reader-doc-type').innerText = doc.category || type.toUpperCase();
+            document.getElementById('reader-doc-title').innerText = doc.title || doc.number;
+            document.getElementById('reader-doc-number').innerText = `PRODUK HUKUM: ${doc.number}`;
+            document.getElementById('reader-doc-desc').innerText = doc.desc ||
+                `Sertifikat izin resmi perjalanan KCI dengan nomor surat ${doc.number}.`;
+            const fileLink = document.getElementById('reader-doc-file-link');
+            if (fileLink) {
+                if (doc.fileUrl) { fileLink.href = doc.fileUrl; fileLink.classList.remove('hidden'); }
+                else { fileLink.classList.add('hidden'); }
+            }
+            document.getElementById('document-reader-fullscreen').classList.remove('hidden');
+        }
+
+        function closeFullscreenReader() { document.getElementById('document-reader-fullscreen').classList.add('hidden'); }
+
+        /**
+         * Membuka berkas asli di Drive kalau ada lampirannya (mengganti
+         * toast simulasi "Mengunduh..." di desain awal dengan link nyata).
+         */
+        function triggerFileDownload(id, type) {
+            let doc = null;
+            if (type === 'regulasi') doc = regulasiData.find(d => d.id === id);
+            else if (type === 'linpel') doc = linpelData.find(d => d.id === id);
+            else if (type === 'iops') doc = iopsData.find(d => d.id === id);
+            if (doc && doc.fileUrl) {
+                window.open(doc.fileUrl, '_blank');
+            } else {
+                showToast('Dokumen ini belum punya berkas terlampir.');
+            }
+        }
+
+        // ─── HAPUS (dipakai bersama regulasi/linpel/iops) ────────────────
+
+        function openConfirmModal(context, id) {
+            activeDeleteContext = context;
+            documentToDeleteId = id;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            documentToDeleteId = null;
+        }
+
+        document.getElementById('btn-confirm-delete').addEventListener('click', () => {
+            if (!documentToDeleteId) { closeConfirmModal(); return; }
+            const context = activeDeleteContext;
+            const id = documentToDeleteId;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        showToast("Berkas berhasil dihapus.");
+                        if (context === 'regulasi') loadPeraturanDokumen();
+                        else if (context === 'linpel') loadLinpelData();
+                        else if (context === 'iops') loadIopsData();
+                    } else {
+                        showToast('Gagal menghapus: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus berkas.'); })
+                .peraturan_deleteDocument(currentSessionToken, context, id);
+            closeConfirmModal();
+        });
+
+        // ─── UPLOAD ──────────────────────────────────────────────────────
+
+        function openUploadModal() { document.getElementById('modal-upload').classList.remove('hidden'); }
+
+        function closeUploadModal() { document.getElementById('modal-upload').classList.add('hidden'); }
+
+        function handleFormSubmission(e) {
+            e.preventDefault();
+            const number = document.getElementById('input-doc-number').value;
+            const title = document.getElementById('input-doc-title').value;
+            const category = document.getElementById('input-doc-category').value;
+            const status = document.getElementById('input-doc-status').value;
+            const desc = document.getElementById('input-doc-desc').value;
+            const meta = { number: number, title: title, desc: desc, category: category, status: status };
+
+            const fileInput = document.getElementById('input-doc-file');
+            const file = fileInput && fileInput.files && fileInput.files[0];
+
+            function submit(base64Data, fileName, mimeType) {
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (res.success) {
+                            closeUploadModal();
+                            document.getElementById('form-upload-internal').reset();
+                            showToast("Berkas berhasil disimpan & disinkronisasikan!");
+                            if (res.target === 'linpel') loadLinpelData();
+                            else if (res.target === 'iops') loadIopsData();
+                            else loadPeraturanDokumen();
+                        } else {
+                            showToast('Gagal menyimpan: ' + (res.message || ''));
+                        }
+                    })
+                    .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan dokumen.'); })
+                    .peraturan_submitDocument(currentSessionToken, meta, base64Data, fileName, mimeType);
+            }
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                    const base64Data = reader.result.split(',')[1];
+                    submit(base64Data, file.name, file.type);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                submit(null, null, null);
+            }
+        }
+
+        function previewBeforeUpload() {
+            const num = document.getElementById('input-doc-number').value || "PD-MOCK-2026";
+            const title = document.getElementById('input-doc-title').value || "JUDUL DOKUMEN PREVIEW";
+            const desc = document.getElementById('input-doc-desc').value || "Silakan lengkapi form untuk preview.";
+            document.getElementById('reader-doc-type').innerText = "PREVIEW RANCANGAN";
+            document.getElementById('reader-doc-title').innerText = title;
+            document.getElementById('reader-doc-number').innerText = `PRODUK HUKUM: ${num}`;
+            document.getElementById('reader-doc-desc').innerText = desc;
+            const fileLink = document.getElementById('reader-doc-file-link');
+            if (fileLink) fileLink.classList.add('hidden');
+            document.getElementById('document-reader-fullscreen').classList.remove('hidden');
+        }
+
+        // ================================================================
+        // ARSIP DOKUMEN v2 (27 Agustus 2026) - lima submenu
+        // ================================================================
+        //
+        // Seluruh perbedaan antar-arsip (judul, ikon, kolom tabel, teks
+        // tombol) dikumpulkan di ARSIP_CONFIG di bawah. Menambah arsip baru
+        // di kemudian hari cukup menambah satu entri di sini + satu tombol
+        // tab di Pane_PeraturanDokumen.html - tidak perlu menyentuh fungsi
+        // render mana pun.
+
+        /**
+         * Beda antar-arsip dikumpulkan di sini - judul topbar, label form,
+         * teks tombol, & SUSUNAN KOLOM TABEL. Susunan kolomnya mengikuti
+         * rancangan yang dikirim user, dan memang berbeda-beda: Peraturan
+         * tidak menampilkan nomor, Surat menampilkan nomor tapi tanpa status,
+         * Gapeka punya kolom Versi/Edisi tersendiri.
+         *
+         * Tiap kolom punya `ambil(d)` - fungsi yang menghasilkan isi selnya.
+         * Dengan begitu render tabelnya satu fungsi saja untuk kelima arsip,
+         * tidak perlu lima cabang if yang saling menyalin.
+         */
+        const ARSIP_CONFIG = {
+            peraturan: {
+                judul: 'Arsip Peraturan Perusahaan',
+                sub: 'Database Regulasi & Kebijakan Resmi COTP PT KCI',
+                ikon: 'fa-scale-balanced',
+                labelJudul: 'Perihal Dokumen', labelNomor: 'Nomor Peraturan',
+                tombol: 'Upload Peraturan', pakaiStatus: true, pakaiVersi: false,
+                kolom: ['no', 'tanggal', 'judul', 'deskripsi', 'kategori', 'status', 'aksi']
+            },
+            notulen: {
+                judul: 'Arsip Notulen & Risalah Rapat',
+                sub: 'Minutes of Meeting, Risalah Rapat Koordinasi & Keputusan Rapat Dinas',
+                ikon: 'fa-clipboard-list',
+                labelJudul: 'Perihal Dokumen', labelNomor: 'Nomor Notulen',
+                tombol: 'Upload Notulen', pakaiStatus: false, pakaiVersi: false,
+                kolom: ['no', 'tanggal', 'judul', 'deskripsi', 'kategori', 'aksi']
+            },
+            surat: {
+                judul: 'Arsip Surat Masuk & Keluar',
+                sub: 'Registrasi Naskah Dinas, Surat Antar Instansi & Nota Dinas',
+                ikon: 'fa-envelope-open-text',
+                labelJudul: 'Perihal Dokumen', labelNomor: 'Nomor Dokumen',
+                tombol: 'Upload Surat', pakaiStatus: false, pakaiVersi: false,
+                kolom: ['no', 'tanggal', 'nomor', 'judulDesk', 'kategori', 'aksi']
+            },
+            kajian: {
+                judul: 'Arsip Dokumen Kajian / Studi',
+                sub: 'Studi Kelayakan, Kajian Kapasitas Lintas & Evaluasi Teknis',
+                ikon: 'fa-file-lines',
+                labelJudul: 'Judul Dokumen', labelNomor: 'Nomor Dokumen',
+                tombol: 'Upload Kajian', pakaiStatus: true, pakaiVersi: false,
+                kolom: ['no', 'tanggal', 'judul', 'deskripsi', 'kategori', 'status', 'aksi']
+            },
+            gapeka: {
+                judul: 'Arsip Gapeka & Warta Maklumat',
+                sub: 'Manajemen Gapeka, WAM, Palka & riwayat versi jadwal operasional',
+                ikon: 'fa-train-subway',
+                labelJudul: 'Dokumen Gapeka', labelNomor: 'Nomor Maklumat',
+                tombol: 'Upload Gapeka', pakaiStatus: true, pakaiVersi: true,
+                kolom: ['no', 'tanggal', 'gapeka', 'versi', 'deskripsi', 'kategori', 'status', 'aksi']
+            }
+        };
+
+        /** Definisi tiap jenis kolom: judul, lebar, perataan, & isi selnya. */
+        const ARSIP_KOLOM = {
+            no:       { judul: 'NO', lebar: 'w-12', rata: 'text-center',
+                        sel: function (d, i) { return '<span class="font-medium text-slate-400">' + (i + 1) + '</span>'; } },
+            tanggal:  { judul: 'TANGGAL', lebar: 'w-32',
+                        sel: function (d) { return '<span class="text-slate-600 font-semibold text-[11px] whitespace-nowrap">' + escapeHtml(formatTanggalArsip_(d.tanggal)) + '</span>'; } },
+            nomor:    { judul: 'NOMOR DOKUMEN', lebar: 'w-52',
+                        sel: function (d) { return '<span class="font-mono font-bold text-slate-800 text-[11px]">' + escapeHtml(d.nomor || '-') + '</span>'; } },
+            judul:    { judul: 'PERIHAL DOKUMEN', lebar: 'w-72',
+                        sel: function (d) {
+                            return '<div class="font-semibold text-slate-800 leading-snug">' + escapeHtml(d.judul) + '</div>' +
+                                (d.nomor ? '<div class="text-[10px] font-mono text-slate-400 mt-0.5">' + escapeHtml(d.nomor) + '</div>' : '') +
+                                (d.punyaBerkas ? '<div class="text-[9px] text-emerald-600 font-semibold mt-0.5"><i class="fa-solid fa-paperclip mr-1"></i>' + escapeHtml(d.fileName || 'berkas terlampir') + '</div>' : '');
+                        } },
+            judulDesk:{ judul: 'PERIHAL DOKUMEN', lebar: '',
+                        sel: function (d) {
+                            return '<div class="font-semibold text-slate-800">' + escapeHtml(d.judul) + '</div>' +
+                                (d.deskripsi ? '<div class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">' + escapeHtml(d.deskripsi) + '</div>' : '');
+                        } },
+            gapeka:   { judul: 'DOKUMEN GAPEKA', lebar: 'w-64',
+                        sel: function (d) {
+                            return '<div class="font-bold text-slate-800 leading-snug">' + escapeHtml(d.judul) + '</div>' +
+                                (d.nomor ? '<div class="text-[10px] font-mono text-slate-400 mt-0.5">' + escapeHtml(d.nomor) + '</div>' : '') +
+                                (d.lintas ? '<div class="text-[10px] text-red-600 font-semibold mt-0.5"><i class="fa-solid fa-map-pin text-[9px] mr-0.5"></i>' + escapeHtml(d.lintas) + '</div>' : '');
+                        } },
+            versi:    { judul: 'VERSI / EDISI', lebar: 'w-36',
+                        sel: function (d) {
+                            return '<span class="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold text-[10px] inline-flex items-center gap-1">' +
+                                '<i class="fa-solid fa-code-branch text-[9px]"></i>' + escapeHtml(d.versi || 'Rev 1.0') + '</span>' +
+                                (d.riwayat && d.riwayat.length ? '<div class="text-[9px] text-slate-400 font-semibold mt-1">' + d.riwayat.length + ' revisi tercatat</div>' : '');
+                        } },
+            deskripsi:{ judul: 'DESKRIPSI', lebar: '',
+                        sel: function (d) { return '<span class="text-slate-500 text-[11px] leading-relaxed">' + (d.deskripsi ? escapeHtml(d.deskripsi) : '<span class="text-slate-300">-</span>') + '</span>'; } },
+            kategori: { judul: 'KATEGORI', lebar: 'w-44',
+                        sel: function (d) { return '<span class="bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded border border-slate-200 text-[11px]">' + escapeHtml(d.kategori || '-') + '</span>'; } },
+            status:   { judul: 'STATUS', lebar: 'w-32', rata: 'text-center',
+                        sel: function (d) { return badgeStatusArsip_(d.status); } },
+            aksi:     { judul: 'AKSI', lebar: 'w-36', rata: 'text-center',
+                        sel: function (d) { return tombolAksiArsip_(d); } }
+        };
+
+        let arsipSubMenu = 'peraturan';
+        let arsipDokumen = [];
+        let arsipParameter = {};
+        let arsipPernahDimuat = false;
+        let arsipEditingId = null;
+        let arsipPreviewId = null;
+        let arsipVersiTargetId = null;
+        let arsipFilePayload = null;
+        let arsipVersiFilePayload = null;
+        let arsipSedangProses = false;
+
+        /** Konfigurasi arsip yang sedang dibuka. */
+        function cfgArsip_() { return ARSIP_CONFIG[arsipSubMenu] || ARSIP_CONFIG.peraturan; }
+
+        /**
+         * Dipanggil dari kelima tombol arsip di sidebar: pindah ke pane
+         * Peraturan Perusahaan sekaligus membuka arsip yang dipilih.
+         */
+        function bukaArsip(key) {
+            if (!ARSIP_CONFIG[key]) return;
+            arsipSubMenu = key;
+            if (typeof switchTab === 'function') switchTab('peraturan-dokumen');
+            loadArsipDokumen();
+        }
+
+        function loadArsipDokumen(paksa) {
+            const tbody = document.getElementById('arsip-table-body');
+            if (arsipPernahDimuat && !paksa) { terapkanArsipSubMenu_(); return; }
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-slate-400 font-semibold"><i class="fa-solid fa-circle-notch fa-spin mr-2 text-red-500"></i>Memuat arsip dokumen...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal memuat arsip: ' + (res.message || '')); if (tbody) tbody.innerHTML = ''; return; }
+                    arsipDokumen = res.dokumen || [];
+                    arsipParameter = res.parameter || {};
+                    arsipPernahDimuat = true;
+                    terapkanArsipSubMenu_();
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat arsip dokumen.'); if (tbody) tbody.innerHTML = ''; })
+                .peraturan_arsip_getAll(currentSessionToken);
+        }
+
+        /** Nama lama - dipertahankan supaya pemanggilan lama tidak putus. */
+        function switchArsipSubMenu(target) { bukaArsip(target); }
+
+        /** Menyesuaikan seluruh tampilan dengan arsip yang sedang dibuka. */
+        function terapkanArsipSubMenu_() {
+            const cfg = cfgArsip_();
+
+            // Tandai tombol arsip yang aktif di sidebar.
+            Object.keys(ARSIP_CONFIG).forEach(function (key) {
+                const btn = document.getElementById('btn-arsip-' + key);
+                if (!btn) return;
+                btn.classList.toggle('text-[#d4af37]', key === arsipSubMenu);
+                btn.classList.toggle('text-slate-400', key !== arsipSubMenu);
+            });
+
+            // Judul di topbar ikut berganti - di rancangan, judul halaman
+            // memang menjelaskan arsip mana yang sedang dibuka.
+            const judulTopbar = document.getElementById('page-title');
+            if (judulTopbar) judulTopbar.textContent = cfg.judul.toUpperCase();
+
+            const btnUpload = document.getElementById('btn-arsip-upload-text');
+            if (btnUpload) btnUpload.textContent = cfg.tombol;
+
+            document.getElementById('arsip-filter-status-wrap').classList.toggle('hidden', !cfg.pakaiStatus);
+
+            const daftar = arsipParameter[arsipSubMenu] || [];
+            const sel = document.getElementById('arsip-filter-kategori');
+            sel.innerHTML = '<option value="Semua">Semua Kategori</option>' +
+                daftar.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+
+            renderArsipTable();
+        }
+
+        function hitungArsipTerfilter_() {
+            const cari = (document.getElementById('arsip-search').value || '').toLowerCase();
+            const kategori = document.getElementById('arsip-filter-kategori').value;
+            const status = document.getElementById('arsip-filter-status').value;
+            const cfg = cfgArsip_();
+
+            return arsipDokumen.filter(function (d) {
+                if (d.subMenu !== arsipSubMenu) return false;
+                if (kategori !== 'Semua' && d.kategori !== kategori) return false;
+                if (cfg.pakaiStatus && status !== 'Semua' && d.status !== status) return false;
+                if (cari) {
+                    const gabung = [d.judul, d.nomor, d.deskripsi, d.kategori, d.versi, d.lintas].join(' ').toLowerCase();
+                    if (gabung.indexOf(cari) === -1) return false;
+                }
+                return true;
+            });
+        }
+
+        /** Tombol aksi per baris - Gapeka mendapat tombol Update Revisi tambahan. */
+        function tombolAksiArsip_(d) {
+            const bolehEdit = (typeof canDo === 'function') ? canDo('peraturan-dokumen', 'edit') : true;
+            const bolehHapus = (typeof canDo === 'function') ? canDo('peraturan-dokumen', 'hapus') : true;
+            const cfg = cfgArsip_();
+            let html = '<div class="flex items-center justify-center gap-1.5">';
+
+            if (cfg.pakaiVersi && bolehEdit) {
+                html += '<button onclick="openArsipVersiModal(\'' + d.id + '\')" title="Update Revisi Dokumen (Versi Baru)" ' +
+                    'class="w-7 h-7 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 border border-red-200 rounded transition flex items-center justify-center">' +
+                    '<i class="fa-solid fa-clock-rotate-left text-xs"></i></button>';
+            }
+            // Preview membuka VIEWER penuh (zoom/putar/layar penuh/unduh)
+            // kalau dokumennya punya berkas; kalau tidak, jatuh ke modal
+            // detail yang menampilkan metadata & riwayat versinya.
+            const aksiPreview = d.punyaBerkas
+                ? 'bukaViewerDokumen(\'' + d.id + '\')'
+                : 'openArsipPreviewModal(\'' + d.id + '\')';
+            html += '<button onclick="' + aksiPreview + '" title="' + (d.punyaBerkas ? 'Buka Dokumen' : 'Lihat Detail') + '" ' +
+                'class="w-7 h-7 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 rounded transition flex items-center justify-center">' +
+                '<i class="fa-regular fa-eye text-xs"></i></button>';
+            if (d.punyaBerkas) {
+                html += '<button onclick="openArsipPreviewModal(\'' + d.id + '\')" title="Detail & Riwayat Versi" ' +
+                    'class="w-7 h-7 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 rounded transition flex items-center justify-center">' +
+                    '<i class="fa-solid fa-circle-info text-xs"></i></button>';
+            }
+            if (bolehEdit) {
+                html += '<button onclick="openArsipFormModal(\'' + d.id + '\')" title="Edit Dokumen" ' +
+                    'class="w-7 h-7 bg-slate-100 hover:bg-amber-500 hover:text-white text-slate-600 rounded transition flex items-center justify-center">' +
+                    '<i class="fa-solid fa-pen-to-square text-xs"></i></button>';
+            }
+            if (bolehHapus) {
+                html += '<button onclick="hapusArsipDokumen(\'' + d.id + '\')" title="Hapus Dokumen" ' +
+                    'class="w-7 h-7 bg-slate-100 hover:bg-red-600 hover:text-white text-slate-600 rounded transition flex items-center justify-center">' +
+                    '<i class="fa-regular fa-trash-can text-xs"></i></button>';
+            }
+            return html + '</div>';
+        }
+
+        function renderArsipTable() {
+            const cfg = cfgArsip_();
+            const thead = document.getElementById('arsip-table-head');
+            const tbody = document.getElementById('arsip-table-body');
+            const kosong = document.getElementById('arsip-empty-state');
+            if (!tbody) return;
+
+            // Judul kolom: sebagian menyesuaikan arsip (mis. "Perihal Dokumen"
+            // jadi "Judul Dokumen" di Kajian).
+            thead.innerHTML = '<tr class="bg-slate-900 text-white text-[11px] uppercase tracking-wider font-semibold">' +
+                cfg.kolom.map(function (key, i) {
+                    const k = ARSIP_KOLOM[key];
+                    let judul = k.judul;
+                    if (key === 'judul' || key === 'judulDesk' || key === 'gapeka') judul = cfg.labelJudul.toUpperCase();
+                    if (key === 'nomor') judul = cfg.labelNomor.toUpperCase();
+                    // Di arsip Gapeka, kolom deskripsi juga memuat catatan
+                    // perubahan versi - judulnya menyesuaikan (sesuai rancangan).
+                    if (key === 'deskripsi' && cfg.pakaiVersi) judul = 'DESKRIPSI / CATATAN';
+                    const garis = i < cfg.kolom.length - 1 ? ' border-r border-slate-800' : '';
+                    return '<th class="py-3.5 px-4 ' + (k.lebar || '') + ' ' + (k.rata || '') + garis + '">' + escapeHtml(judul) + '</th>';
+                }).join('') + '</tr>';
+
+            const hasil = hitungArsipTerfilter_();
+            const semuaArsipIni = arsipDokumen.filter(function (d) { return d.subMenu === arsipSubMenu; });
+
+            document.getElementById('arsip-showing-count').textContent = hasil.length;
+            document.getElementById('arsip-total-count').textContent = semuaArsipIni.length;
+            document.getElementById('arsip-kategori-info').textContent =
+                (arsipParameter[arsipSubMenu] || []).length + ' kategori terdaftar';
+
+            tbody.innerHTML = '';
+            if (!hasil.length) { kosong.classList.remove('hidden'); return; }
+            kosong.classList.add('hidden');
+
+            tbody.innerHTML = hasil.map(function (d, i) {
+                return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
+                    cfg.kolom.map(function (key, ki) {
+                        const k = ARSIP_KOLOM[key];
+                        const garis = ki < cfg.kolom.length - 1 ? ' border-r border-slate-100' : '';
+                        return '<td class="py-3.5 px-4 ' + (k.rata || '') + garis + '">' + k.sel(d, i) + '</td>';
+                    }).join('') + '</tr>';
+            }).join('');
+        }
+
+
+        /** "2026-01-12" -> "12 Jan 2026". Nilai yang tidak dikenali dikembalikan apa adanya. */
+        function formatTanggalArsip_(nilai) {
+            const teks = String(nilai || '').trim();
+            const m = teks.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (!m) return teks || '-';
+            const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            return parseInt(m[3], 10) + ' ' + bulan[parseInt(m[2], 10) - 1] + ' ' + m[1];
+        }
+
+        /** Badge status - tiga nilai sesuai rancangan, lengkap dengan titik warna. */
+        function badgeStatusArsip_(status) {
+            const s = String(status || '').trim();
+            const gaya = {
+                'Berlaku': ['bg-emerald-50 text-emerald-700 border-emerald-200', 'bg-emerald-500', 'Berlaku'],
+                'Perlu Review': ['bg-amber-50 text-amber-700 border-amber-200', 'bg-amber-500', 'Perlu Review'],
+                'Dicabut': ['bg-rose-50 text-rose-700 border-rose-200', 'bg-rose-500', 'Dicabut']
+            }[s];
+            if (!gaya) return '<span class="text-slate-300">-</span>';
+            return '<span class="' + gaya[0] + ' border px-2 py-0.5 rounded-full text-[10px] font-semibold inline-flex items-center gap-1">' +
+                '<span class="w-1.5 h-1.5 rounded-full ' + gaya[1] + '"></span>' + gaya[2] + '</span>';
+        }
+
+        // ─── FORM DOKUMEN (tambah / edit) ────────────────────────────────
+
+        function openArsipFormModal(id) {
+            const cfg = cfgArsip_();
+            arsipEditingId = id || null;
+            arsipFilePayload = null;
+
+            document.getElementById('form-arsip').reset();
+            document.getElementById('arsip-file-name').classList.add('hidden');
+            document.getElementById('arsip-file-lama').classList.add('hidden');
+            document.getElementById('arsip-form-error').classList.add('hidden');
+            arsipHalamanSiapKirim = [];
+            document.getElementById('arsip-file-pratinjau').classList.add('hidden');
+            document.getElementById('arsip-file-pratinjau-isi').innerHTML = '';
+            document.getElementById('arsip-riwayat-box').classList.add('hidden');
+            // Riwayat hanya ada isinya untuk dokumen yang sudah tersimpan.
+            document.getElementById('arsip-btn-riwayat').classList.toggle('hidden', !id);
+
+            // Label & field disesuaikan dengan arsip yang sedang dibuka.
+            document.getElementById('arsip-in-judul-label').innerHTML = escapeHtml(cfg.labelJudul) + ' <span class="text-red-500">*</span>';
+            document.getElementById('arsip-in-nomor-label').textContent = cfg.labelNomor;
+            document.getElementById('arsip-in-status-wrap').classList.toggle('hidden', !cfg.pakaiStatus);
+            // Gapeka tidak memakai nomor dokumen - yang menjadi penanda versi
+            // adalah kolom Versi/Edisi, jadi kolom nomor hanya membingungkan.
+            document.getElementById('arsip-in-nomor-wrap').classList.toggle('hidden', cfg.pakaiVersi);
+            document.getElementById('arsip-in-versi-wrap').classList.toggle('hidden', !cfg.pakaiVersi);
+            // Kolom Lintas/Koridor hanya bermakna untuk Gapeka.
+            document.getElementById('arsip-in-lintas-wrap').classList.toggle('hidden', !cfg.pakaiVersi);
+
+            const daftar = arsipParameter[arsipSubMenu] || [];
+            document.getElementById('arsip-in-kategori').innerHTML =
+                '<option value="">- Pilih Kategori -</option>' +
+                daftar.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+
+            if (id) {
+                const d = arsipDokumen.find(function (x) { return x.id === id; });
+                if (!d) { showToast('Dokumen tidak ditemukan, coba muat ulang.'); return; }
+                document.getElementById('arsip-form-title').textContent = 'Edit Dokumen';
+                document.getElementById('arsip-form-icon').className = 'fa-solid fa-pen-to-square text-[#d4af37]';
+                document.getElementById('arsip-form-subtitle').textContent = cfg.judul;
+                document.getElementById('arsip-in-judul').value = d.judul || '';
+                document.getElementById('arsip-in-nomor').value = d.nomor || '';
+                document.getElementById('arsip-in-tanggal').value = String(d.tanggal || '').slice(0, 10);
+                document.getElementById('arsip-in-deskripsi').value = d.deskripsi || '';
+                document.getElementById('arsip-in-versi').value = d.versi || '';
+                if (cfg.pakaiStatus) document.getElementById('arsip-in-status').value = d.status || 'Berlaku';
+                document.getElementById('arsip-in-lintas').value = d.lintas || '';
+
+                // Kategori lama yang sudah dihapus dari daftar tetap ditampilkan,
+                // supaya tidak diam-diam berubah saat dokumennya disimpan ulang.
+                const selKat = document.getElementById('arsip-in-kategori');
+                selKat.value = d.kategori || '';
+                if (d.kategori && selKat.value !== d.kategori) {
+                    const opt = document.createElement('option');
+                    opt.value = d.kategori;
+                    opt.textContent = d.kategori + ' (kategori lama)';
+                    selKat.appendChild(opt);
+                    selKat.value = d.kategori;
+                }
+
+                if (d.punyaBerkas) {
+                    const el = document.getElementById('arsip-file-lama');
+                    el.innerHTML = '<i class="fa-solid fa-paperclip mr-1.5 text-slate-400"></i>Berkas tersimpan: <strong>' +
+                        escapeHtml(d.fileName || 'berkas') + '</strong>. Pilih berkas baru hanya bila ingin menggantinya.';
+                    el.classList.remove('hidden');
+                }
+            } else {
+                document.getElementById('arsip-form-title').textContent = cfg.tombol;
+                document.getElementById('arsip-form-icon').className = 'fa-solid fa-cloud-arrow-up text-[#d4af37]';
+                document.getElementById('arsip-form-subtitle').textContent = cfg.judul;
+                document.getElementById('arsip-in-tanggal').value = hariIniIso_();
+            }
+
+            document.getElementById('modal-arsip-form').classList.remove('hidden');
+        }
+
+        function closeArsipFormModal() {
+            document.getElementById('modal-arsip-form').classList.add('hidden');
+            arsipEditingId = null;
+            arsipFilePayload = null;
+        }
+
+        function handleArsipFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const el = document.getElementById('arsip-file-name');
+            el.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+            el.classList.remove('hidden');
+            const reader = new FileReader();
+            reader.onload = async function () {
+                arsipFilePayload = { base64: reader.result.split(',')[1], name: file.name, mimeType: file.type || 'application/octet-stream' };
+                arsipHalamanSiapKirim = [];
+
+                // Berkas langsung dikonversi jadi halaman JPG di sini juga -
+                // hasil konversinya sekaligus dipakai sebagai pratinjau, jadi
+                // apa yang dilihat user SEBELUM menyimpan sama persis dengan
+                // yang nanti tampil di viewer.
+                el.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB) - menyiapkan pratinjau...';
+                try {
+                    arsipHalamanSiapKirim = await arsipKonversiKeJpg_(arsipFilePayload, function (i, total) {
+                        el.textContent = file.name + ' - memproses halaman ' + i + '/' + total + '...';
+                    });
+                } catch (err) {
+                    console.log('[arsip] konversi gagal:', err);
+                    arsipHalamanSiapKirim = [];
+                }
+                el.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)' +
+                    (arsipHalamanSiapKirim.length ? ' - ' + arsipHalamanSiapKirim.length + ' halaman siap' : '');
+                gambarPratinjauForm_();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleArsipSubmit(e) {
+            e.preventDefault();
+            if (arsipSedangProses) { showToast('Masih menyimpan, mohon tunggu...'); return; }
+
+            const err = document.getElementById('arsip-form-error');
+            err.classList.add('hidden');
+            const kategori = document.getElementById('arsip-in-kategori').value;
+            if (!kategori) {
+                err.textContent = 'Kategori wajib dipilih. Kalau daftarnya kosong, tambahkan dulu lewat Kelola Kategori.';
+                err.classList.remove('hidden');
+                return;
+            }
+
+            arsipSedangProses = true;
+            const btn = document.getElementById('arsip-submit-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyimpan...</span>';
+
+            function selesai(pesan) {
+                arsipSedangProses = false;
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = htmlAsli;
+                if (pesan) { closeArsipFormModal(); showToast(pesan); loadArsipDokumen(true); }
+            }
+
+            const meta = {
+                id: arsipEditingId || '',
+                subMenu: arsipSubMenu,
+                nomor: cfgArsip_().pakaiVersi ? '' : document.getElementById('arsip-in-nomor').value.trim(),
+                tanggal: document.getElementById('arsip-in-tanggal').value,
+                judul: document.getElementById('arsip-in-judul').value.trim(),
+                deskripsi: document.getElementById('arsip-in-deskripsi').value.trim(),
+                kategori: kategori,
+                status: document.getElementById('arsip-in-status').value,
+                versi: document.getElementById('arsip-in-versi').value.trim(),
+                lintas: document.getElementById('arsip-in-lintas').value.trim()
+            };
+            const f = arsipFilePayload;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) {
+                        err.textContent = res.message || 'Penyimpanan ditolak server.';
+                        err.classList.remove('hidden');
+                        selesai();
+                        return;
+                    }
+                    // Halaman pratinjau dikirim SETELAH dokumennya punya id.
+                    if (arsipHalamanSiapKirim.length && res.id) {
+                        arsipKirimHalaman_(res.id, arsipHalamanSiapKirim, function () {
+                            arsipHalamanSiapKirim = [];
+                            selesai(arsipEditingId ? 'Dokumen diperbarui beserta pratinjaunya.' : 'Dokumen tersimpan beserta pratinjaunya.');
+                        });
+                        return;
+                    }
+                    selesai(arsipEditingId ? 'Dokumen berhasil diperbarui.' : 'Dokumen berhasil disimpan ke arsip.');
+                })
+                .withFailureHandler(function () {
+                    err.textContent = 'Terjadi kesalahan saat menghubungi server.';
+                    err.classList.remove('hidden');
+                    selesai();
+                })
+                .peraturan_arsip_save(currentSessionToken, meta,
+                    f ? f.base64 : null, f ? f.name : null, f ? f.mimeType : null);
+        }
+
+        // ─── PREVIEW ─────────────────────────────────────────────────────
+
+        function openArsipPreviewModal(id) {
+            const d = arsipDokumen.find(function (x) { return x.id === id; });
+            if (!d) { showToast('Dokumen tidak ditemukan.'); return; }
+            const cfg = cfgArsip_();
+            arsipPreviewId = id;
+
+            document.getElementById('arsip-prev-subtitle').textContent = cfg.judul;
+            document.getElementById('arsip-prev-judul').textContent = d.judul || '-';
+            document.getElementById('arsip-prev-nomor').textContent = d.nomor || '-';
+            document.getElementById('arsip-prev-tanggal').textContent = formatTanggalArsip_(d.tanggal);
+            document.getElementById('arsip-prev-kategori').textContent = d.kategori || '-';
+            document.getElementById('arsip-prev-versi').textContent = d.versi || '-';
+            document.getElementById('arsip-prev-lintas').textContent = d.lintas || '-';
+            document.getElementById('arsip-prev-lintas-wrap').classList.toggle('hidden', !cfgArsip_().pakaiVersi);
+            document.getElementById('arsip-prev-deskripsi').textContent = d.deskripsi || '(tidak ada keterangan)';
+            document.getElementById('arsip-prev-status').outerHTML =
+                badgeStatusArsip_(d.status).replace('<span ', '<span id="arsip-prev-status" ');
+
+            // Riwayat versi - hanya bermakna untuk Gapeka.
+            const wrap = document.getElementById('arsip-prev-riwayat-wrap');
+            if (cfg.pakaiVersi && d.riwayat && d.riwayat.length) {
+                document.getElementById('arsip-prev-riwayat').innerHTML = d.riwayat.map(function (v) {
+                    return '<div class="p-3 bg-white border border-slate-200 rounded-xl">' +
+                        '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+                            '<span class="px-2 py-0.5 rounded-md bg-[#0c1d37] text-white text-[10px] font-black">' + escapeHtml(v.versi) + '</span>' +
+                            '<span class="text-[10px] text-slate-400 font-bold">' + escapeHtml(formatTanggalArsip_(v.tanggal)) + '</span>' +
+                        '</div>' +
+                        (v.dampak ? '<p class="text-[10px] font-bold text-[#b8902c] mt-1.5">' + escapeHtml(v.dampak) + '</p>' : '') +
+                        (v.catatan ? '<p class="text-[11px] text-slate-600 font-semibold mt-1">' + escapeHtml(v.catatan) + '</p>' : '') +
+                        '<p class="text-[9px] text-slate-400 font-bold mt-1.5">Dicatat oleh ' + escapeHtml(v.olehNama || '-') +
+                        (v.punyaBerkas ? ' &middot; <button onclick="unduhArsipVersi(\'' + v.id + '\')" class="text-[#0c1d37] hover:text-[#d4af37] font-bold underline">unduh berkas versi ini</button>' : '') +
+                        '</p></div>';
+                }).join('');
+                wrap.classList.remove('hidden');
+            } else {
+                wrap.classList.add('hidden');
+            }
+
+            document.getElementById('arsip-prev-jejak').textContent =
+                'Diinput oleh ' + (d.dibuatOleh || '-') + (d.diperbaruiPada ? ' \u00B7 terakhir diperbarui ' + formatTanggalArsip_(tanggalDariCapWaktu_(d.diperbaruiPada)) : '');
+            document.getElementById('arsip-prev-unduh').style.display = d.punyaBerkas ? '' : 'none';
+            const btnBuka = document.getElementById('arsip-prev-buka');
+            if (btnBuka) btnBuka.style.display = d.punyaBerkas ? '' : 'none';
+            document.getElementById('arsip-prev-edit').style.display =
+                ((typeof canDo === 'function') ? canDo('peraturan-dokumen', 'edit') : true) ? '' : 'none';
+
+            document.getElementById('modal-arsip-preview').classList.remove('hidden');
+        }
+
+        function closeArsipPreviewModal() {
+            document.getElementById('modal-arsip-preview').classList.add('hidden');
+            arsipPreviewId = null;
+        }
+
+        function editArsipDariPreview() {
+            const id = arsipPreviewId;
+            closeArsipPreviewModal();
+            if (id) openArsipFormModal(id);
+        }
+
+        function unduhArsipDokumen() { unduhArsipBerkas_(arsipPreviewId, false); }
+        function unduhArsipVersi(versiId) { unduhArsipBerkas_(versiId, true); }
+
+        /**
+         * Mengunduh berkas lewat data URI + atribut download - cara yang
+         * konsisten dari dalam iframe sandbox Apps Script (Blob URL diblokir).
+         */
+        function unduhArsipBerkas_(id, dariVersi) {
+            if (!id) return;
+            showToast('Menyiapkan berkas...');
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal: ' + (res.message || '')); return; }
+                    try {
+                        const a = document.createElement('a');
+                        a.href = 'data:' + (res.mimeType || 'application/octet-stream') + ';base64,' + res.base64;
+                        a.download = res.fileName || 'dokumen';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    } catch (err) { showToast('Unduhan diblokir browser.'); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat mengambil berkas.'); })
+                .peraturan_arsip_getFile(currentSessionToken, id, !!dariVersi);
+        }
+
+
+        // ─── PERBARUI VERSI (Gapeka) ─────────────────────────────────────
+
+        function openArsipVersiModal(id) {
+            const d = arsipDokumen.find(function (x) { return x.id === id; });
+            if (!d) return;
+            arsipVersiTargetId = id;
+            arsipVersiFilePayload = null;
+
+            document.getElementById('form-arsip-versi').reset();
+            document.getElementById('arsip-versi-file-name').classList.add('hidden');
+            document.getElementById('arsip-versi-error').classList.add('hidden');
+            document.getElementById('arsip-versi-subtitle').textContent =
+                d.judul + (d.versi ? '  \u00B7  versi berlaku: ' + d.versi : '');
+            document.getElementById('arsip-versi-tanggal').value = hariIniIso_();
+            document.getElementById('modal-arsip-versi').classList.remove('hidden');
+        }
+
+        function closeArsipVersiModal() {
+            document.getElementById('modal-arsip-versi').classList.add('hidden');
+            arsipVersiTargetId = null;
+            arsipVersiFilePayload = null;
+        }
+
+        function handleArsipVersiFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const el = document.getElementById('arsip-versi-file-name');
+            el.textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+            el.classList.remove('hidden');
+            const reader = new FileReader();
+            reader.onload = function () {
+                arsipVersiFilePayload = { base64: reader.result.split(',')[1], name: file.name, mimeType: file.type || 'application/octet-stream' };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleArsipVersiSubmit(e) {
+            e.preventDefault();
+            if (!arsipVersiTargetId || arsipSedangProses) return;
+            arsipSedangProses = true;
+
+            const btn = document.getElementById('arsip-versi-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyimpan...</span>';
+            const err = document.getElementById('arsip-versi-error');
+            err.classList.add('hidden');
+
+            function selesai(pesan) {
+                arsipSedangProses = false;
+                btn.disabled = false;
+                btn.innerHTML = htmlAsli;
+                if (pesan) { closeArsipVersiModal(); showToast(pesan); loadArsipDokumen(true); }
+            }
+
+            const info = {
+                versi: document.getElementById('arsip-versi-nomor').value.trim(),
+                tanggal: document.getElementById('arsip-versi-tanggal').value,
+                dampak: document.getElementById('arsip-versi-dampak').value,
+                catatan: document.getElementById('arsip-versi-catatan').value.trim()
+            };
+            const f = arsipVersiFilePayload;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { err.textContent = res.message || 'Gagal mencatat versi.'; err.classList.remove('hidden'); selesai(); return; }
+                    selesai('Versi ' + info.versi + ' dicatat. Versi sebelumnya tersimpan sebagai riwayat.');
+                })
+                .withFailureHandler(function () { err.textContent = 'Terjadi kesalahan saat menghubungi server.'; err.classList.remove('hidden'); selesai(); })
+                .peraturan_arsip_tambahVersi(currentSessionToken, arsipVersiTargetId, info,
+                    f ? f.base64 : null, f ? f.name : null, f ? f.mimeType : null);
+        }
+
+        // ─── KELOLA KATEGORI ─────────────────────────────────────────────
+
+        function openArsipParamModal() {
+            document.getElementById('arsip-param-subtitle').textContent = cfgArsip_().judul;
+            document.getElementById('arsip-param-input').value = '';
+            renderArsipParamList_();
+            document.getElementById('modal-arsip-param').classList.remove('hidden');
+        }
+
+        function closeArsipParamModal() {
+            document.getElementById('modal-arsip-param').classList.add('hidden');
+        }
+
+        function renderArsipParamList_() {
+            const wadah = document.getElementById('arsip-param-list');
+            const daftar = arsipParameter[arsipSubMenu] || [];
+            const bolehEdit = (typeof canDo === 'function') ? canDo('peraturan-dokumen', 'edit') : true;
+            const bolehHapus = (typeof canDo === 'function') ? canDo('peraturan-dokumen', 'hapus') : true;
+
+            if (!daftar.length) {
+                wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold italic py-4 text-center">Belum ada kategori untuk arsip ini.</p>';
+                return;
+            }
+            wadah.innerHTML = daftar.map(function (v) {
+                const aman = String(v).replace(/'/g, "\\'");
+                const tEdit = bolehEdit ? '<button onclick="renameArsipParam(\'' + aman + '\')" title="Ubah nama (dokumen ikut diperbarui)" class="p-1 text-slate-300 hover:text-[#0c1d37] transition shrink-0"><i class="fa-solid fa-pen text-[10px]"></i></button>' : '';
+                const tHapus = bolehHapus ? '<button onclick="hapusArsipParam(\'' + aman + '\')" title="Hapus" class="p-1 text-slate-300 hover:text-red-600 transition shrink-0"><i class="fa-solid fa-xmark text-xs"></i></button>' : '';
+                return '<div class="flex items-center justify-between gap-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">' +
+                    '<span class="text-[11px] font-bold text-slate-700 truncate flex-1">' + escapeHtml(v) + '</span>' + tEdit + tHapus + '</div>';
+            }).join('');
+        }
+
+        function tambahArsipParam() {
+            const input = document.getElementById('arsip-param-input');
+            const nilai = (input.value || '').trim();
+            if (!nilai) { showToast('Isi dulu nama kategorinya.'); return; }
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast(res.message || 'Gagal menambah kategori.'); return; }
+                    input.value = '';
+                    showToast('Kategori ditambahkan.');
+                    loadArsipDokumen(true);
+                    setTimeout(function () { renderArsipParamList_(); }, 600);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menambah kategori.'); })
+                .peraturan_arsip_addParam(currentSessionToken, arsipSubMenu, nilai);
+        }
+
+        function renameArsipParam(lama) {
+            const baru = prompt('Ubah nama kategori.\n\nSeluruh dokumen yang memakai "' + lama + '" akan ikut diperbarui otomatis.', lama);
+            if (baru === null) return;
+            const nilaiBaru = baru.trim();
+            if (!nilaiBaru || nilaiBaru === lama) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast(res.message || 'Gagal mengubah nama.'); return; }
+                    showToast(res.dokumenDiperbarui > 0
+                        ? 'Diubah jadi "' + nilaiBaru + '" - ' + res.dokumenDiperbarui + ' dokumen ikut diperbarui.'
+                        : 'Kategori diubah jadi "' + nilaiBaru + '".');
+                    loadArsipDokumen(true);
+                    setTimeout(function () { renderArsipParamList_(); }, 600);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat mengubah nama kategori.'); })
+                .peraturan_arsip_renameParam(currentSessionToken, arsipSubMenu, lama, nilaiBaru);
+        }
+
+        function hapusArsipParam(nilai) {
+            if (!confirm('Hapus kategori "' + nilai + '" dari daftar pilihan?\n\nDokumen yang sudah memakainya TIDAK ikut terhapus - kategorinya tetap tertulis di dokumen itu.')) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast(res.message || 'Gagal menghapus kategori.'); return; }
+                    showToast(res.dokumenTerdampak > 0
+                        ? 'Kategori dihapus. ' + res.dokumenTerdampak + ' dokumen masih memakai nama itu & tetap tampil apa adanya.'
+                        : 'Kategori dihapus.');
+                    loadArsipDokumen(true);
+                    setTimeout(function () { renderArsipParamList_(); }, 600);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus kategori.'); })
+                .peraturan_arsip_deleteParam(currentSessionToken, arsipSubMenu, nilai);
+        }
+
+
+        // ================================================================
+        // VIEWER DOKUMEN - zoom, putar 360, layar penuh, unduh
+        // ================================================================
+        //
+        // Berkas digambar sendiri di dalam kotak yang diatur lewat CSS
+        // transform, bukan diserahkan ke pemutar bawaan browser. Alasannya:
+        // aplikasi ini berjalan di dalam iframe sandbox Apps Script, di mana
+        // window.open(blob:) diblokir - dokumen tidak akan pernah terbuka.
+        // Dengan menggambar sendiri, zoom & rotasi juga sepenuhnya terkendali.
+
+        let viewerSkala = 1;
+        let viewerRotasi = 0;
+        let viewerBerkas = null;   // {base64, mimeType, fileName}
+        let viewerSumberId = null;
+        let viewerDariVersi = false;
+
+        // Posisi geser (pan) saat gambar diperbesar.
+        let viewerGeserX = 0, viewerGeserY = 0;
+        let viewerSedangGeser = false, viewerMulaiX = 0, viewerMulaiY = 0;
+
+        function terapkanTransformViewer_() {
+            const isi = document.getElementById('viewer-isi');
+            if (!isi) return;
+            // Urutan: geser dulu, lalu perbesar, baru putar. Kalau dibalik,
+            // arah geser & pembesaran ikut berputar sehingga terasa meleset.
+            isi.style.transform =
+                'translate(' + viewerGeserX + 'px,' + viewerGeserY + 'px) ' +
+                'scale(' + viewerSkala + ') rotate(' + viewerRotasi + 'deg)';
+
+            // Kursor menandakan gambar bisa digeser - hanya saat diperbesar.
+            const panggung = document.getElementById('viewer-panggung');
+            if (panggung) panggung.style.cursor = viewerSkala > 1 ? 'grab' : 'default';
+            const lz = document.getElementById('viewer-zoom-label');
+            const lr = document.getElementById('viewer-rotasi-label');
+            if (lz) lz.textContent = Math.round(viewerSkala * 100) + '%';
+            if (lr) lr.textContent = ((viewerRotasi % 360) + 360) % 360 + '\u00B0';
+        }
+
+        function viewerZoom(delta) {
+            viewerSkala = Math.min(5, Math.max(0.2, viewerSkala + delta));
+            terapkanTransformViewer_();
+        }
+
+        function viewerPutar(derajat) {
+            // Dibiarkan menumpuk terus supaya bisa berputar penuh 360 dan
+            // seterusnya - labelnya yang dinormalkan ke 0-359.
+            viewerRotasi += derajat;
+            terapkanTransformViewer_();
+        }
+
+        function viewerReset() {
+            viewerSkala = 1;
+            viewerRotasi = 0;
+            viewerGeserX = 0;
+            viewerGeserY = 0;
+            terapkanTransformViewer_();
+        }
+
+        /**
+         * Memasang geser (drag) untuk memindahkan gambar yang diperbesar.
+         *
+         * MASALAH YANG DISELESAIKAN: setelah zoom, bagian gambar yang keluar
+         * dari layar tidak bisa dijangkau. Scrollbar panggung tidak menolong
+         * karena yang membesar adalah hasil CSS transform - ukuran elemennya
+         * sendiri tidak ikut berubah, jadi tidak ada yang bisa digulir.
+         * Penyelesaiannya: gambar digeser lewat translate, dikendalikan
+         * dengan tarikan mouse maupun sentuhan jari.
+         *
+         * Dipasang sekali saja; penanda pasang dijaga agar tidak menumpuk.
+         */
+        let viewerGeserTerpasang_ = false;
+        function pasangGeserViewer_() {
+            if (viewerGeserTerpasang_) return;
+            const panggung = document.getElementById('viewer-panggung');
+            if (!panggung) return;
+            viewerGeserTerpasang_ = true;
+
+            const mulai = function (x, y) {
+                if (viewerSkala <= 1) return; // belum diperbesar - tidak perlu digeser
+                viewerSedangGeser = true;
+                viewerMulaiX = x - viewerGeserX;
+                viewerMulaiY = y - viewerGeserY;
+                panggung.style.cursor = 'grabbing';
+            };
+            const gerak = function (x, y) {
+                if (!viewerSedangGeser) return;
+                viewerGeserX = x - viewerMulaiX;
+                viewerGeserY = y - viewerMulaiY;
+                terapkanTransformViewer_();
+            };
+            const selesai = function () {
+                viewerSedangGeser = false;
+                panggung.style.cursor = viewerSkala > 1 ? 'grab' : 'default';
+            };
+
+            panggung.addEventListener('mousedown', function (e) { e.preventDefault(); mulai(e.clientX, e.clientY); });
+            window.addEventListener('mousemove', function (e) { gerak(e.clientX, e.clientY); });
+            window.addEventListener('mouseup', selesai);
+            panggung.addEventListener('mouseleave', selesai);
+
+            panggung.addEventListener('touchstart', function (e) {
+                if (e.touches.length === 1) mulai(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+            panggung.addEventListener('touchmove', function (e) {
+                if (e.touches.length === 1 && viewerSedangGeser) {
+                    e.preventDefault();
+                    gerak(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: false });
+            panggung.addEventListener('touchend', selesai);
+
+            // Zoom dengan roda mouse - lebih cepat daripada menekan tombol
+            // berkali-kali saat memeriksa detail dokumen.
+            panggung.addEventListener('wheel', function (e) {
+                if (!e.ctrlKey && !e.shiftKey) return; // biarkan gulir biasa tetap jalan
+                e.preventDefault();
+                viewerZoom(e.deltaY < 0 ? 0.15 : -0.15);
+            }, { passive: false });
+        }
+
+        function viewerLayarPenuh() {
+            const el = document.getElementById('modal-arsip-viewer');
+            if (!el) return;
+            if (document.fullscreenElement) {
+                if (document.exitFullscreen) document.exitFullscreen();
+            } else if (el.requestFullscreen) {
+                el.requestFullscreen().catch(function () { showToast('Browser menolak mode layar penuh.'); });
+            } else {
+                showToast('Browser ini tidak mendukung mode layar penuh.');
+            }
+        }
+
+        function tutupViewer() {
+            if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+            document.getElementById('modal-arsip-viewer').classList.add('hidden');
+            document.getElementById('viewer-isi').innerHTML = '';
+            document.getElementById('viewer-nav').classList.add('hidden');
+            viewerBerkas = null;
+            viewerHalamanLokal_ = [];
+        }
+
+        /**
+         * Menggambar isi berkas ke dalam viewer.
+         * PDF memakai <iframe> (pembaca PDF bawaan browser), gambar memakai
+         * <img>. Jenis lain tidak bisa ditampilkan di halaman, jadi diberi
+         * tawaran unduh - lebih jujur daripada menampilkan kotak kosong.
+         */
+        function gambarIsiViewer_(base64, mimeType, fileName) {
+            const isi = document.getElementById('viewer-isi');
+            const src = 'data:' + (mimeType || 'application/octet-stream') + ';base64,' + base64;
+
+            if (String(mimeType).indexOf('image/') === 0) {
+                isi.innerHTML = '<img src="' + src + '" class="max-w-none shadow-2xl rounded" style="max-height:78vh" alt="' + escapeHtml(fileName || '') + '">';
+            } else if (String(mimeType).indexOf('pdf') !== -1) {
+                isi.innerHTML = '<iframe src="' + src + '" class="bg-white shadow-2xl rounded" style="width:80vw;height:78vh;border:0"></iframe>';
+            } else {
+                isi.innerHTML = '<div class="bg-white rounded-2xl p-8 text-center shadow-2xl max-w-md">' +
+                    '<i class="fa-solid fa-file-lines text-4xl text-slate-300 mb-3"></i>' +
+                    '<p class="text-sm font-bold text-slate-700">' + escapeHtml(fileName || 'Dokumen') + '</p>' +
+                    '<p class="text-xs text-slate-500 font-semibold mt-2">Jenis berkas ini tidak bisa ditampilkan langsung di halaman.</p>' +
+                    '<button onclick="viewerUnduh()" class="mt-4 px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">' +
+                    '<i class="fa-solid fa-download mr-1.5 text-[#d4af37]"></i>Unduh untuk membuka</button></div>';
+            }
+            viewerReset();
+        }
+
+
+        /** Membuka viewer untuk berkas yang BARU dipilih (belum tersimpan). */
+        function bukaViewerBerkasBaru() {
+            if (!arsipFilePayload) { showToast('Belum ada berkas yang dipilih.'); return; }
+            if (arsipHalamanSiapKirim.length) {
+                // Tampilkan hasil konversi - sama dengan yang akan tersimpan.
+                viewerHalaman = [];
+                viewerSumberId = null;
+                viewerBerkas = { base64: arsipFilePayload.base64, mimeType: arsipFilePayload.mimeType, fileName: arsipFilePayload.name };
+                document.getElementById('viewer-judul').textContent = arsipFilePayload.name;
+                document.getElementById('viewer-sub').textContent = 'Pratinjau sebelum disimpan - ' + arsipHalamanSiapKirim.length + ' halaman';
+                document.getElementById('modal-arsip-viewer').classList.remove('hidden');
+                pasangGeserViewer_();
+                viewerHalamanLokal_ = arsipHalamanSiapKirim;
+                tampilkanHalamanLokal_(0);
+                return;
+            }
+            viewerBerkas = { base64: arsipFilePayload.base64, mimeType: arsipFilePayload.mimeType, fileName: arsipFilePayload.name };
+            viewerSumberId = null;
+            document.getElementById('viewer-judul').textContent = arsipFilePayload.name;
+            document.getElementById('viewer-sub').textContent = 'Pratinjau sebelum disimpan';
+            document.getElementById('modal-arsip-viewer').classList.remove('hidden');
+            gambarIsiViewer_(arsipFilePayload.base64, arsipFilePayload.mimeType, arsipFilePayload.name);
+        }
+
+        function viewerUnduh() {
+            if (viewerBerkas) { unduhDataUri_(viewerBerkas.base64, viewerBerkas.mimeType, viewerBerkas.fileName); return; }
+            if (viewerSumberId) unduhArsipBerkas_(viewerSumberId, viewerDariVersi);
+        }
+
+        /** Unduh lewat data URI - cara yang bekerja di dalam iframe sandbox. */
+        function unduhDataUri_(base64, mimeType, fileName) {
+            try {
+                const a = document.createElement('a');
+                a.href = 'data:' + (mimeType || 'application/octet-stream') + ';base64,' + base64;
+                a.download = fileName || 'dokumen';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) { showToast('Unduhan diblokir browser.'); }
+        }
+
+        // ─── PRATINJAU BERKAS SEBELUM SIMPAN ─────────────────────────────
+
+        /** Menggambar pratinjau kecil di dalam form upload. */
+        function gambarPratinjauForm_() {
+            const kotak = document.getElementById('arsip-file-pratinjau');
+            const isi = document.getElementById('arsip-file-pratinjau-isi');
+            if (!kotak || !isi) return;
+            if (!arsipFilePayload) { kotak.classList.add('hidden'); isi.innerHTML = ''; return; }
+
+            const f = arsipFilePayload;
+            // Yang ditampilkan adalah HASIL KONVERSI (JPG), bukan berkas
+            // aslinya. Ini yang membuat pratinjau selalu tampil - PDF mentah
+            // di dalam iframe diblokir browser pada sandbox Apps Script.
+            if (arsipHalamanSiapKirim.length) {
+                isi.innerHTML = '<div class="text-center w-full">' +
+                    '<img src="data:image/jpeg;base64,' + arsipHalamanSiapKirim[0].base64 + '" class="max-h-56 mx-auto rounded shadow bg-white" alt="pratinjau halaman 1">' +
+                    (arsipHalamanSiapKirim.length > 1
+                        ? '<p class="text-[10px] font-bold text-slate-500 mt-2">Halaman 1 dari ' + arsipHalamanSiapKirim.length + ' - seluruhnya ikut tersimpan</p>'
+                        : '') + '</div>';
+                kotak.classList.remove('hidden');
+                return;
+            }
+            if (false) {
+                isi.innerHTML = '<div class="text-center py-6"><i class="fa-solid fa-file-lines text-3xl text-slate-300 mb-2"></i>' +
+                    '<p class="text-[11px] font-bold text-slate-600">' + escapeHtml(f.name) + '</p>' +
+                    '<p class="text-[10px] text-slate-400 font-semibold mt-1">Jenis berkas ini tidak bisa dipratinjau, tapi tetap tersimpan dengan benar.</p></div>';
+            }
+            kotak.classList.remove('hidden');
+        }
+
+        // ─── RIWAYAT PERUBAHAN DOKUMEN ───────────────────────────────────
+
+        function toggleArsipRiwayat() {
+            const box = document.getElementById('arsip-riwayat-box');
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            const daftar = document.getElementById('arsip-riwayat-list');
+            daftar.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-2"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Memuat riwayat...</p>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { daftar.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-2">Gagal memuat riwayat.</p>'; return; }
+                    if (!res.data.length) { daftar.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-2 italic">Belum ada perubahan tercatat.</p>'; return; }
+                    const warna = { 'Dibuat': 'bg-emerald-100 text-emerald-700', 'Diubah': 'bg-amber-100 text-amber-700',
+                        'Versi Baru': 'bg-violet-100 text-violet-700', 'Dihapus': 'bg-red-100 text-red-700' };
+                    daftar.innerHTML = res.data.map(function (h) {
+                        return '<div class="p-2.5 bg-white border border-slate-200 rounded-xl">' +
+                            '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+                                '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ' + (warna[h.aksi] || 'bg-slate-100 text-slate-600') + '">' + escapeHtml(h.aksi) + '</span>' +
+                                '<span class="text-[10px] text-slate-400 font-bold">' + escapeHtml(formatWaktuArsip_(h.waktu)) + '</span>' +
+                            '</div>' +
+                            '<p class="text-[11px] text-slate-600 font-semibold mt-1.5 break-words">' + escapeHtml(h.ringkasan || '-') + '</p>' +
+                            '<p class="text-[9px] text-slate-400 font-bold mt-1">oleh ' + escapeHtml(h.olehNama || '-') + '</p>' +
+                            '</div>';
+                    }).join('');
+                })
+                .withFailureHandler(function () { daftar.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-2">Terjadi kesalahan saat memuat riwayat.</p>'; })
+                .peraturan_arsip_getLog(currentSessionToken, arsipEditingId);
+        }
+
+        /** "2026-08-27T04:12:00Z" -> "27 Agu 2026, 11:12". */
+        function formatWaktuArsip_(iso) {
+            try {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return String(iso || '-');
+                const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                return d.getDate() + ' ' + bulan[d.getMonth()] + ' ' + d.getFullYear() + ', ' +
+                    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            } catch (err) { return String(iso || '-'); }
+        }
+
+        // ─── KONFIRMASI HAPUS ────────────────────────────────────────────
+
+        let arsipHapusId = null;
+
+        function hapusArsipDokumen(id) {
+            const d = arsipDokumen.find(function (x) { return x.id === id; });
+            if (!d) return;
+            arsipHapusId = id;
+            document.getElementById('arsip-hapus-nama').textContent = d.judul;
+            document.getElementById('arsip-hapus-detail').textContent =
+                [d.nomor, d.kategori, formatTanggalArsip_(d.tanggal)].filter(Boolean).join('  \u00B7  ');
+            document.getElementById('arsip-hapus-catatan').innerHTML = (d.riwayat && d.riwayat.length)
+                ? 'Berkas <strong>dan ' + d.riwayat.length + ' riwayat versinya</strong> ikut terhapus permanen dari Google Drive.'
+                : 'Berkas dokumen ini ikut terhapus permanen dari Google Drive.';
+            document.getElementById('modal-arsip-hapus').classList.remove('hidden');
+        }
+
+        function tutupKonfirmasiHapusArsip() {
+            document.getElementById('modal-arsip-hapus').classList.add('hidden');
+            arsipHapusId = null;
+        }
+
+        function jalankanHapusArsip() {
+            if (!arsipHapusId) return;
+            const btn = document.getElementById('arsip-hapus-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menghapus...</span>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    if (!res.success) { showToast('Gagal menghapus: ' + (res.message || '')); return; }
+                    tutupKonfirmasiHapusArsip();
+                    showToast('Dokumen dihapus dari arsip.');
+                    loadArsipDokumen(true);
+                })
+                .withFailureHandler(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    showToast('Terjadi kesalahan saat menghapus dokumen.');
+                })
+                .peraturan_arsip_delete(currentSessionToken, arsipHapusId);
+        }
+
+
+        // ================================================================
+        // SUMMARY ARSIP - laporan lintas-arsip (menu peraturan-custom)
+        // ================================================================
+        //
+        // Menggabungkan kelima arsip dalam satu tabel umum. Datanya SAMA
+        // dengan yang dipakai tiap arsip (arsipDokumen), jadi tidak ada
+        // pembacaan server tambahan & angkanya mustahil berbeda dari yang
+        // terlihat di masing-masing menu.
+
+        const SUM_ARSIP_LABEL = {
+            peraturan: 'Peraturan Perusahaan',
+            notulen: 'Notulen & Risalah',
+            surat: 'Surat Masuk & Keluar',
+            kajian: 'Kajian / Studi',
+            gapeka: 'Gapeka'
+        };
+        const SUM_ARSIP_WARNA = {
+            peraturan: ['bg-red-50', 'text-red-600', 'fa-scale-balanced'],
+            notulen: ['bg-sky-50', 'text-sky-600', 'fa-clipboard-list'],
+            surat: ['bg-emerald-50', 'text-emerald-600', 'fa-envelope-open-text'],
+            kajian: ['bg-violet-50', 'text-violet-600', 'fa-file-lines'],
+            gapeka: ['bg-amber-50', 'text-amber-600', 'fa-train-subway']
+        };
+
+        function loadSummaryArsip(paksa) {
+            if (arsipPernahDimuat && !paksa) { renderSummaryArsip(); return; }
+            const tbody = document.getElementById('sum-arsip-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-slate-400 font-semibold"><i class="fa-solid fa-circle-notch fa-spin mr-2 text-red-500"></i>Memuat seluruh arsip...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal memuat arsip: ' + (res.message || '')); return; }
+                    arsipDokumen = res.dokumen || [];
+                    arsipParameter = res.parameter || {};
+                    arsipPernahDimuat = true;
+                    isiFilterKategoriSummary_();
+                    renderSummaryArsip();
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat arsip.'); })
+                .peraturan_arsip_getAll(currentSessionToken);
+        }
+
+        /** Pilihan kategori digabung dari kelima arsip, tanpa duplikat. */
+        function isiFilterKategoriSummary_() {
+            const sel = document.getElementById('sum-arsip-kategori');
+            if (!sel) return;
+            const unik = {};
+            Object.keys(arsipParameter).forEach(function (sub) {
+                (arsipParameter[sub] || []).forEach(function (v) { unik[v] = true; });
+            });
+            const terpilih = sel.value;
+            const daftar = Object.keys(unik).sort();
+            sel.innerHTML = '<option value="Semua">Semua Kategori</option>' +
+                daftar.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+            if (terpilih && daftar.indexOf(terpilih) !== -1) sel.value = terpilih;
+        }
+
+        function resetSummaryArsipFilter() {
+            ['sum-arsip-search', 'sum-arsip-tgl-mulai', 'sum-arsip-tgl-akhir'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            ['sum-arsip-jenis', 'sum-arsip-kategori', 'sum-arsip-status'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.value = 'Semua';
+            });
+            renderSummaryArsip();
+        }
+
+        function hitungSummaryArsip_() {
+            const ambil = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+            const cari = (ambil('sum-arsip-search') || '').toLowerCase();
+            const jenis = ambil('sum-arsip-jenis');
+            const kategori = ambil('sum-arsip-kategori');
+            const status = ambil('sum-arsip-status');
+            const mulai = ambil('sum-arsip-tgl-mulai');
+            const akhir = ambil('sum-arsip-tgl-akhir');
+
+            return arsipDokumen.filter(function (d) {
+                if (jenis !== 'Semua' && d.subMenu !== jenis) return false;
+                if (kategori !== 'Semua' && d.kategori !== kategori) return false;
+                if (status !== 'Semua') {
+                    // "(tanpa status)" untuk arsip yang memang tidak memakai status.
+                    if (status === '(tanpa status)') { if (d.status) return false; }
+                    else if (d.status !== status) return false;
+                }
+                const tgl = String(d.tanggal || '').slice(0, 10);
+                if (mulai && tgl < mulai) return false;
+                if (akhir && tgl > akhir) return false;
+                if (cari) {
+                    const gabung = [d.judul, d.nomor, d.deskripsi, d.kategori, d.versi, d.lintas].join(' ').toLowerCase();
+                    if (gabung.indexOf(cari) === -1) return false;
+                }
+                return true;
+            }).sort(function (a, b) { return String(b.tanggal).localeCompare(String(a.tanggal)); });
+        }
+
+        function renderSummaryArsip() {
+            const tbody = document.getElementById('sum-arsip-body');
+            const kosong = document.getElementById('sum-arsip-empty');
+            if (!tbody) return;
+
+            renderKartuSummaryArsip_();
+            const hasil = hitungSummaryArsip_();
+
+            document.getElementById('sum-arsip-showing').textContent = hasil.length;
+            document.getElementById('sum-arsip-total').textContent = arsipDokumen.length;
+            const berkas = hasil.filter(function (d) { return d.punyaBerkas; }).length;
+            document.getElementById('sum-arsip-info').textContent = berkas + ' dokumen memiliki berkas terlampir';
+
+            tbody.innerHTML = '';
+            if (!hasil.length) { kosong.classList.remove('hidden'); return; }
+            kosong.classList.add('hidden');
+
+            tbody.innerHTML = hasil.map(function (d, i) {
+                const w = SUM_ARSIP_WARNA[d.subMenu] || ['bg-slate-50', 'text-slate-600', 'fa-file'];
+                const aksi = d.punyaBerkas
+                    ? '<button onclick="bukaViewerDokumen(\'' + d.id + '\')" title="Buka Dokumen" class="w-7 h-7 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 rounded transition flex items-center justify-center"><i class="fa-regular fa-eye text-xs"></i></button>'
+                    : '<button onclick="bukaDetailDariSummary_(\'' + d.id + '\')" title="Lihat Detail" class="w-7 h-7 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 rounded transition flex items-center justify-center"><i class="fa-solid fa-circle-info text-xs"></i></button>';
+
+                return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
+                    '<td class="py-3.5 px-3 text-center font-medium text-slate-400 border-r border-slate-100">' + (i + 1) + '</td>' +
+                    '<td class="py-3.5 px-4 text-slate-600 font-semibold text-[11px] whitespace-nowrap border-r border-slate-100">' + escapeHtml(formatTanggalArsip_(d.tanggal)) + '</td>' +
+                    '<td class="py-3.5 px-3 text-center align-middle border-r border-slate-100">' +
+                        '<span class="inline-flex items-start justify-center gap-1.5 px-2 py-1 rounded-md ' + w[0] + ' ' + w[1] + ' text-[10px] font-bold leading-tight text-left">' +
+                        '<i class="fa-solid ' + w[2] + ' text-[9px] mt-[2px] shrink-0"></i>' +
+                        '<span>' + escapeHtml(SUM_ARSIP_LABEL[d.subMenu] || d.subMenu) + '</span></span></td>' +
+                    '<td class="py-3.5 px-4 font-mono font-bold text-slate-700 text-[11px] border-r border-slate-100">' + escapeHtml(d.nomor || '-') + '</td>' +
+                    '<td class="py-3.5 px-4 border-r border-slate-100">' +
+                        '<div class="font-semibold text-slate-800 leading-snug">' + escapeHtml(d.judul) + '</div>' +
+                        (d.versi ? '<div class="text-[10px] text-red-600 font-bold mt-0.5">' + escapeHtml(d.versi) + '</div>' : '') +
+                        (d.deskripsi ? '<div class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">' + escapeHtml(d.deskripsi) + '</div>' : '') +
+                    '</td>' +
+                    '<td class="py-3.5 px-3 text-center align-middle border-r border-slate-100">' +
+                        '<span class="inline-block bg-slate-100 text-slate-700 font-semibold px-2 py-1 rounded-md border border-slate-200 text-[10px] leading-tight" title="' +
+                        escapeHtml(d.kategori || '') + '">' + escapeHtml(d.kategori || '-') + '</span></td>' +
+                    '<td class="py-3.5 px-4 text-center border-r border-slate-100">' + (d.status ? badgeStatusArsip_(d.status) : '<span class="text-slate-300 text-[10px]">-</span>') + '</td>' +
+                    '<td class="py-3.5 px-4 text-center"><div class="flex items-center justify-center gap-1.5">' + aksi + '</div></td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        /** Membuka modal detail dari Summary - arsipnya disetel dulu agar labelnya benar. */
+        function bukaDetailDariSummary_(id) {
+            const d = arsipDokumen.find(function (x) { return x.id === id; });
+            if (d) arsipSubMenu = d.subMenu;
+            openArsipPreviewModal(id);
+        }
+
+        /** Lima kartu ringkasan per jenis arsip. */
+        function renderKartuSummaryArsip_() {
+            const wadah = document.getElementById('summary-arsip-kartu');
+            if (!wadah) return;
+            wadah.innerHTML = Object.keys(SUM_ARSIP_LABEL).map(function (sub) {
+                const w = SUM_ARSIP_WARNA[sub];
+                const daftar = arsipDokumen.filter(function (d) { return d.subMenu === sub; });
+                const berlaku = daftar.filter(function (d) { return d.status === 'Berlaku'; }).length;
+                const ket = (sub === 'peraturan' || sub === 'kajian' || sub === 'gapeka')
+                    ? berlaku + ' berlaku'
+                    : (arsipParameter[sub] || []).length + ' kategori';
+                return '<button onclick="filterSummaryKeJenis_(\'' + sub + '\')" class="bg-white border border-slate-200 rounded-2xl p-3.5 flex items-center gap-3 shadow-sm hover:border-slate-400 transition text-left">' +
+                    '<div class="w-9 h-9 rounded-xl ' + w[0] + ' ' + w[1] + ' flex items-center justify-center text-sm shrink-0"><i class="fa-solid ' + w[2] + '"></i></div>' +
+                    '<div class="min-w-0"><div class="text-[9px] text-slate-400 font-black uppercase tracking-wider truncate">' + escapeHtml(SUM_ARSIP_LABEL[sub]) + '</div>' +
+                    '<div class="text-sm font-black text-slate-800">' + daftar.length + ' <span class="text-[10px] font-bold text-slate-400">dok</span></div>' +
+                    '<div class="text-[9px] text-slate-400 font-bold">' + ket + '</div></div></button>';
+            }).join('');
+        }
+
+        /** Klik kartu = saring tabel ke jenis arsip itu. */
+        function filterSummaryKeJenis_(sub) {
+            const sel = document.getElementById('sum-arsip-jenis');
+            if (sel) sel.value = (sel.value === sub) ? 'Semua' : sub;
+            renderSummaryArsip();
+        }
+
+
+
+        // ================================================================
+        // KONVERSI BERKAS -> HALAMAN JPG (agar pratinjau selalu tampil)
+        // ================================================================
+        //
+        // Cara & alasannya SAMA PERSIS dengan menu Emplasemen Stasiun -
+        // memang masalah yang sama: <iframe src="data:application/pdf">
+        // diblokir browser di dalam sandbox Apps Script, jadi PDF tidak
+        // akan pernah tampil apa pun yang dicoba. Yang tidak pernah
+        // diblokir adalah <img>. Maka berkasnya dikonversi jadi JPG per
+        // halaman DI BROWSER lewat PDF.js + canvas, dan itulah yang
+        // ditampilkan. Berkas aslinya tetap disimpan untuk tombol Unduh.
+
+        const ARSIP_PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        // Lebar 3000 px dipilih supaya dokumen A4 tetap TAJAM sampai zoom 250%.
+        // Hitungannya: panggung viewer ±1100 px, pada 250% dokumen digambar
+        // selebar ±2750 px - kalau sumbernya hanya 2000 px, browser terpaksa
+        // memperbesar gambar & hasilnya kabur. Dengan 3000 px, sumbernya masih
+        // lebih besar dari kebutuhan sehingga tidak pernah diperbesar paksa.
+        // Mutu 0.94 (naik dari 0.9) menghilangkan artefak JPEG pada teks kecil
+        // & garis tipis, yang paling terlihat justru saat dizoom dalam.
+        const ARSIP_JPG_TARGET_WIDTH = 3000;
+        const ARSIP_JPG_QUALITY = 0.94;
+        const ARSIP_JPG_MAX_PAGES = 30;
+
+        let arsipPdfjsSiap_ = false;
+        let arsipHalamanSiapKirim = [];   // hasil konversi: [{base64, lebar, tinggi}]
+
+        function arsipSiapkanPdfJs_() {
+            if (typeof pdfjsLib === 'undefined') {
+                console.log('[arsip] pdfjsLib tidak tersedia - periksa <script> PDF.js di Index.html.');
+                return false;
+            }
+            if (arsipPdfjsSiap_) return true;
+            try {
+                const blob = new Blob(["importScripts('" + ARSIP_PDFJS_WORKER_URL + "');"], { type: 'application/javascript' });
+                pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+            } catch (err) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = ARSIP_PDFJS_WORKER_URL;
+            }
+            arsipPdfjsSiap_ = true;
+            return true;
+        }
+
+        function arsipBase64KeBytes_(base64) {
+            const biner = atob(base64);
+            const bytes = new Uint8Array(biner.length);
+            for (let i = 0; i < biner.length; i++) bytes[i] = biner.charCodeAt(i);
+            return bytes;
+        }
+
+        /**
+         * Mengubah berkas jadi daftar halaman JPG.
+         *  - PDF   : tiap halaman digambar ke canvas lalu di-JPG-kan.
+         *  - Gambar: digambar ulang ke canvas (menormalkan PNG/WEBP jadi JPG).
+         *  - Lainnya (DOC/XLS): dilewati - tidak bisa digambar di browser.
+         *    Dokumennya tetap tersimpan & bisa diunduh, hanya tidak punya
+         *    pratinjau. Itu dijelaskan apa adanya ke user, bukan dibiarkan
+         *    tampil sebagai kotak kosong tanpa keterangan.
+         * @return {Promise<Object[]>} [{base64, lebar, tinggi}]
+         */
+        async function arsipKonversiKeJpg_(payload, onProgress) {
+            const mime = String(payload.mimeType || '');
+
+            if (mime.indexOf('pdf') !== -1) {
+                if (!arsipSiapkanPdfJs_()) return [];
+                const pdf = await pdfjsLib.getDocument({ data: arsipBase64KeBytes_(payload.base64) }).promise;
+                const jumlah = Math.min(pdf.numPages, ARSIP_JPG_MAX_PAGES);
+                const hasil = [];
+                for (let i = 1; i <= jumlah; i++) {
+                    if (onProgress) onProgress(i, jumlah);
+                    const page = await pdf.getPage(i);
+                    const asli = page.getViewport({ scale: 1 });
+                    const skala = Math.min(ARSIP_JPG_TARGET_WIDTH / asli.width, 6);
+                    const viewport = page.getViewport({ scale: skala });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(viewport.width);
+                    canvas.height = Math.round(viewport.height);
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                    hasil.push({
+                        base64: canvas.toDataURL('image/jpeg', ARSIP_JPG_QUALITY).split(',')[1],
+                        lebar: canvas.width, tinggi: canvas.height
+                    });
+                }
+                return hasil;
+            }
+
+            if (mime.indexOf('image/') === 0) {
+                return new Promise(function (resolve) {
+                    const gambar = new Image();
+                    gambar.onload = function () {
+                        const skala = Math.min(ARSIP_JPG_TARGET_WIDTH / gambar.naturalWidth, 1);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(gambar.naturalWidth * skala);
+                        canvas.height = Math.round(gambar.naturalHeight * skala);
+                        canvas.getContext('2d').drawImage(gambar, 0, 0, canvas.width, canvas.height);
+                        resolve([{ base64: canvas.toDataURL('image/jpeg', ARSIP_JPG_QUALITY).split(',')[1],
+                                   lebar: canvas.width, tinggi: canvas.height }]);
+                    };
+                    gambar.onerror = function () { resolve([]); };
+                    gambar.src = 'data:' + mime + ';base64,' + payload.base64;
+                });
+            }
+
+            return []; // DOC/XLS dll - tidak bisa dipratinjau di browser
+        }
+
+        /** Mengirim halaman hasil konversi ke server, satu per satu. */
+        function arsipKirimHalaman_(dokumenId, daftar, selesai) {
+            let i = 0;
+            const btn = document.getElementById('arsip-submit-btn');
+            function berikutnya() {
+                if (i >= daftar.length) { selesai(); return; }
+                const h = daftar[i];
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyimpan halaman ' + (i + 1) + '/' + daftar.length + '...</span>';
+                google.script.run
+                    .withSuccessHandler(function () { i++; berikutnya(); })
+                    .withFailureHandler(function () { i++; berikutnya(); }) // satu halaman gagal tidak membatalkan sisanya
+                    .peraturan_arsip_addHalaman(currentSessionToken, dokumenId, h.base64, i + 1, h.lebar, h.tinggi);
+            }
+            berikutnya();
+        }
+
+        // ================================================================
+        // VIEWER BERBASIS HALAMAN JPG
+        // ================================================================
+
+        let viewerHalaman = [];      // [{id, urutan}]
+        let viewerHalamanAktif = 0;
+        let viewerCacheGambar = {};  // halamanId -> dataURL (agar bolak-balik halaman seketika)
+
+        /** Membuka viewer untuk dokumen tersimpan. */
+        function bukaViewerDokumen(id) {
+            const d = arsipDokumen.find(function (x) { return x.id === id; });
+            viewerSumberId = id;
+            viewerDariVersi = false;
+            viewerBerkas = null;
+            viewerHalaman = [];
+            viewerHalamanLokal_ = [];
+            viewerHalamanAktif = 0;
+
+            document.getElementById('viewer-judul').textContent = d ? d.judul : 'Dokumen';
+            document.getElementById('viewer-sub').textContent = d ? (d.nomor || cfgArsip_().judul) : '';
+            document.getElementById('viewer-isi').innerHTML =
+                '<div class="text-slate-300 text-sm font-bold"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat dokumen...</div>';
+            document.getElementById('modal-arsip-viewer').classList.remove('hidden');
+            pasangGeserViewer_();
+            viewerReset();
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success && res.data && res.data.length) {
+                        viewerHalaman = res.data;
+                        tampilkanHalamanViewer_(0);
+                        return;
+                    }
+                    // Tidak punya halaman pratinjau (dokumen lama, atau jenis
+                    // berkas yang tidak bisa digambar). Jelaskan apa adanya &
+                    // tawarkan unduh - lebih jujur daripada kotak kosong.
+                    tampilkanViewerTanpaPratinjau_(d);
+                })
+                .withFailureHandler(function () { tampilkanViewerTanpaPratinjau_(d); })
+                .peraturan_arsip_getHalaman(currentSessionToken, id);
+        }
+
+        function tampilkanViewerTanpaPratinjau_(d) {
+            document.getElementById('viewer-nav').classList.add('hidden');
+            document.getElementById('viewer-isi').innerHTML =
+                '<div class="bg-white rounded-2xl p-8 text-center shadow-2xl max-w-md">' +
+                '<i class="fa-solid fa-file-circle-question text-4xl text-slate-300 mb-3"></i>' +
+                '<p class="text-sm font-bold text-slate-700">Pratinjau belum tersedia</p>' +
+                '<p class="text-xs text-slate-500 font-semibold mt-2 leading-relaxed">' +
+                (d && d.punyaBerkas
+                    ? 'Dokumen ini diunggah sebelum fitur pratinjau ada, atau jenis berkasnya (Word/Excel) tidak bisa digambar di browser. Berkasnya tetap utuh &amp; bisa diunduh.'
+                    : 'Dokumen ini tidak punya berkas terlampir.') +
+                '</p>' +
+                (d && d.punyaBerkas
+                    ? '<button onclick="viewerUnduh()" class="mt-4 px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">' +
+                      '<i class="fa-solid fa-download mr-1.5 text-[#d4af37]"></i>Unduh Dokumen Asli</button>'
+                    : '') +
+                '</div>';
+        }
+
+        /** Menampilkan satu halaman; gambarnya diambil sekali lalu disimpan di memori. */
+        function tampilkanHalamanViewer_(idx) {
+            if (!viewerHalaman.length) return;
+            viewerHalamanAktif = Math.max(0, Math.min(viewerHalaman.length - 1, idx));
+            const h = viewerHalaman[viewerHalamanAktif];
+
+            const nav = document.getElementById('viewer-nav');
+            nav.classList.toggle('hidden', viewerHalaman.length < 2);
+            document.getElementById('viewer-hal-label').textContent =
+                'Halaman ' + (viewerHalamanAktif + 1) + ' dari ' + viewerHalaman.length;
+
+            const gambar = function (dataUrl) {
+                document.getElementById('viewer-isi').innerHTML =
+                    '<img src="' + dataUrl + '" class="max-w-none shadow-2xl rounded bg-white" style="max-height:78vh" alt="halaman">';
+            };
+
+            if (viewerCacheGambar[h.id]) { gambar(viewerCacheGambar[h.id]); return; }
+            document.getElementById('viewer-isi').innerHTML =
+                '<div class="text-slate-300 text-sm font-bold"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat halaman ' + (viewerHalamanAktif + 1) + '...</div>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { document.getElementById('viewer-isi').innerHTML = '<div class="text-red-300 text-sm font-bold">Halaman gagal dimuat.</div>'; return; }
+                    const dataUrl = 'data:' + (res.mimeType || 'image/jpeg') + ';base64,' + res.base64;
+                    viewerCacheGambar[h.id] = dataUrl;
+                    gambar(dataUrl);
+                })
+                .withFailureHandler(function () { document.getElementById('viewer-isi').innerHTML = '<div class="text-red-300 text-sm font-bold">Terjadi kesalahan saat memuat halaman.</div>'; })
+                .peraturan_arsip_getHalamanImage(currentSessionToken, h.id);
+        }
+
+        // Halaman hasil konversi yang BELUM tersimpan - dipakai saat
+        // memperbesar pratinjau dari dalam form upload.
+        let viewerHalamanLokal_ = [];
+
+        function tampilkanHalamanLokal_(idx) {
+            if (!viewerHalamanLokal_.length) return;
+            viewerHalamanAktif = Math.max(0, Math.min(viewerHalamanLokal_.length - 1, idx));
+            const nav = document.getElementById('viewer-nav');
+            nav.classList.toggle('hidden', viewerHalamanLokal_.length < 2);
+            document.getElementById('viewer-hal-label').textContent =
+                'Halaman ' + (viewerHalamanAktif + 1) + ' dari ' + viewerHalamanLokal_.length;
+            document.getElementById('viewer-isi').innerHTML =
+                '<img src="data:image/jpeg;base64,' + viewerHalamanLokal_[viewerHalamanAktif].base64 +
+                '" class="max-w-none shadow-2xl rounded bg-white" style="max-height:78vh" alt="halaman">';
+            viewerReset();
+        }
+
+        function viewerHalamanSebelumnya() {
+            if (viewerHalamanLokal_.length) { tampilkanHalamanLokal_(viewerHalamanAktif - 1); return; }
+            tampilkanHalamanViewer_(viewerHalamanAktif - 1);
+        }
+        function viewerHalamanBerikutnya() {
+            if (viewerHalamanLokal_.length) { tampilkanHalamanLokal_(viewerHalamanAktif + 1); return; }
+            tampilkanHalamanViewer_(viewerHalamanAktif + 1);
+        }
+
+
+        // ================================================================
+        // RIWAYAT PER ARSIP & PUSAT AKTIVITAS
+        // ================================================================
+
+        /** Riwayat perubahan seluruh dokumen pada arsip yang sedang dibuka. */
+        function openArsipRiwayatModal() {
+            document.getElementById('arsip-riwayat-arsip-judul').textContent =
+                'Riwayat - ' + cfgArsip_().judul;
+            muatRiwayatArsip_(arsipSubMenu, 'arsip-riwayat-arsip-list');
+            document.getElementById('modal-arsip-riwayat-arsip').classList.remove('hidden');
+        }
+
+        function closeArsipRiwayatModal() {
+            document.getElementById('modal-arsip-riwayat-arsip').classList.add('hidden');
+        }
+
+        let riwayatArsipTerakhir_ = [];
+
+        /**
+         * Memuat & menggambar daftar riwayat.
+         * @param {string} subMenu Kosongkan untuk seluruh arsip.
+         * @param {string} targetId Id elemen tempat menggambar.
+         */
+        function muatRiwayatArsip_(subMenu, targetId) {
+            const wadah = document.getElementById(targetId);
+            if (!wadah) return;
+            wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-4 text-center"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Memuat riwayat...</p>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { wadah.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-4 text-center">Gagal memuat riwayat.</p>'; return; }
+                    riwayatArsipTerakhir_ = res.data || [];
+                    if (!riwayatArsipTerakhir_.length) {
+                        wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-6 text-center italic">Belum ada aktivitas tercatat.</p>';
+                        return;
+                    }
+                    const warna = { 'Dibuat': 'bg-emerald-100 text-emerald-700', 'Diubah': 'bg-amber-100 text-amber-700',
+                        'Versi Baru': 'bg-violet-100 text-violet-700', 'Dihapus': 'bg-red-100 text-red-700' };
+                    const label = { peraturan: 'Peraturan', notulen: 'Notulen', surat: 'Surat', kajian: 'Kajian', gapeka: 'Gapeka' };
+                    wadah.innerHTML = riwayatArsipTerakhir_.map(function (h) {
+                        return '<div class="p-3 bg-white border border-slate-200 rounded-xl">' +
+                            '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+                                '<div class="flex items-center gap-1.5 min-w-0">' +
+                                    '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ' + (warna[h.aksi] || 'bg-slate-100 text-slate-600') + '">' + escapeHtml(h.aksi) + '</span>' +
+                                    (h.subMenu ? '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">' + escapeHtml(label[h.subMenu] || h.subMenu) + '</span>' : '') +
+                                '</div>' +
+                                '<span class="text-[10px] text-slate-400 font-bold">' + escapeHtml(formatWaktuArsip_(h.waktu)) + '</span>' +
+                            '</div>' +
+                            '<p class="text-[11px] font-bold text-slate-800 mt-1.5 break-words">' + escapeHtml(h.judul) + '</p>' +
+                            '<p class="text-[11px] text-slate-600 font-semibold mt-0.5 break-words">' + escapeHtml(h.ringkasan || '-') + '</p>' +
+                            '<p class="text-[9px] text-slate-400 font-bold mt-1">oleh ' + escapeHtml(h.olehNama || '-') + '</p>' +
+                            '</div>';
+                    }).join('');
+                })
+                .withFailureHandler(function () { wadah.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-4 text-center">Terjadi kesalahan.</p>'; })
+                .peraturan_arsip_getLogArsip(currentSessionToken, subMenu || '', 300);
+        }
+
+        /** Mengunduh riwayat yang sedang tampil sebagai Excel. */
+        function unduhRiwayatArsip() {
+            if (!riwayatArsipTerakhir_.length) { showToast('Belum ada riwayat untuk diunduh.'); return; }
+            try {
+                const label = { peraturan: 'Peraturan', notulen: 'Notulen', surat: 'Surat', kajian: 'Kajian', gapeka: 'Gapeka' };
+                const headers = ['NO', 'WAKTU', 'JENIS ARSIP', 'DOKUMEN', 'AKSI', 'PERUBAHAN', 'OLEH'];
+                const rows = riwayatArsipTerakhir_.map(function (h, i) {
+                    return [i + 1, formatWaktuArsip_(h.waktu), label[h.subMenu] || h.subMenu || '-',
+                        h.judul || '', h.aksi || '', h.ringkasan || '', h.olehNama || ''];
+                });
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 14 }, { wch: 40 }, { wch: 12 }, { wch: 60 }, { wch: 20 }];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Riwayat Aktivitas');
+                XLSX.writeFile(wb, 'Riwayat_Aktivitas_KCI_' + hariIniIso_() + '.xlsx');
+                showToast(riwayatArsipTerakhir_.length + ' baris riwayat diunduh.');
+            } catch (err) {
+                console.log('unduhRiwayatArsip error:', err);
+                showToast('Gagal membuat berkas riwayat.');
+            }
+        }
+
+        // ─── PUSAT AKTIVITAS (ikon lonceng) ──────────────────────────────
+
+        let aktivitasTerakhir_ = [];
+
+        function openPusatAktivitas() {
+            document.getElementById('modal-pusat-aktivitas').classList.remove('hidden');
+            muatPusatAktivitas_();
+        }
+
+        /**
+         * Memuat jejak aktivitas SELURUH WEBSITE - bukan hanya Document
+         * Repository. Sumbernya sheet ActivityLog yang diisi semua modul.
+         */
+        function muatPusatAktivitas_() {
+            const wadah = document.getElementById('pusat-aktivitas-list');
+            wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-6 text-center"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Memuat aktivitas...</p>';
+
+            const ambil = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+            const filter = {
+                modul: ambil('aktivitas-filter-modul') === 'Semua' ? '' : ambil('aktivitas-filter-modul'),
+                dariTanggal: ambil('aktivitas-filter-dari'),
+                sampaiTanggal: ambil('aktivitas-filter-sampai'),
+                cari: ambil('aktivitas-filter-cari')
+            };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { wadah.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-6 text-center">Gagal memuat aktivitas.</p>'; return; }
+                    aktivitasTerakhir_ = res.data || [];
+                    isiFilterModulAktivitas_(res.modulTersedia || []);
+                    document.getElementById('aktivitas-info').textContent =
+                        aktivitasTerakhir_.length + ' dari ' + (res.totalSemua || 0) + ' aktivitas';
+
+                    if (!aktivitasTerakhir_.length) {
+                        wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold py-8 text-center italic">Belum ada aktivitas tercatat pada rentang ini.</p>';
+                        return;
+                    }
+                    const warna = { 'Tambah': 'bg-emerald-100 text-emerald-700', 'Dibuat': 'bg-emerald-100 text-emerald-700',
+                        'Ubah': 'bg-amber-100 text-amber-700', 'Diubah': 'bg-amber-100 text-amber-700',
+                        'Versi Baru': 'bg-violet-100 text-violet-700',
+                        'Hapus': 'bg-red-100 text-red-700', 'Dihapus': 'bg-red-100 text-red-700',
+                        'Login': 'bg-sky-100 text-sky-700', 'Logout': 'bg-slate-200 text-slate-600' };
+                    wadah.innerHTML = aktivitasTerakhir_.map(function (h) {
+                        return '<div class="p-3 bg-white border border-slate-200 rounded-xl">' +
+                            '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+                                '<div class="flex items-center gap-1.5 min-w-0">' +
+                                    '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ' + (warna[h.aksi] || 'bg-slate-100 text-slate-600') + '">' + escapeHtml(h.aksi) + '</span>' +
+                                    '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-bold">' + escapeHtml(h.modulLabel) + '</span>' +
+                                '</div>' +
+                                '<span class="text-[10px] text-slate-400 font-bold">' + escapeHtml(formatWaktuArsip_(h.waktu)) + '</span>' +
+                            '</div>' +
+                            '<p class="text-[11px] text-slate-700 font-semibold mt-1.5 break-words">' + escapeHtml(h.ringkasan || '-') + '</p>' +
+                            '<p class="text-[9px] text-slate-400 font-bold mt-1">' + escapeHtml(h.olehNama || '-') +
+                                (h.roleId && h.roleId !== '-' ? ' \u00B7 ' + escapeHtml(h.roleId) : '') + '</p>' +
+                            '</div>';
+                    }).join('');
+                })
+                .withFailureHandler(function () { wadah.innerHTML = '<p class="text-[11px] text-red-500 font-bold py-6 text-center">Terjadi kesalahan saat memuat aktivitas.</p>'; })
+                .activity_getAll(currentSessionToken, filter, 500);
+        }
+
+        function isiFilterModulAktivitas_(daftar) {
+            const sel = document.getElementById('aktivitas-filter-modul');
+            if (!sel || sel.options.length > 1) return; // cukup sekali diisi
+            sel.innerHTML = '<option value="Semua">Semua Menu</option>' +
+                daftar.map(function (m) { return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.label) + '</option>'; }).join('');
+        }
+
+        function resetFilterAktivitas() {
+            ['aktivitas-filter-cari', 'aktivitas-filter-dari', 'aktivitas-filter-sampai'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const sel = document.getElementById('aktivitas-filter-modul');
+            if (sel) sel.value = 'Semua';
+            muatPusatAktivitas_();
+        }
+
+        /** Unduh jejak aktivitas menyeluruh sebagai Excel. */
+        function unduhAktivitas() {
+            if (!aktivitasTerakhir_.length) { showToast('Belum ada aktivitas untuk diunduh.'); return; }
+            try {
+                const headers = ['NO', 'WAKTU', 'MENU', 'AKSI', 'KETERANGAN', 'OLEH', 'USERNAME', 'ROLE'];
+                const rows = aktivitasTerakhir_.map(function (h, i) {
+                    return [i + 1, formatWaktuArsip_(h.waktu), h.modulLabel || '', h.aksi || '',
+                        h.ringkasan || '', h.olehNama || '', h.olehUsername || '', h.roleId || ''];
+                });
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 24 }, { wch: 12 }, { wch: 65 }, { wch: 22 }, { wch: 14 }, { wch: 16 }];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Aktivitas Pengguna');
+                XLSX.writeFile(wb, 'Riwayat_Aktivitas_KCI_' + hariIniIso_() + '.xlsx');
+                showToast(aktivitasTerakhir_.length + ' baris aktivitas diunduh.');
+            } catch (err) {
+                console.log('unduhAktivitas error:', err);
+                showToast('Gagal membuat berkas riwayat.');
+            }
+        }
+
+        function closePusatAktivitas() {
+            document.getElementById('modal-pusat-aktivitas').classList.add('hidden');
+        }
+
+        // ─── EXPORT SUMMARY: EXCEL & PDF ─────────────────────────────────
+
+        function openSummaryExportMenu() {
+            const m = document.getElementById('sum-export-menu');
+            if (!m) return;
+            m.classList.toggle('hidden');
+
+            // Menutup sendiri saat diklik di luar - kalau tidak, menunya
+            // menggantung menutupi tabel & terlihat seperti macet.
+            if (!m.classList.contains('hidden') && !m.dataset.terpasang) {
+                m.dataset.terpasang = '1';
+                setTimeout(function () {
+                    document.addEventListener('click', function (e) {
+                        const wadah = m.parentElement;
+                        if (wadah && !wadah.contains(e.target)) m.classList.add('hidden');
+                    });
+                }, 0);
+            }
+        }
+
+        /**
+         * Menyiapkan tautan Drive "hanya bisa dilihat" untuk dokumen yang
+         * sedang tampil, lalu menjalankan export.
+         *
+         * Izin berkasnya diubah jadi ANYONE_WITH_LINK + VIEW di server -
+         * penerima laporan bisa membuka dokumennya, tapi tidak bisa mengubah
+         * maupun menghapus arsip resmi perusahaan.
+         */
+        function exportSummaryArsip(format) {
+            const hasil = hitungSummaryArsip_();
+            if (!hasil.length) { showToast('Tidak ada dokumen untuk diexport.'); return; }
+            const m = document.getElementById('sum-export-menu');
+            if (m) m.classList.add('hidden');
+
+            showToast('Menyiapkan tautan dokumen (hanya-lihat)...');
+            const idBerkas = hasil.filter(function (d) { return d.punyaBerkas; }).map(function (d) { return d.id; });
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    const tautan = (res && res.success) ? (res.tautan || {}) : {};
+                    const gagal = (res && res.gagalIzin) || [];
+                    if (gagal.length) {
+                        // Dilaporkan apa adanya - tautannya tetap ada, hanya
+                        // mungkin belum bisa dibuka orang luar organisasi.
+                        showToast(gagal.length + ' dokumen tautannya belum bisa disetel "hanya-lihat" (izin berbagi Drive). Tautan tetap disertakan.');
+                    }
+                    if (format === 'pdf') cetakSummaryArsipPdf_(hasil, tautan);
+                    else tulisSummaryArsipExcel_(hasil, tautan);
+                })
+                .withFailureHandler(function () {
+                    showToast('Gagal menyiapkan tautan - export tetap dibuat tanpa kolom tautan.');
+                    if (format === 'pdf') cetakSummaryArsipPdf_(hasil, {});
+                    else tulisSummaryArsipExcel_(hasil, {});
+                })
+                .peraturan_arsip_buatTautanLihat(currentSessionToken, idBerkas);
+        }
+
+        function tulisSummaryArsipExcel_(hasil, tautan) {
+            try {
+                const headers = ['NO', 'TANGGAL', 'JENIS ARSIP', 'NOMOR DOKUMEN', 'JUDUL / PERIHAL',
+                    'KATEGORI', 'STATUS', 'VERSI', 'LINTAS', 'KETERANGAN', 'DIINPUT OLEH', 'LINK DOKUMEN (HANYA LIHAT)'];
+                const rows = hasil.map(function (d, i) {
+                    return [i + 1, formatTanggalArsip_(d.tanggal), SUM_ARSIP_LABEL[d.subMenu] || d.subMenu,
+                        d.nomor || '', d.judul || '', d.kategori || '', d.status || '', d.versi || '',
+                        d.lintas || '', d.deskripsi || '', d.dibuatOleh || '', tautan[d.id] || (d.punyaBerkas ? '(tautan gagal dibuat)' : '(tanpa berkas)')];
+                });
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = headers.map(function (h) {
+                    return { wch: (h.indexOf('JUDUL') === 0 || h === 'KETERANGAN') ? 45 : (h.indexOf('LINK') === 0 ? 55 : (h === 'NO' ? 5 : 18)) };
+                });
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Summary Arsip');
+                XLSX.writeFile(wb, 'Summary_Arsip_KCI_' + hariIniIso_() + '.xlsx');
+                showToast(hasil.length + ' dokumen diexport ke Excel beserta tautannya.');
+            } catch (err) {
+                console.log('tulisSummaryArsipExcel_ error:', err);
+                showToast('Gagal membuat berkas Excel.');
+            }
+        }
+
+        function cetakSummaryArsipPdf_(hasil, tautan) {
+            const now = new Date();
+            const baris = hasil.map(function (d, i) {
+                const link = tautan[d.id];
+                return '<tr style="page-break-inside:avoid">' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0;text-align:center">' + (i + 1) + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0">' + escapeHtml(formatTanggalArsip_(d.tanggal)) + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0">' + escapeHtml(SUM_ARSIP_LABEL[d.subMenu] || d.subMenu) + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0;font-family:monospace">' + escapeHtml(d.nomor || '-') + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0"><b>' + escapeHtml(d.judul) + '</b>' +
+                        (d.versi ? '<br><span style="color:#dc2626;font-size:7px">' + escapeHtml(d.versi) + '</span>' : '') + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0">' + escapeHtml(d.kategori || '-') + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0;text-align:center">' + escapeHtml(d.status || '-') + '</td>' +
+                    '<td style="padding:4px;border:1px solid #e2e8f0;word-break:break-all;font-size:6.5px">' +
+                        (link ? '<a href="' + link + '" style="color:#1d4ed8">' + link + '</a>' : '<span style="color:#cbd5e1">-</span>') + '</td>' +
+                    '</tr>';
+            }).join('');
+
+            const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Summary Arsip</title><style>' +
+                '@page{size:A4 landscape;margin:11mm 9mm}' +
+                'body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+                'table{width:100%;border-collapse:collapse;font-size:7.5px}thead{display:table-header-group}' +
+                'th{background:#0c1d37;color:#fff;padding:5px 4px;border:1px solid #1a3d6d;text-align:left;font-size:7px}' +
+                '</style></head><body>' +
+                '<table style="width:100%;border-collapse:collapse;background:#0c1d37;border-top:4px solid #d4af37"><tr>' +
+                    '<td style="padding:10px 14px;border:none">' +
+                        '<div style="font-size:6.5px;letter-spacing:2px;color:#8fa3bf;font-weight:bold">PT KERETA COMMUTER INDONESIA</div>' +
+                        '<div style="font-size:15px;font-weight:bold;color:#d4af37;margin-top:2px">SUMMARY ARSIP - DOCUMENT REPOSITORY</div>' +
+                    '</td>' +
+                    '<td style="padding:10px 14px;text-align:right;color:#cbd5e1;font-size:8px;font-weight:bold;border:none">' + hasil.length + ' DOKUMEN</td>' +
+                '</tr></table>' +
+                '<p style="background:#f1f5f9;border-left:3px solid #d4af37;padding:6px 10px;margin:9px 0;font-size:8.5px;font-weight:bold;color:#334155">' +
+                    'Tautan dokumen bersifat HANYA-LIHAT - penerima dapat membuka berkasnya, tetapi tidak dapat mengubah atau menghapusnya.</p>' +
+                '<table><thead><tr>' +
+                    '<th style="width:4%;text-align:center">NO</th><th style="width:8%">TANGGAL</th><th style="width:10%">JENIS ARSIP</th>' +
+                    '<th style="width:12%">NOMOR</th><th style="width:24%">JUDUL / PERIHAL</th><th style="width:12%">KATEGORI</th>' +
+                    '<th style="width:9%;text-align:center">STATUS</th><th style="width:21%">LINK DOKUMEN</th>' +
+                '</tr></thead><tbody>' + baris + '</tbody></table>' +
+                '<table style="width:100%;margin-top:12px;border-top:1px solid #dde3ea;font-size:6.5px;color:#9aa7b5"><tr>' +
+                    '<td style="border:none;padding-top:4px">COTP DEPARTMENT DATABASE &middot; <b style="color:#d4af37">CONFIDENTIAL</b></td>' +
+                    '<td style="border:none;padding-top:4px;text-align:right">Dicetak ' + now.toLocaleDateString('id-ID') + ' ' +
+                        now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB</td>' +
+                '</tr></table></body></html>';
+
+            const win = window.open('', '_blank');
+            if (!win) { showToast('Popup diblokir browser - izinkan popup untuk mencetak PDF.'); return; }
+            win.document.write(html);
+            win.document.close();
+            win.onload = function () { win.focus(); win.print(); };
+            showToast(hasil.length + ' dokumen disiapkan - pilih "Save as PDF" di jendela cetak.');
+        }
+
+</script>

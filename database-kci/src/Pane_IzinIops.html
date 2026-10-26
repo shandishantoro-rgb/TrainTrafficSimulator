@@ -1,0 +1,34 @@
+<!--
+  Pane_IzinIops.html
+  Pane/menu: Izin Linpel & IOPS - Izin Operasi
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-izin-iops" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h4 class="font-extrabold text-[#0c1d37] text-sm tracking-tight">Izin Operasi Sarana (IOPS)</h4>
+                            <p class="text-[11px] text-slate-400 font-bold mt-1">Frekuensi perjalanan yang diizinkan oleh Direktorat Jenderal Perkeretaapian</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl text-xs font-bold text-slate-700 flex justify-between items-center border border-slate-200">
+                        <span>Total Frekuensi IOPS Terdaftar: <strong class="text-kci-red font-black text-sm" id="iops-total-registered">1,651</strong></span>
+                        <span>Dioperasikan Efektif: <strong class="text-emerald-600 font-black text-sm">1,294</strong></span>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-200 rounded-2xl mt-5">
+                        <table class="w-full text-left text-xs border-collapse font-bold text-slate-700">
+                            <thead>
+                                <tr class="bg-[#0c1d37] text-white text-[10px] font-extrabold uppercase tracking-wider">
+                                    <th class="px-4 py-3.5 w-12 text-center border-r border-[#1a3d6d]">NO</th>
+                                    <th class="px-5 py-3.5 w-48 border-r border-[#1a3d6d]">DASAR IOPS (PRODUK HUKUM)</th>
+                                    <th class="px-5 py-3.5 w-32 border-r border-[#1a3d6d] text-center">FREKUENSI (PERJALANAN / HARI)</th>
+                                    <th class="px-5 py-3.5 border-r border-[#1a3d6d] text-center">STATUS SINERGI OPERASI</th>
+                                    <th class="px-4 py-3.5 w-40 text-center">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="iops-table-body" class="divide-y divide-slate-200 bg-white text-center"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>

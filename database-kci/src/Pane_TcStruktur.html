@@ -1,0 +1,434 @@
+<!--
+  Pane_TcStruktur.html
+  Menu: Train Control - STRUKTUR ORGANISASI (4 September 2026, dirombak)
+
+  Mengikuti rancangan yang dikirim user, dengan dua bagian:
+    1. KOLAM PERSONIL - daftar orang (nama, NIK, jabatan, foto)
+    2. BAGAN JABATAN  - pohon yang bisa diisi personil dari kolam
+
+  Warnanya diselaraskan dengan tema sistem (navy #0c1d37 + emas #d4af37),
+  bukan indigo/amber dari rancangan aslinya - supaya menyatu dengan menu
+  lain, bukan terasa seperti halaman dari sistem yang berbeda.
+
+  Garis penghubung digambar dengan CSS ::before/::after, bukan SVG. Untuk
+  pohon yang lebarnya berubah-ubah, CSS jauh lebih tahan banting: kotak
+  boleh setinggi apa pun & garisnya tetap menempel.
+-->
+            <section id="pane-tc-struktur" class="hidden space-y-5 animate-fade-in">
+
+                <style>
+                    /*
+                      ═══ KENAPA BUKAN justify-content: center ═══
+                      Dulu pohonnya dipusatkan dengan `justify-content: center`
+                      di dalam wadah ber-`overflow-x-auto`. Ketika isinya lebih
+                      lebar dari wadah, luapan terbagi ke KEDUA sisi - dan
+                      luapan sisi KIRI tidak bisa dijangkau scroll sama sekali.
+                      Itulah kotak yang terpotong di tepi kiri.
+
+                      Akibat keduanya lebih halus: scrollWidth TIDAK menghitung
+                      luapan kiri, sehingga hitungan "pas ke lebar" ikut meleset
+                      & bagannya tetap terpotong meski sudah dikecilkan.
+
+                      `width: max-content` + `margin: 0 auto` menyelesaikan
+                      keduanya: memusat selama muat, dan menempel ke tepi kiri
+                      begitu meluap - persis yang dibutuhkan agar seluruhnya
+                      bisa digulir.
+                    */
+                    .org-tree {
+                        display: flex; justify-content: flex-start;
+                        width: max-content; margin: 0 auto;
+                        padding: 8px 24px 24px;
+                    }
+                    .org-tree ul {
+                        padding-top: 26px; position: relative; display: flex;
+                        justify-content: center; margin: 0; list-style: none;
+                    }
+                    .org-tree li {
+                        text-align: center; list-style-type: none; position: relative;
+                        padding: 26px 10px 0 10px;
+                    }
+                    /* Garis penghubung */
+                    .org-tree li::before, .org-tree li::after {
+                        content: ''; position: absolute; top: 0; right: 50%;
+                        border-top: 2px solid #cbd5e1; width: 50%; height: 26px;
+                    }
+                    .org-tree li::after { right: auto; left: 50%; border-left: 2px solid #cbd5e1; }
+                    .org-tree li:only-child::after, .org-tree li:only-child::before { display: none; }
+                    .org-tree li:only-child { padding-top: 0; }
+                    .org-tree li:first-child::before, .org-tree li:last-child::after { border: 0 none; }
+                    .org-tree li:last-child::before {
+                        border-right: 2px solid #cbd5e1; border-radius: 0 8px 0 0;
+                    }
+                    .org-tree li:first-child::after { border-radius: 8px 0 0 0; }
+                    .org-tree ul ul::before {
+                        content: ''; position: absolute; top: 0; left: 50%;
+                        border-left: 2px solid #cbd5e1; width: 0; height: 26px;
+                    }
+
+                    /*
+                      ═══ TERISI vs KOSONG DIBEDAKAN TEGAS ═══
+                      Sebelumnya seluruh kotak berwarna navy pekat sama rata,
+                      jadi jabatan yang MASIH KOSONG tidak terlihat berbeda dari
+                      yang sudah ada orangnya - padahal justru itu yang dicari
+                      saat membuka bagan.
+
+                      Kotak terisi: navy bergradasi, teks putih, aksen emas.
+                      Kotak kosong: putih bergaris putus-putus, teks kelabu.
+                      Perbedaannya terbaca dari jauh, bahkan saat diperkecil.
+                    */
+                    .org-node {
+                        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+                        border-radius: 14px;
+                    }
+                    .org-node:hover { transform: translateY(-3px); }
+
+                    .org-terisi {
+                        background: linear-gradient(160deg, #16305a 0%, #0c1d37 62%);
+                        box-shadow: 0 6px 16px -6px rgba(12, 29, 55, .55);
+                        border: 1px solid rgba(212, 175, 55, .28);
+                    }
+                    .org-terisi:hover { box-shadow: 0 12px 26px -8px rgba(12, 29, 55, .6); }
+
+                    .org-kosong {
+                        background: #ffffff;
+                        border: 2px dashed #cbd5e1;
+                        box-shadow: 0 2px 8px -4px rgba(15, 23, 42, .18);
+                    }
+                    .org-kosong:hover { border-color: #94a3b8; }
+
+                    /* Pucuk bagan diberi tekanan lebih - matanya harus jatuh ke sini dulu. */
+                    .org-akar { box-shadow: 0 0 0 3px rgba(212, 175, 55, .30), 0 10px 24px -8px rgba(12, 29, 55, .6); }
+
+                    /* Latar berpola titik: membedakan kanvas bagan dari kartu putih di sekitarnya. */
+                    #struktur-wadah {
+                        background-color: #f8fafc;
+                        background-image: radial-gradient(#dbe3ec 1px, transparent 1px);
+                        background-size: 18px 18px;
+
+                        /* ══ PANGGUNG YANG BISA DIGESER ══
+                           Dulu hanya overflow-x: tingginya mengikuti isi, jadi
+                           tidak pernah ada yang bisa digeser tegak - bagan
+                           yang menjulang tinggi memanjangkan halaman & tidak
+                           bisa ditelusuri di tempat.
+
+                           Sekarang panggungnya berukuran tetap (diatur JS) &
+                           isinya digeser DI DALAM-nya, ke empat arah.
+
+                           display:flex + margin:auto pada anaknya adalah cara
+                           baku memusatkan isi yang bisa lebih besar daripada
+                           wadahnya. align-items:center akan memotong tepi atas
+                           & kiri begitu isinya melebihi wadah - galat klasik
+                           flexbox yang tidak terlihat sampai bagannya besar. */
+                        overflow: auto;
+                        display: flex;
+                        padding: 24px;
+                        cursor: grab;
+                        overscroll-behavior: contain;
+                        /* Sentuhan tetap memakai geser bawaan peramban; tetikus
+                           ditangani sendiri lewat pointer event. */
+                        touch-action: pan-x pan-y;
+                    }
+                    #struktur-wadah.sedang-geser { cursor: grabbing; user-select: none; }
+
+                    /* flex:0 0 auto WAJIB. Anak sebuah flex container boleh
+                       menyusut secara bawaan (flex-shrink:1), & bagan yang
+                       lebih lebar daripada panggung akan diperas - lebarnya
+                       jadi salah terukur, penskalaan cetak ikut salah, dan
+                       garis penghubungnya bengkok. */
+                    #struktur-skala { margin: auto; flex: 0 0 auto; }
+
+                    /* Chip aksi di kartu - menggantikan tirai gelap yang dulu
+                       menutupi SELURUH kartu saat disorot. Tirai itu
+                       menyembunyikan nama & jabatan persis ketika orang sedang
+                       membacanya, dan membuat tooltip tupoksi jadi mubazir. */
+                    .org-aksi {
+                        opacity: 0;
+                        transform: translateY(3px);
+                        transition: opacity .15s, transform .15s;
+                        pointer-events: none;
+                    }
+                    .org-node:hover .org-aksi { opacity: 1; transform: translateY(0); pointer-events: auto; }
+                    .org-node:hover { outline: 2px solid rgba(212,175,55,.55); outline-offset: 1px; }
+
+                </style>
+
+                <!-- TOOLBAR -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3.5 min-w-0">
+                        <div class="w-11 h-11 rounded-2xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center text-base shrink-0">
+                            <i class="fa-solid fa-sitemap"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="text-base font-black text-[#0c1d37] tracking-tight leading-tight">Struktur Organisasi</h3>
+                            <p class="text-[11px] text-slate-400 font-bold mt-0.5">Train Operation, Control &amp; Evaluation Department</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                        <button onclick="bukaFormPersonil()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <span class="w-5 h-5 rounded-md bg-emerald-500/15 text-emerald-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-user-plus"></i></span>
+                            <span>Tambah Personil</span>
+                        </button>
+                        <button onclick="unduhBagan()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <span class="w-5 h-5 rounded-md bg-sky-500/15 text-sky-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-download"></i></span>
+                            <span>Unduh Bagan</span>
+                        </button>
+                        <button onclick="cetakStruktur()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <span class="w-5 h-5 rounded-md bg-red-500/10 text-red-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-file-pdf"></i></span>
+                            <span>Cetak Bagan</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- BAGAN -->
+                <div id="struktur-panggung" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-5 py-3.5 bg-[#0c1d37] text-white border-t-4 border-[#d4af37] flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <p class="text-[9px] tracking-[2px] text-slate-400 font-bold">PT KERETA COMMUTER INDONESIA</p>
+                            <h4 class="text-sm font-black text-[#d4af37] tracking-tight mt-0.5">BAGAN ORGANISASI COTP DEPARTMENT</h4>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-bold flex items-center gap-3 flex-wrap">
+                            <span><i class="fa-solid fa-hand-pointer mr-1"></i>Klik kotak untuk menugaskan</span>
+                            <span class="hidden sm:inline"><i class="fa-solid fa-arrows-up-down-left-right mr-1"></i>Seret untuk menggeser</span>
+                            <span class="hidden md:inline"><i class="fa-regular fa-hand mr-1"></i>Sorot untuk melihat tupoksi</span>
+                        </span>
+                    </div>
+                    <!--
+                      Bagan DIKECILKAN OTOMATIS agar muat selebar layar - lihat
+                      sesuaikanSkalaBagan_(). Sebelumnya harus digeser kanan-kiri;
+                      untuk bagan organisasi, melihat keseluruhannya sekaligus
+                      justru inti gunanya.
+                    -->
+                    <div class="relative bg-gradient-to-b from-slate-50 to-white">
+                        <div class="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-white/90 backdrop-blur border border-slate-200 rounded-xl p-1 shadow-sm">
+                            <button onclick="zoomBagan_(-0.1)" title="Perkecil" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-600 flex items-center justify-center transition"><i class="fa-solid fa-minus text-[10px]"></i></button>
+                            <span id="bagan-persen" class="text-[10px] font-black text-slate-500 w-10 text-center">100%</span>
+                            <button onclick="zoomBagan_(0.1)" title="Perbesar" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-600 flex items-center justify-center transition"><i class="fa-solid fa-plus text-[10px]"></i></button>
+                            <span class="w-px h-4 bg-slate-200"></span>
+                            <button onclick="sesuaikanSkalaBagan_(true)" title="Pas ke lebar kartu" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-600 flex items-center justify-center transition"><i class="fa-solid fa-maximize text-[10px]"></i></button>
+                            <span class="w-px h-4 bg-slate-200"></span>
+                            <!--
+                              Layar penuh: bagan organisasi baru berguna kalau
+                              seluruhnya terlihat sekaligus, dan di dalam kartu
+                              selebar ini cabang terbawah selalu terlalu kecil
+                              untuk dibaca.
+                            -->
+                            <button id="btn-bagan-penuh" onclick="layarPenuhBagan_()" title="Lihat bagan selebar layar" class="w-7 h-7 rounded-lg hover:bg-[#0c1d37] hover:text-white text-slate-600 flex items-center justify-center transition"><i class="fa-solid fa-expand text-[10px]"></i></button>
+                        </div>
+                        <div id="struktur-wadah" class="custom-scrollbar">
+                            <!--
+                              transform-origin DIPINDAH ke kiri-atas. Dengan
+                              origin di tengah, mengecilkan bagan menariknya ke
+                              dalam dari kedua sisi & sebagian isinya keluar
+                              dari daerah yang bisa digulir. Pemusatannya kini
+                              diurus margin:auto pada elemen ini (lihat CSS).
+                            -->
+                            <div id="struktur-skala" style="transform-origin: top left;">
+                                <div id="struktur-bagan" class="org-tree"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KOLAM PERSONIL -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <div>
+                            <h4 class="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Personil</h4>
+                            <p class="text-[10px] text-slate-400 font-bold mt-0.5">Klik kartu untuk menyunting data atau foto</p>
+                        </div>
+                        <span id="struktur-jumlah" class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black">0 personil</span>
+                    </div>
+                    <div id="struktur-personil" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5"></div>
+                </div>
+            </section>
+
+<!-- ════ MODAL: TUGASKAN PERSONIL KE JABATAN ════ -->
+<div id="modal-tugaskan" class="hidden fixed inset-0 z-[85] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-user-tag text-[#d4af37]"></i><span id="tg-judul" class="truncate">Tugaskan Personil</span>
+                </h3>
+                <p id="tg-subjudul" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button onclick="tutupTugaskan()" class="text-slate-400 hover:text-white transition shrink-0"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 overflow-y-auto flex-1">
+            <div>
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Data Jabatan</label>
+                <!--
+                  Pesan galat DI DALAM modal. Mengandalkan toast saja tidak
+                  cukup: selama toast masih tertutup latar modal (atau bila
+                  pengguna sedang menggulir jauh dari puncak layar), penolakan
+                  simpan tidak terlihat sama sekali & tombolnya tampak mati.
+                -->
+                <p id="tg-galat" class="hidden mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-300 text-[11px] font-bold text-red-800"></p>
+                <div class="space-y-2.5">
+                    <input type="text" id="tg-peran" placeholder="Jabatan, mis. Assistant Manager" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <input type="text" id="tg-subperan" placeholder="Bidang, mis. Pengendalian Operasi" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <!--
+                      Kolom "Lencana singkat" dilepas 7 September 2026.
+                      Satu-satunya tempat ia pernah tampil adalah lencana kuning
+                      di kartu bagan, & lencana itu sudah dihapus karena tidak
+                      menambah keterangan apa pun di atas nama jabatan yang
+                      tertulis persis di bawahnya.
+
+                      Membiarkan kolomnya berarti meminta orang mengisi sesuatu
+                      yang tidak muncul di mana pun. Datanya sendiri TIDAK
+                      dihapus dari sheet - kolom 'lencana' tetap ada & masih
+                      ikut tercetak pada laporan bagan.
+                    -->
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Tugas Pokok &amp; Fungsi
+                </label>
+                <textarea id="tg-tupoksi" rows="7" oninput="pratinjauTupoksi_()"
+                          placeholder="Tulis SATU TUGAS PER BARIS, tekan Enter untuk tugas berikutnya.&#10;&#10;Contoh:&#10;Mengendalikan perjalanan KA wilayah 1&#10;Mengevaluasi ketepatan waktu harian&#10;Menyusun laporan gangguan mingguan"
+                          class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold leading-relaxed focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+
+                <!--
+                  Pratinjau langsung. Aturan "satu tugas per baris" dulu hanya
+                  ditulis sebagai petunjuk kecil, & akibatnya banyak tupoksi
+                  masuk sebagai satu paragraf panjang yang lalu tampil sebagai
+                  SATU butir raksasa. Dengan pratinjau, salah tulisnya terlihat
+                  seketika - sebelum disimpan, bukan setelahnya.
+                -->
+                <div class="mt-2 rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Pratinjau butir tugas</span>
+                        <span id="tg-tupoksi-hitung" class="text-[9px] font-black text-slate-400">0 butir</span>
+                    </div>
+                    <div id="tg-tupoksi-pratinjau" class="px-3 py-2.5 max-h-32 overflow-y-auto custom-scrollbar"></div>
+                </div>
+                <p class="text-[9px] text-slate-400 font-semibold mt-1.5">
+                    Tupoksi atasan ikut tampil sebagai turunan. Isian ini muncul saat kotak disorot di bagan.
+                </p>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Personil yang Menempati</label>
+                <!--
+                  Memilih nama TIDAK langsung menyimpan - baris di bawah yang
+                  mengatakannya. Sebelumnya penugasan tertulis begitu nama
+                  diklik, sehingga tombol Batal tidak membatalkan apa pun dan
+                  tombol Simpan justru bisa menimpanya kembali.
+                -->
+                <p id="tg-pilihan-info" class="hidden mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-900"></p>
+                <div id="tg-daftar-personil" class="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <div class="flex items-center gap-1.5">
+                <button id="btn-tg-hapus" onclick="hapusJabatan()" title="Hapus jabatan ini" class="px-3 py-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-bold rounded-xl text-xs transition">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+                <button onclick="tambahBawahan()" title="Tambah jabatan di bawah ini" class="px-3 py-2.5 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-code-branch"></i><span class="hidden sm:inline">Tambah Bawahan</span>
+                </button>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="tutupTugaskan()" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                <button id="btn-tg-simpan" onclick="simpanJabatan()" class="px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ MODAL: DATA PERSONIL ════ -->
+<div id="modal-personil" class="hidden fixed inset-0 z-[86] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-id-badge text-[#d4af37]"></i><span id="ps-judul">Tambah Personil</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Data akan tampil di bagan saat ditugaskan</p>
+            </div>
+            <button onclick="tutupFormPersonil()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-3.5 overflow-y-auto flex-1">
+            <div class="flex items-center gap-4">
+                <div id="ps-foto-pratinjau" class="w-20 h-20 rounded-2xl bg-slate-100 border-2 border-slate-200 flex items-center justify-center overflow-hidden shrink-0"></div>
+                <div class="flex-1 space-y-1.5">
+                    <input type="file" id="ps-foto-file" accept="image/*" class="hidden" onchange="pilihFotoPersonil_(event)">
+                    <input type="hidden" id="ps-foto-data">
+                    <button onclick="document.getElementById('ps-foto-file').click()" class="w-full px-3 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-700 font-bold rounded-xl text-[11px] transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-camera text-slate-500"></i><span>Pilih Foto</span>
+                    </button>
+                    <button onclick="hapusFotoPersonil_()" class="w-full px-3 py-1.5 text-slate-400 hover:text-red-600 font-bold text-[10px] transition">Hapus foto</button>
+                    <p class="text-[9px] text-slate-400 font-semibold">Otomatis dikecilkan jadi 240&times;240</p>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Nama Lengkap <span class="text-red-500">*</span></label>
+                <input type="text" id="ps-nama" placeholder="mis. ARIEF RIFALDI" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">NIK / NIPP</label>
+                    <input type="text" id="ps-nik" placeholder="mis. 54596" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Jabatan</label>
+                    <input type="text" id="ps-jabatan" placeholder="mis. Manager Pengendalian" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <button id="btn-ps-hapus" onclick="hapusPersonil()" class="px-3.5 py-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i><span>Hapus</span>
+            </button>
+            <div class="flex items-center gap-2">
+                <button onclick="tutupFormPersonil()" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                <button id="btn-ps-simpan" onclick="simpanPersonil()" class="px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--
+  TOOLTIP TUPOKSI - muncul saat kotak jabatan disorot.
+  position:fixed, BUKAN absolute: panggung bagan punya overflow:auto, &
+  elemen absolute di dalamnya akan terpotong oleh tepi panggung persis
+  pada kotak-kotak di pinggir - justru yang paling butuh tooltip melebar
+  keluar. Dengan fixed ia melayang di atas segalanya.
+-->
+<div id="tupoksi-tip" class="hidden fixed z-[70] w-[310px] rounded-2xl bg-[#0c1d37] text-white shadow-2xl border border-[#d4af37]/30 overflow-hidden pointer-events-none">
+    <div class="px-3.5 py-2.5 border-b border-white/10 bg-black/20">
+        <p id="tip-peran" class="text-[11px] font-black text-[#d4af37] leading-tight"></p>
+        <p id="tip-orang" class="text-[9.5px] font-bold text-slate-400 mt-0.5"></p>
+    </div>
+    <div id="tip-isi" class="px-3.5 py-2.5 max-h-[280px] overflow-hidden"></div>
+</div>
+
+<!-- TUPOKSI JABATAN (beserta turunan dari atasannya) -->
+<div id="modal-tupoksi" class="hidden fixed inset-0 z-[87] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-list text-[#d4af37]"></i><span id="tp-judul" class="truncate">Tupoksi</span>
+                </h3>
+                <p id="tp-subjudul" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button onclick="tutupTupoksi()" class="text-slate-400 hover:text-white transition shrink-0"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div id="tp-isi" class="p-6 space-y-2.5 overflow-y-auto flex-1"></div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            <button onclick="tutupTupoksi()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>

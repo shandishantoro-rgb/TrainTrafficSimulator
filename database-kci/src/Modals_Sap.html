@@ -1,0 +1,21 @@
+<!--
+  Modals_Sap.html
+  Modal untuk Spesifikasi Sarana & Perlintasan Sebidang (form generik
+  dipakai bersama kedua sub-menu ini). Modal Emplasemen Stasiun pindah ke
+  Modals_SapEmplasemen.html sejak redesain v2 (16 Agustus 2026) - modal
+  "skema statis" lama sudah TIDAK dipakai lagi, digantikan diagram
+  otomatis di emp-preview-modal.
+-->
+    <div id="modal-input-sap" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center">
+                <h3 id="sap-modal-title" class="font-bold text-xs uppercase">Registrasi Data Asset</h3>
+                <button onclick="closeSapInputModal()" class="text-slate-300 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSapSubmit(event)" class="p-6 space-y-4 text-xs">
+                <input type="hidden" id="sap-type" />
+                <div id="sap-form-fields" class="space-y-4"></div>
+                <button type="submit" class="w-full py-2.5 bg-[#0c1d37] text-white font-bold rounded-lg">Simpan Data &amp; Sync</button>
+            </form>
+        </div>
+    </div>

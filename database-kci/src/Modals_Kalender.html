@@ -1,0 +1,179 @@
+<!--
+  Modals_Kalender.html
+  Dua modal untuk Kalender Kegiatan di Dashboard (11 Oktober 2026):
+
+    1. modal-kalender-form  - tambah / ubah kegiatan
+    2. modal-kalender-ingat - pengingat H-14 / H-7 / H-3 saat membuka
+                              aplikasi
+
+  Keduanya dipisah dari Modals_Admin supaya kalender bisa dikembangkan
+  tanpa menyentuh berkas yang dipakai modul lain.
+-->
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 1. FORM TAMBAH / UBAH KEGIATAN                                 -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div id="modal-kalender-form" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col">
+
+            <div class="bg-[#0c1d37] text-white px-5 py-4 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#d4af37] flex items-center justify-center">
+                        <i class="fa-solid fa-calendar-plus text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 id="kal-form-judul" class="font-black text-xs uppercase tracking-wider">Tambah Kegiatan</h3>
+                        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Kegiatan yang berdampak pada operasi</p>
+                    </div>
+                </div>
+                <button type="button" onclick="kalTutupForm_()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form onsubmit="kalSimpan_(event)" class="p-5 space-y-4 text-xs overflow-y-auto">
+                <input type="hidden" id="kal-f-id">
+
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Nama Kegiatan <span class="text-rose-500">*</span>
+                    </label>
+                    <input id="kal-f-judul" type="text" required maxlength="120" autocomplete="off"
+                           placeholder="Konser Avenged Sevenfold"
+                           class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Lokasi</label>
+                    <input id="kal-f-lokasi" type="text" maxlength="120" autocomplete="off"
+                           placeholder="Jakarta International Stadium"
+                           class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Tanggal Mulai <span class="text-rose-500">*</span>
+                        </label>
+                        <input id="kal-f-mulai" type="date" required onchange="kalSelarasTanggal_()"
+                               class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Tanggal Selesai</label>
+                        <input id="kal-f-selesai" type="date"
+                               class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        <p class="text-[9px] text-slate-400 font-bold mt-1">Kosongkan bila kegiatan satu hari.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Kategori</label>
+                    <select id="kal-f-kategori"
+                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition cursor-pointer"></select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Catatan</label>
+                    <textarea id="kal-f-catatan" rows="3" maxlength="500"
+                              placeholder="Perkiraan penumpang, rekayasa yang disiapkan, unit yang terlibat..."
+                              class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition resize-none"></textarea>
+                </div>
+
+                <!-- Pratinjau kapan pengingatnya akan muncul. Ditampilkan
+                     langsung saat tanggal diisi supaya penginput tahu
+                     konsekuensi pilihannya sebelum menyimpan. -->
+                <div id="kal-f-pratinjau" class="hidden rounded-xl bg-[#0c1d37]/[0.04] border border-slate-200 px-3.5 py-3">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Pengingat akan muncul</p>
+                    <p id="kal-f-pratinjau-isi" class="text-[11px] font-bold text-slate-600 leading-relaxed"></p>
+                </div>
+
+                <div id="kal-f-galat" class="hidden rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-[11px] font-bold text-rose-700"></div>
+
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="kalTutupForm_()"
+                            class="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold rounded-xl transition">Batal</button>
+                    <button type="submit" id="kal-f-simpan"
+                            class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-black rounded-xl transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-[11px]"></i><span>Simpan Kegiatan</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 2. PENGINGAT SAAT MEMBUKA APLIKASI                             -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!--
+      Sengaja berupa modal, bukan toast kecil di pojok: kegiatan seperti
+      konser di JIS menuntut persiapan rekayasa pola operasi, & pengingat
+      yang bisa terlewat begitu saja sama saja dengan tidak ada.
+
+      Tiap tahap hanya muncul sekali - lihat kalIngatTutup_() di
+      Script_Kalender.html.
+    -->
+    <div id="modal-kalender-ingat" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col">
+
+            <div class="bg-[#0c1d37] text-white px-6 py-5 shrink-0 relative overflow-hidden">
+                <!-- Pita diagonal tipis, penanda visual yang sama dengan kop cetak. -->
+                <div class="absolute top-0 right-0 h-full w-28 opacity-70 pointer-events-none">
+                    <div class="absolute top-[-20%] right-10 w-2 h-[140%] bg-[#e11d48] -skew-x-[24deg]"></div>
+                    <div class="absolute top-[-20%] right-6 w-2 h-[140%] bg-[#1b64b5] -skew-x-[24deg]"></div>
+                    <div class="absolute top-[-20%] right-2 w-2 h-[140%] bg-[#d4af37] -skew-x-[24deg]"></div>
+                </div>
+                <div class="flex items-center gap-3.5 relative">
+                    <div class="w-11 h-11 rounded-2xl bg-[#d4af37]/15 text-[#d4af37] flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-bell text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-sm uppercase tracking-wider">Pengingat Kegiatan</h3>
+                        <p id="kal-ingat-sub" class="text-[10px] text-slate-400 font-bold mt-0.5">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="kal-ingat-isi" class="p-5 space-y-2.5 overflow-y-auto"></div>
+
+            <div class="px-5 py-4 bg-slate-50 border-t border-slate-200 flex items-center gap-2 shrink-0">
+                <button onclick="kalIngatTutup_(false)"
+                        class="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold text-xs rounded-xl transition">
+                    Ingatkan lagi nanti
+                </button>
+                <button onclick="kalIngatTutup_(true)"
+                        class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check text-[11px]"></i><span>Mengerti, jangan tampilkan lagi</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 3. PANEL GESER: AKTIVITAS TERAKHIR                             -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!--
+      Dipindahkan dari kartu tetap di Dashboard supaya tempatnya bisa
+      dipakai kalender. Isinya tetap diisi oleh kode lama lewat id
+      "dash-aktivitas" - tidak ada fungsi yang perlu diubah.
+    -->
+    <div id="kal-aktivitas-tirai" onclick="toggleActivityPanel()"
+         class="hidden fixed inset-0 bg-[#0c1d37]/30 backdrop-blur-[2px] z-[55] opacity-0 transition-opacity"></div>
+
+    <div id="kal-aktivitas-panel"
+         class="fixed top-0 right-0 h-full w-full sm:w-[400px] bg-white shadow-2xl z-[56] translate-x-full flex flex-col"
+         style="transition: transform .3s ease-in-out">
+        <div class="px-5 py-4 border-b border-slate-200 bg-[#0c1d37] text-white flex justify-between items-center shrink-0">
+            <div>
+                <h3 class="font-black text-xs uppercase tracking-wider">Aktivitas Terakhir</h3>
+                <p class="text-[10px] text-slate-400 font-bold mt-0.5">Perubahan data terbaru di seluruh menu</p>
+            </div>
+            <button onclick="toggleActivityPanel()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-5">
+            <div id="dash-aktivitas" class="space-y-2"></div>
+        </div>
+    </div>

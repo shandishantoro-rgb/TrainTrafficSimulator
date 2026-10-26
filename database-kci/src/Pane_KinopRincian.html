@@ -1,0 +1,56 @@
+<!--
+  Pane_KinopRincian.html
+  Pane/menu: Kinerja Operasi - Rincian Lintas
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-kinop-rincian" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div>
+                            <h3 class="text-sm font-black text-[#0c1d37] tracking-tight">Rincian Performa &amp; Kelambatan KA</h3>
+                            <p class="text-xs text-slate-400 font-semibold mt-1">Catatan harian ketepatan kedatangan kereta</p>
+                        </div>
+                        <button id="btn-add-kinop-rincian" onclick="openKinopInputModal()" class="bg-[#0c1d37] hover:bg-slate-800 text-white font-black text-xs px-6 py-2.5 rounded-xl flex items-center space-x-1.5 shadow uppercase tracking-wider transition">
+                            <i class="fa-solid fa-plus-circle"></i><span>Input Data Lintas</span>
+                        </button>
+                    </div>
+
+                    <div class="flex flex-row items-center gap-3 mb-6 w-full text-[11px] overflow-x-auto pb-3 filter-scroll whitespace-nowrap">
+                        <div class="flex items-center space-x-1 bg-slate-100 px-3 py-1.5 rounded-xl shrink-0">
+                            <span class="font-bold text-slate-500 uppercase tracking-wide mr-1">LINDI/LINTAS:</span>
+                            <select id="filter-kinop-line" onchange="applyKinopFilters()" class="bg-transparent font-bold text-slate-700 outline-none cursor-pointer">
+                                <option value="Semua">Semua Lintas</option>
+                                <option value="Bogor Line">Bogor Line</option>
+                                <option value="Cikarang Line">Cikarang Line</option>
+                                <option value="Rangkas Line">Rangkas Line</option>
+                                <option value="Tangerang Line">Tangerang Line</option>
+                            </select>
+                        </div>
+                        <div class="relative w-40 shrink-0">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="search-kinop-input" onkeyup="applyKinopFilters()" placeholder="Cari No KA..." class="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-xl font-bold text-slate-700 text-[11px]" />
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto border border-slate-200 rounded-2xl">
+                        <table class="w-full text-[11px] font-bold text-slate-700 border-collapse">
+                            <thead>
+                                <tr class="bg-[#0c1d37] text-white text-center font-extrabold uppercase tracking-wider divide-x divide-slate-800">
+                                    <th class="px-4 py-3.5 w-12 text-center">NO</th>
+                                    <th class="px-5 py-3.5">TANGGAL</th>
+                                    <th class="px-4 py-3.5">NO KA</th>
+                                    <th class="px-5 py-3.5">LINTAS</th>
+                                    <th class="px-5 py-3.5">STASIUN AWAL</th>
+                                    <th class="px-5 py-3.5">STASIUN AKHIR</th>
+                                    <th class="px-4 py-3.5">JADWAL</th>
+                                    <th class="px-4 py-3.5">REALISASI</th>
+                                    <th class="px-4 py-3.5">KELAMBATAN (MNT)</th>
+                                    <th class="px-6 py-3.5 text-left">KETERANGAN / PENYEBAB</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kinop-table-body" class="divide-y divide-slate-200 bg-white text-center"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>

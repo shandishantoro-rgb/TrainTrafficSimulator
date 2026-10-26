@@ -1,0 +1,149 @@
+<!--
+  ══════════════════════════════════════════════════════════════════
+  PROG & REAL JADWAL DINASAN  (menu: tc-roster)
+  ══════════════════════════════════════════════════════════════════
+
+  v2026.10.13 - disusun ulang menjadi SATU kisi dengan saklar Program /
+  Realisasi (permintaan: "cukup berupa filter prog / real untuk lihat atau
+  edit kesesuaian dinasan").
+
+  Sebelumnya halaman ini menumpuk dua tabel yang tidak saling mengenal:
+  kisi Program di atas & "Realisasi Roster" di bawah - yang terakhir bahkan
+  tidak pernah terisi lagi sejak Laporan Dinasan beralih ke model siklus.
+
+  Sekarang:
+    - PROGRAM    : jadwal rencana, disunting langsung di kisi.
+    - REALISASI  : dinas yang benar-benar dijalani. Terisi OTOMATIS dari
+                   Laporan Dinasan, bisa dilengkapi/dikoreksi manual, &
+                   setiap sel yang berbeda dari Program ditandai merah.
+    - Input jadwal lewat modal "Input Jadwal Dinasan" yang bentuknya sama
+      dengan Input Data Rekapitulasi Gangguan: Cara 1 Upload Excel,
+      Cara 2 Input Manual (dengan pola dinas otomatis).
+
+  Modalnya ada di Modals_TrainControl.html; logikanya di bagian
+  "PROG & REAL JADWAL DINASAN" pada Script_TrainControl.html.
+-->
+<section id="pane-tc-roster" class="hidden animate-fade-in">
+    <div class="space-y-5">
+
+        <!-- ══ KEPALA ══ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black text-[#0c1d37] tracking-tight leading-tight">Prog &amp; Real Jadwal Dinasan</h3>
+                        <p class="text-[11px] text-slate-400 font-bold mt-0.5">Jadwal rencana (Program) &amp; dinas yang benar-benar dijalani (Realisasi)</p>
+                    </div>
+                </div>
+                <span id="jadwal-status-simpan" class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-300 text-[10px] font-black text-amber-800">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>Perubahan belum disimpan
+                </span>
+            </div>
+
+            <div class="flex flex-wrap items-end gap-2.5 mt-4">
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Bulan</label>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="geserBulanJadwal_(-1)" title="Bulan sebelumnya" class="w-9 h-[42px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-solid fa-chevron-left text-xs"></i>
+                        </button>
+                        <input type="month" id="jadwal-bulan" onchange="gantiBulanJadwal_()" class="w-44 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <button onclick="geserBulanJadwal_(1)" title="Bulan berikutnya" class="w-9 h-[42px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-solid fa-chevron-right text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap ml-auto">
+                    <button onclick="bukaInputJadwal_('excel')" id="btn-jadwal-input" class="jadwal-perlu-izin px-4 py-2.5 bg-gradient-to-r from-[#d4af37] to-[#b8952b] hover:from-[#c9a633] hover:to-[#a88625] text-[#0c1d37] font-black text-xs rounded-xl flex items-center gap-2 shadow-sm transition">
+                        <i class="fa-solid fa-file-circle-plus"></i><span>Input Jadwal</span>
+                    </button>
+                    <button onclick="simpanJadwal_()" id="btn-jadwal-simpan" class="jadwal-perlu-izin px-4 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-sm transition disabled:opacity-50">
+                        <i class="fa-solid fa-floppy-disk text-[#d4af37]"></i><span>Simpan Jadwal</span>
+                    </button>
+                    <!-- Export: satu tombol, dua pilihan. -->
+                    <div class="relative">
+                        <button onclick="toggleMenuEksporJadwal_()" class="px-4 py-2.5 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-700 font-bold text-xs rounded-xl flex items-center gap-2 transition">
+                            <i class="fa-solid fa-file-export text-[#0c1d37]"></i><span>Export</span>
+                            <i class="fa-solid fa-chevron-down text-[9px] opacity-50"></i>
+                        </button>
+                        <div id="jadwal-menu-ekspor" class="hidden absolute right-0 mt-1 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
+                            <button onclick="pilihEksporJadwal_('excel')" class="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+                                <i class="fa-solid fa-file-excel text-emerald-600"></i><span>Excel (.xlsx) &middot; Program + Realisasi</span>
+                            </button>
+                            <button onclick="pilihEksporJadwal_('pdf')" class="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100 transition">
+                                <i class="fa-solid fa-file-pdf text-red-600"></i><span>PDF / Cetak &middot; tampilan aktif</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ KARTU RINGKAS ══ -->
+        <div id="jadwal-kartu" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+        <!-- ══ KISI JADWAL ══ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <!-- Saklar Program / Realisasi -->
+                    <div class="inline-flex p-1 bg-slate-100 rounded-xl" role="tablist">
+                        <button id="jadwal-mode-prog" onclick="aturModeJadwal_('prog')" class="px-4 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-clipboard-list"></i><span>Program</span>
+                        </button>
+                        <button id="jadwal-mode-real" onclick="aturModeJadwal_('real')" class="px-4 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-clipboard-check"></i><span>Realisasi</span>
+                        </button>
+                    </div>
+                    <p id="jadwal-mode-ket" class="text-[10px] text-slate-400 font-bold max-w-md leading-snug"></p>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button id="btn-jadwal-beda" onclick="toggleBedaSajaJadwal_()" class="hidden inline-flex px-3 py-1.5 bg-white border border-slate-200 hover:border-red-300 text-slate-600 font-bold text-[10px] rounded-lg transition items-center gap-1.5">
+                        <i class="fa-solid fa-filter"></i><span>Hanya yang beda</span>
+                    </button>
+                    <button id="btn-jadwal-salin" onclick="salinProgKeReal_()" class="jadwal-perlu-izin hidden inline-flex px-3 py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] rounded-lg transition items-center gap-1.5">
+                        <i class="fa-solid fa-copy"></i><span>Salin Program ke sel kosong</span>
+                    </button>
+                    <button id="btn-jadwal-grup" onclick="tambahBarisJadwal_('grup')" class="jadwal-perlu-izin px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[10px] rounded-lg transition">
+                        <i class="fa-solid fa-heading mr-1"></i>Tambah Grup
+                    </button>
+                    <button id="btn-jadwal-petugas" onclick="tambahBarisJadwal_('petugas')" class="jadwal-perlu-izin px-3 py-1.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold text-[10px] rounded-lg transition">
+                        <i class="fa-solid fa-user-plus mr-1"></i>Tambah Petugas
+                    </button>
+                </div>
+            </div>
+
+            <!-- Kuas kode: pilih satu, lalu klik / seret di atas sel -->
+            <div id="jadwal-kuas" class="jadwal-perlu-izin px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2 flex-wrap"></div>
+
+            <div class="overflow-x-auto custom-scrollbar" id="jadwal-wadah-kisi">
+                <table data-tabel-ponsel="geser" class="min-w-full text-[11px] border-collapse select-none">
+                    <thead id="jadwal-head" class="bg-[#0c1d37] text-white text-[9px] font-extrabold uppercase tracking-wider"></thead>
+                    <tbody id="jadwal-body" class="font-semibold text-slate-700"></tbody>
+                </table>
+            </div>
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between gap-3 flex-wrap">
+                <span id="jadwal-ringkas">Pilih bulan untuk memuat jadwal.</span>
+                <span id="jadwal-legenda" class="flex flex-wrap items-center gap-1.5"></span>
+            </div>
+        </div>
+
+        <!-- ══ PENANDA TANGAN ══ -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <div>
+                    <h4 class="text-xs font-black text-slate-800 uppercase tracking-wider">Penanda Tangan</h4>
+                    <p class="text-[10px] text-slate-400 font-bold mt-0.5">Dipilih dari Struktur Organisasi &middot; tanda tangannya berupa barcode &middot; ikut tercetak pada PDF</p>
+                </div>
+                <button onclick="tambahTtdJadwal_()" class="jadwal-perlu-izin px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[10px] rounded-lg transition">
+                    <i class="fa-solid fa-plus mr-1"></i>Tambah Penanda Tangan
+                </button>
+            </div>
+            <div id="jadwal-ttd" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+
+    </div>
+</section>

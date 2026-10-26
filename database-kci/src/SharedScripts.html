@@ -1,0 +1,1028 @@
+<!--
+  SharedScripts.html
+  Fungsi umum yang dipakai lintas menu: buka/tutup sidebar, accordion menu,
+  navigasi antar-pane (switchTab), pengisian dropdown filter, dan notifikasi
+  toast. File ini sengaja dipisah karena dipakai oleh semua modul lain -
+  jangan taruh logic yang spesifik untuk satu menu saja di sini.
+-->
+<script>
+        // ════════════════════════════════════════════════════════════════
+        // TAMPILAN PONSEL
+        // ════════════════════════════════════════════════════════════════
+        //
+        // Tata letaknya sendiri diatur media query di Styles.html, jadi tidak
+        // bergantung pada berkas ini. Yang dikerjakan di sini hanya dua hal
+        // yang memang tidak bisa dilakukan CSS:
+        //
+        //   1. Memberi setiap sel tabel label kolomnya, supaya tabel bisa
+        //      digambar ulang sebagai kartu.
+        //   2. Membuka & menutup laci menu.
+
+        /** true bila layar selebar ponsel. Dibaca ulang tiap kali, bukan
+         *  disimpan: layar bisa diputar, & jendela desktop bisa disempitkan. */
+        function modePonsel_() {
+            return window.matchMedia('(max-width: 767px)').matches;
+        }
+
+        function bukaLaciMenu_() { document.body.classList.add('laci-buka'); }
+        function tutupLaciMenu_() { document.body.classList.remove('laci-buka'); }
+
+        /**
+         * Menyalin judul kolom ke setiap sel sebagai atribut data-label.
+         *
+         * ═══ KENAPA LEWAT JAVASCRIPT ═══
+         * Pola "tabel jadi kartu" menuntut tiap sel tahu nama kolomnya, dan
+         * CSS tidak bisa membaca isi baris judul. Cara biasanya adalah menulis
+         * data-label satu per satu di setiap sel - di aplikasi ini itu berarti
+         * menyentuh 19 berkas pane & belasan penggambar tabel di JavaScript,
+         * lalu mengingat melakukannya lagi setiap kali ada kolom baru.
+         *
+         * Di sini labelnya diambil dari baris judul tabel itu sendiri. Satu
+         * tempat, berlaku untuk seluruh tabel, & tabel yang ditambahkan nanti
+         * ikut tertangani tanpa perubahan apa pun.
+         *
+         * Sel bergabung (colspan) sengaja dilewati: baris "tidak ada data"
+         * bukan data berlabel, dan memberinya label justru menyesatkan.
+         */
+        function labeliTabelPonsel_(akar) {
+            const wadah = akar || document;
+            const tabel = wadah.querySelectorAll ? wadah.querySelectorAll('table') : [];
+
+            tabel.forEach(function (tb) {
+                // Tabel matriks (kalender roster & sejenisnya) tetap digeser,
+                // bukan dijadikan kartu - lihat alasannya di Styles.html.
+                const pembungkus = tb.closest('.overflow-x-auto') || tb.parentElement;
+                if (!pembungkus) return;
+                if (tb.getAttribute('data-tabel-ponsel') === 'geser') {
+                    pembungkus.classList.add('tabel-geser');
+                    pembungkus.classList.remove('tabel-kartu');
+                    return;
+                }
+
+                const barisJudul = tb.tHead ? tb.tHead.rows[tb.tHead.rows.length - 1] : null;
+                if (!barisJudul) return;
+                // Judul kolom yang DISEMBUNYIKAN (mis. kolom centang Rincian
+                // Gangguan di luar mode pilih: style.display='none', & selnya
+                // memang tidak digambar) tidak ikut dihitung. Dulu ikut, sehingga
+                // seluruh label bergeser satu: sel NO berlabel kosong, sel
+                // TANGGAL berlabel "NO", dan seterusnya sampai AKSI berlabel KODE.
+                // Pemeriksaan lewat style & kelas, BUKAN offsetParent - di ponsel
+                // seluruh thead memang disembunyikan CSS.
+                const judul = Array.prototype.filter.call(barisJudul.cells, function (th) {
+                    return th.style.display !== 'none' && !th.classList.contains('hidden');
+                }).map(function (th) {
+                    return String(th.textContent || '').replace(/\s+/g, ' ').trim();
+                });
+                if (!judul.length) return;
+
+                pembungkus.classList.add('tabel-kartu');
+
+                Array.prototype.forEach.call(tb.tBodies, function (tbody) {
+                    Array.prototype.forEach.call(tbody.rows, function (tr) {
+                        // Baris pemisah tanggal & baris "tidak ada data"
+                        // memakai satu sel melebar - dibiarkan apa adanya.
+                        if (tr.cells.length === 1 && tr.cells[0].hasAttribute('colspan')) return;
+                        Array.prototype.forEach.call(tr.cells, function (td, i) {
+                            if (td.hasAttribute('colspan')) return;
+                            if (td.getAttribute('data-label') !== null) return;  // sudah pernah
+                            td.setAttribute('data-label', judul[i] || '');
+                        });
+                    });
+                });
+            });
+        }
+
+        /**
+         * Menjalankan pelabelan setiap kali isi halaman berubah.
+         *
+         * Tabel di aplikasi ini digambar ulang terus-menerus oleh belasan
+         * fungsi render yang berbeda. Memanggil pelabelan dari masing-masing
+         * berarti menyentuh semuanya & berharap tidak ada yang terlewat -
+         * termasuk yang ditambahkan di kemudian hari.
+         *
+         * MutationObserver menangkap semuanya dari satu tempat. Ditunda 120ms
+         * supaya satu penggambaran yang menghasilkan ratusan perubahan DOM
+         * hanya memicu satu kali pelabelan, bukan ratusan.
+         */
+        let jedaLabelTabel_ = null;
+        function pasangPengamatTabelPonsel_() {
+            if (typeof MutationObserver === 'undefined') return;
+
+            const jalankan = function () {
+                if (!modePonsel_()) return;
+                labeliTabelPonsel_(document.getElementById('main-scroll'));
+                labeliTabelPonsel_(document.body);   // modal berada di luar main
+            };
+
+            new MutationObserver(function () {
+                clearTimeout(jedaLabelTabel_);
+                jedaLabelTabel_ = setTimeout(jalankan, 120);
+            }).observe(document.body, { childList: true, subtree: true });
+
+            // Layar bisa diputar atau jendela disempitkan setelah halaman
+            // terbuka - labelnya perlu ada saat itu juga.
+            window.matchMedia('(max-width: 767px)').addEventListener
+                ? window.matchMedia('(max-width: 767px)').addEventListener('change', jalankan)
+                : window.addEventListener('resize', jalankan);
+
+            jalankan();
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('main-sidebar');
+            const expanded = document.getElementById('sidebar-expanded-view');
+            const collapsed = document.getElementById('sidebar-collapsed-view');
+            if (sidebar.classList.contains('w-80')) {
+                sidebar.classList.remove('w-80');
+                sidebar.classList.add('w-20');
+                expanded.classList.add('hidden');
+                collapsed.classList.remove('hidden');
+                collapsed.classList.add('flex');
+            } else {
+                sidebar.classList.remove('w-20');
+                sidebar.classList.add('w-80');
+                collapsed.classList.add('hidden');
+                collapsed.classList.remove('flex');
+                expanded.classList.remove('hidden');
+            }
+        }
+
+        function toggleAccordion(accId, arrowId) {
+            const acc = document.getElementById(accId);
+            const arrow = document.getElementById(arrowId);
+            if (acc.classList.contains('hidden')) {
+                acc.classList.remove('hidden');
+                acc.classList.add('block');
+                arrow.classList.add('rotate-90');
+            } else {
+                acc.classList.add('hidden');
+                acc.classList.remove('block');
+                arrow.classList.remove('rotate-90');
+            }
+        }
+
+        // ─── NAVIGATION ──────────────────────────────────────────────
+
+        /** Menu yang sedang terbuka - dipakai untuk memeriksa apakah masih boleh dilihat setelah izin berubah. */
+        let activeTabId = 'dashboard';
+
+        function switchTab(tabId) {
+            // Di ponsel, memilih menu berarti selesai dengan lacinya.
+            // Membiarkannya terbuka menutupi halaman yang baru saja dibuka.
+            tutupLaciMenu_();
+            activeTabId = tabId;
+            const panes = [
+                'pane-dashboard', 'pane-kinop-summary', 'pane-kinop-rincian', 'pane-kinop-db',
+                'pane-gangguan-summary', 'pane-gangguan-rincian', 'pane-gangguan-custom',
+                'pane-tc-serah', 'pane-tc-dinasan', 'pane-tc-resume', 'pane-tc-roster', 'pane-tc-raport', 'pane-tc-struktur',
+                'pane-sap-emplasemen', 'pane-sap-spesifikasi', 'pane-sap-perlintasan',
+                'pane-peraturan-dokumen', 'pane-peraturan-custom', 'pane-izin-linpel',
+                'pane-izin-iops', 'pane-anggaran', 'pane-user-mgmt'
+            ];
+            panes.forEach(p => { const el = document.getElementById(p); if (el) el.classList.add('hidden'); });
+
+            const titles = {
+                'dashboard': 'Dashboard Utama',
+                'kinop-summary': 'Summary Performa Kinerja Lintas',
+                'kinop-rincian': 'Rincian Performa Kelambatan Lintas',
+                'kinop-db': 'Database Gapeka Armada KA',
+                'gangguan-summary': 'Summary Rekapitulasi Gangguan',
+                'gangguan-rincian': 'Rincian Rekapitulasi Gangguan',
+                'gangguan-custom': 'Rekap Gangguan Sarana',
+                'tc-serah': 'Serah Terima Dinasan Monitoring',
+                'tc-dinasan': 'Laporan Dinasan',
+                'tc-resume': 'Resume Laporan Dinasan',
+                'tc-roster': 'Prog & Real Jadwal Dinasan',
+                'tc-struktur': 'Struktur Organisasi COTP',
+                'tc-raport': 'Buku Raport Penilaian Staf',
+                'sap-emplasemen': 'Emplasemen Stasiun KCI',
+                'sap-spesifikasi': 'Spesifikasi Sarana KCI',
+                'sap-perlintasan': 'Perlintasan Sebidang KA (JPL)',
+                'peraturan-dokumen': 'Document Repository',
+                'peraturan-custom': 'Summary Arsip - Document Repository',
+                'izin-linpel': 'Izin Lintas Pelayanan (Linpel)',
+                'izin-iops': 'Izin Operasi Sarana (IOPS)',
+                'anggaran': 'Serapan Anggaran Kerja',
+                'user-mgmt': 'User Management'
+            };
+            const headerTitle = document.getElementById('page-title');
+            if (headerTitle) headerTitle.innerText = titles[tabId] || 'COTP Database';
+
+            const target = document.getElementById('pane-' + tabId);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.sidebar-btn').forEach(btn => {
+                btn.className =
+                    "sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold";
+                btn.classList.remove('sidebar-btn-active');
+            });
+            document.querySelectorAll('#sidebar-expanded-view nav button:not(.sidebar-btn)').forEach(btn => {
+                btn.classList.remove('text-[#d4af37]');
+                btn.classList.add('text-slate-400');
+            });
+            const currentBtn = document.getElementById('btn-' + tabId);
+            if (currentBtn) {
+                if (currentBtn.classList.contains('sidebar-btn')) {
+                    currentBtn.className =
+                        "sidebar-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-bold text-sm sidebar-btn-active";
+                } else {
+                    currentBtn.classList.remove('text-slate-400');
+                    currentBtn.classList.add('text-[#d4af37]');
+                }
+            }
+
+            // hydrate
+            if (tabId === 'gangguan-summary') loadRincianGangguan('summary');
+            else if (tabId === 'gangguan-rincian') loadRincianGangguan('rincian');
+            else if (tabId === 'gangguan-custom') loadRekapSarana();
+            else if (tabId === 'tc-dinasan') loadLaporanDinasan();
+            else if (tabId === 'peraturan-dokumen') loadPeraturanDokumen();
+            else if (tabId === 'peraturan-custom') loadSummaryArsip();
+            else if (tabId === 'izin-linpel') loadLinpelData();
+            else if (tabId === 'izin-iops') loadIopsData();
+            else if (tabId === 'user-mgmt') loadUserList();
+            else if (tabId === 'kinop-summary') loadKinopRincian('summary');
+            else if (tabId === 'kinop-rincian') loadKinopRincian('rincian');
+            else if (tabId === 'kinop-db') loadKinopDb();
+            else if (tabId === 'dashboard') { loadDashboard(); pantauPeta_('peta-jkt'); pantauPeta_('peta-jog'); }
+            else if (tabId === 'tc-roster') { loadJadwalDinasan(); }
+            else if (tabId === 'tc-resume') loadResume();
+            else if (tabId === 'tc-serah') loadTcSerah();
+            else if (tabId === 'tc-struktur') loadTcStruktur();
+            else if (tabId === 'tc-raport') loadRaportDashboard();
+            else if (tabId === 'sap-emplasemen') loadEmpStations();
+            else if (tabId === 'sap-spesifikasi') loadSapData('spesifikasi');
+            // Perlintasan punya modulnya sendiri sejak 11 Okt 2026 - skema
+            // generik sap_getData hanya empat kolom & tidak bisa menampung
+            // register perlintasan yang sebenarnya (lihat Module_Perlintasan.gs).
+            else if (tabId === 'sap-perlintasan') loadPerlintasan();
+        }
+
+        function populateAllDropdowns() {
+            populateSelect('filter-rincian-pdetail', optionsPenyebabDetail, 'Semua', 'Semua Detail');
+            populateSelect('filter-rincian-unit', optionsUnitTerkait, 'Semua', 'Semua Unit');
+            populateSelect('filter-rincian-area', optionsArea, 'Semua', 'Semua Area');
+            populateSelect('filter-rincian-kategori', optionsKategori, 'Semua', 'Semua Kategori');
+            populateSelect('filter-rincian-kode', optionsKode, 'Semua', 'Semua Kode');
+            populateSelect('m-pdetail', optionsPenyebabDetail);
+            populateSelect('m-unit', optionsUnitTerkait);
+            populateSelect('m-area', optionsArea);
+            populateSelect('m-kategori', optionsKategori);
+            populateSelect('m-kode-tipe', optionsKode);
+            // 'input-doc-category' TIDAK lagi di sini - kategori dokumen sekarang
+            // dari server, diisi oleh loadPeraturanKategori() di
+            // Script_PeraturanIzinAnggaran.html.
+        }
+
+        function populateSelect(elId, arr, defVal = null, defLabel = null) {
+            const sel = document.getElementById(elId);
+            if (!sel) return;
+            sel.innerHTML = '';
+            if (defVal !== null) {
+                const opt = document.createElement('option');
+                opt.value = defVal;
+                opt.innerText = defLabel || defVal;
+                sel.appendChild(opt);
+            }
+            arr.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.innerText = v;
+                sel.appendChild(opt);
+            });
+        }
+
+        // ─── TOAST ─────────────────────────────────────────────────────
+
+        /**
+         * Kata kunci yang menandakan sesi sudah tidak berlaku.
+         * Dicocokkan ke pesan yang datang dari server.
+         */
+        const PENANDA_SESI_HABIS = ['sesi tidak ditemukan', 'sesi berakhir', 'silakan login', 'login ulang'];
+
+        function showToast(msg) {
+            const teks = String(msg || '');
+
+            // ═══ CELAH YANG DITUTUP ═══
+            // Kalau sesi sudah kedaluwarsa, SETIAP permintaan ke server
+            // ditolak - tapi tiap modul hanya menampilkan pesan gagal biasa,
+            // sementara tampilannya tetap utuh. Hasilnya persis seperti yang
+            // dikeluhkan: halaman terlihat normal tapi tidak ada yang bisa
+            // dikerjakan, dan user tidak tahu harus login ulang.
+            //
+            // Diperiksa di sini karena SELURUH modul melaporkan kegagalan
+            // lewat showToast - satu titik ini menangkap semuanya sekaligus,
+            // tanpa perlu menyentuh seratusan pemanggilan satu per satu.
+            const habis = PENANDA_SESI_HABIS.some(function (k) {
+                return teks.toLowerCase().indexOf(k) !== -1;
+            });
+            if (habis && typeof forceReturnToLogin === 'function') {
+                forceReturnToLogin(teks);
+                return;
+            }
+
+            const toast = document.getElementById('custom-toast');
+            document.getElementById('toast-message').textContent = teks;
+            toast.classList.remove('hidden');
+            setTimeout(closeToast, 5000);
+        }
+
+        function closeToast() { document.getElementById('custom-toast').classList.add('hidden'); }
+
+        /**
+         * ALAT DIAGNOSTIK (tersedia tapi TIDAK ditampilkan di Dashboard lagi
+         * - tugasnya sudah selesai membantu menelusuri masalah data tidak
+         * tampil). Tetap disimpan di sini supaya bisa dipanggil manual kapan
+         * saja lewat Console browser (F12 -> Console -> ketik
+         * runSystemDiagnostic() -> Enter) kalau suatu saat butuh
+         * menelusuri masalah serupa lagi, tanpa perlu menambah tombol di
+         * Dashboard dulu. Hasilnya tercetak di Console (bukan di halaman).
+         */
+        function runSystemDiagnostic() {
+            const btn = document.getElementById('btn-run-diagnostic'); // mungkin null - itu wajar, sudah tidak dipasang di Dashboard
+            const output = document.getElementById('diag-output'); // idem
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menjalankan tes...</span>'; }
+            if (output) output.classList.remove('hidden');
+
+            let log = '=== DIAGNOSTIK SISTEM ===\n';
+            log += 'Waktu: ' + new Date().toString() + '\n';
+            log += 'Token sesi ada: ' + (currentSessionToken ? ('YA (' + currentSessionToken.substring(0, 8) + '...)') : 'TIDAK ADA!') + '\n';
+            log += 'User login: ' + (currentUser ? (currentUser.nama + ' - role: ' + currentUser.roleNama + ' (' + currentUser.roleId + ')') : 'TIDAK ADA / belum login!') + '\n\n';
+            tulis(log + 'Mengetes gangguan_getAll()...\n');
+
+            function tulis(teks) {
+                console.log(teks);
+                if (output) output.innerText += teks;
+            }
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    tulis('HASIL gangguan_getAll:\n' + safeStringify(res) + '\n\n');
+                    lanjutTesEmplasemen();
+                })
+                .withFailureHandler(function (err) {
+                    tulis('GAGAL TOTAL gangguan_getAll (uncaught exception di server):\n' + safeStringify(err) + '\n\n');
+                    lanjutTesEmplasemen();
+                })
+                .gangguan_getAll(currentSessionToken);
+
+            function lanjutTesEmplasemen() {
+                tulis('Mengetes sap_emplasemen_getAll()...\n');
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        tulis('HASIL sap_emplasemen_getAll:\n' + safeStringify(res) + '\n\n');
+                        selesai();
+                    })
+                    .withFailureHandler(function (err) {
+                        tulis('GAGAL TOTAL sap_emplasemen_getAll (uncaught exception di server):\n' + safeStringify(err) + '\n\n');
+                        selesai();
+                    })
+                    .sap_emplasemen_getAll(currentSessionToken);
+            }
+
+            function selesai() {
+                tulis('=== TES SELESAI ===');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play"></i><span>Jalankan Tes Koneksi Data</span>'; }
+            }
+        }
+
+        /** JSON.stringify yang aman dipakai walau hasilnya berisi Error object dsb. */
+        function safeStringify(obj) {
+            try {
+                return JSON.stringify(obj, null, 2).substring(0, 3000);
+            } catch (e) {
+                return String(obj);
+            }
+        }
+
+        /**
+         * Membuat teks aman disisipkan ke dalam HTML (mencegah karakter
+         * seperti <, >, " merusak struktur tabel/halaman kalau data yang
+         * tersimpan ternyata mengandung karakter semacam itu - mis. dari
+         * hasil import Excel yang isinya di luar dugaan). WAJIB dipakai di
+         * setiap kali menyisipkan data dari server ke dalam template HTML.
+         *
+         * PENTING: definisinya memakai pola "window.x = window.x || ..."
+         * (idempotent) - fungsi yang sama juga ditanam ulang di setiap
+         * Script_*.html sebagai cadangan, supaya kalau salah satu file
+         * ketinggalan versi, modul lain TIDAK ikut rusak. Jangan diubah
+         * jadi "function escapeHtml()" biasa - itu akan bentrok deklarasi
+         * ganda dengan cadangan di file-file modul.
+         * @param {*} val Nilai apa pun (akan dikonversi ke string).
+         * @return {string} Teks yang aman disisipkan ke HTML.
+         */
+        window.escapeHtml = window.escapeHtml || function (val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+
+        // ─── WATCHDOG PEMUATAN DATA ───────────────────────────────────────
+
+        /**
+         * Kalau permintaan ke server (google.script.run) tidak selesai dalam
+         * batas waktu tertentu, tampilkan status "gagal memuat" dengan tombol
+         * "Coba Lagi" di tbody yang ditentukan - supaya tampilan TIDAK PERNAH
+         * macet tak berkesudahan di "Memuat data...". WAJIB clearTimeout()
+         * hasil fungsi ini begitu request selesai (baik sukses maupun gagal),
+         * lihat contoh pemakaian di loadRincianGangguan()/loadEmpStations().
+         * @param {string} tbodyId ID <tbody> yang sedang menampilkan "Memuat data...".
+         * @param {string} retryFnCall Pemanggilan fungsi coba-lagi sebagai teks,
+         *                              mis. "loadRincianGangguan('rincian')".
+         * @param {number} [timeoutMs=12000] Batas waktu tunggu (milidetik).
+         * @return {number} ID timer.
+         */
+        window.startLoadingWatchdog = window.startLoadingWatchdog || function (tbodyId, retryFnCall, timeoutMs) {
+            timeoutMs = timeoutMs || 12000;
+            return setTimeout(function () {
+                const tbody = document.getElementById(tbodyId);
+                if (!tbody || tbody.innerText.indexOf('Memuat data') === -1) return; // sudah kelar duluan, aman
+                const table = tbody.closest('table');
+                const colCount = table ? table.querySelectorAll('thead th').length : 5;
+                tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center py-8">
+                    <p class="text-red-500 font-bold text-xs mb-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Gagal memuat data (koneksi lambat atau terputus).</p>
+                    <button onclick="${retryFnCall}" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition">
+                        <i class="fa-solid fa-rotate-right mr-1.5"></i>Coba Lagi
+                    </button>
+                </td></tr>`;
+            }, timeoutMs);
+        };
+
+        // ─── KINOP ─────────────────────────────────────────────────────
+
+        // ================================================================
+        // DASHBOARD UTAMA - ringkasan lintas-modul (30 Agustus 2026)
+        // ================================================================
+        //
+        // Seluruh isinya diambil dalam SATU panggilan (dashboard_getRingkasan).
+        // Hasilnya juga di-cache di server 60 detik, jadi berpindah menu lalu
+        // kembali ke Dashboard tidak membaca ulang seluruh sheet.
+
+        let dashCache_ = null;
+
+        function loadDashboard(paksa) {
+            const wadah = document.getElementById('dash-kartu');
+            if (!wadah) return;
+            if (dashCache_ && !paksa) { renderDashboard_(dashCache_); return; }
+
+            wadah.innerHTML = '<div class="col-span-full text-center py-6 text-slate-400 font-bold text-xs">' +
+                '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#d4af37]"></i>Memuat ringkasan...</div>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { wadah.innerHTML = '<div class="col-span-full text-center py-6 text-red-500 font-bold text-xs">Gagal memuat ringkasan.</div>'; return; }
+                    dashCache_ = res.data;
+                    renderDashboard_(res.data);
+                })
+                .withFailureHandler(function () { wadah.innerHTML = '<div class="col-span-full text-center py-6 text-red-500 font-bold text-xs">Terjadi kesalahan.</div>'; })
+                .dashboard_getRingkasan(currentSessionToken);
+        }
+
+        function renderDashboard_(d) {
+            // Kalender kegiatan. Dipanggil dari sini, BUKAN dari loadDashboard,
+            // supaya ia tetap digambar ulang saat dashboard memakai salinan
+            // lama (jalur `if (dashCache_ && !paksa)` yang langsung lompat
+            // ke sini tanpa menyentuh server).
+            //
+            // Datanya sendiri punya salinannya sendiri: kalenderMuat_(false)
+            // hanya menggambar ulang bila sudah pernah dimuat - jadi berpindah
+            // menu bolak-balik tidak menambah satu pun permintaan ke peladen.
+            if (typeof kalenderMuat_ === 'function') {
+                try { kalenderMuat_(false); } catch (err) { console.log('[dashboard] kalender gagal:', err); }
+            }
+
+            // Sebaran emplasemen per Daop/Divre - lihat gambarSebaranEmplasemen_().
+            gambarSebaranEmplasemen_(d.sap || {});
+
+            // ── Kartu ringkas. Hanya menu yang boleh dilihat role ini yang
+            //    ditampilkan - percuma memberi angka menu yang tidak bisa dibuka.
+            const kartu = [];
+            const bolehLihat = function (menu) { return (typeof canDo !== 'function') || canDo(menu, 'lihat'); };
+
+            if (bolehLihat('gangguan-rincian') || bolehLihat('gangguan-summary')) {
+                kartu.push({ label: 'Gangguan ' + d.tahun, nilai: d.gangguan.totalTahunIni,
+                    ket: d.gangguan.totalAndil + ' menit andil', ikon: 'fa-triangle-exclamation',
+                    warna: 'bg-rose-50 text-rose-600', menu: 'gangguan-summary' });
+                kartu.push({ label: 'KA Batal ' + d.tahun, nilai: d.gangguan.totalBatal,
+                    ket: 'dari ' + d.gangguan.totalTahunIni + ' kejadian', ikon: 'fa-ban',
+                    warna: 'bg-amber-50 text-amber-600', menu: 'gangguan-rincian' });
+            }
+            if (bolehLihat('peraturan-dokumen')) {
+                kartu.push({ label: 'Dokumen Arsip', nilai: d.arsip.total,
+                    ket: d.arsip.berkas + ' punya berkas', ikon: 'fa-folder-open',
+                    warna: 'bg-sky-50 text-sky-600', menu: 'peraturan-custom' });
+            }
+            if (bolehLihat('tc-serah')) {
+                kartu.push({ label: 'Serah Terima Bulan Ini', nilai: d.dinasan.bulanIni,
+                    ket: d.dinasan.totalSemua + ' total tercatat', ikon: 'fa-right-left',
+                    warna: 'bg-emerald-50 text-emerald-600', menu: 'tc-dinasan' });
+            }
+            if (bolehLihat('sap-emplasemen')) {
+                kartu.push({ label: 'Emplasemen Stasiun', nilai: d.sap.emplasemen,
+                    ket: 'stasiun terdata', ikon: 'fa-diagram-project',
+                    warna: 'bg-violet-50 text-violet-600', menu: 'sap-emplasemen' });
+            }
+            if (bolehLihat('user-mgmt')) {
+                kartu.push({ label: 'Pengguna Aktif', nilai: d.pengguna.aktif,
+                    ket: 'dari ' + d.pengguna.total + ' akun', ikon: 'fa-users',
+                    warna: 'bg-slate-100 text-slate-600', menu: 'user-mgmt' });
+            }
+
+            document.getElementById('dash-kartu').innerHTML = kartu.slice(0, 4).map(function (k) {
+                return '<button onclick="switchTab(\'' + k.menu + '\')" class="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3.5 shadow-sm hover:border-slate-400 hover:shadow transition text-left">' +
+                    '<div class="w-10 h-10 rounded-xl ' + k.warna + ' flex items-center justify-center shrink-0"><i class="fa-solid ' + k.ikon + '"></i></div>' +
+                    '<div class="min-w-0">' +
+                        '<div class="text-[9px] text-slate-400 font-black uppercase tracking-wider truncate">' + escapeHtml(k.label) + '</div>' +
+                        '<div class="text-lg font-black text-[#0c1d37] leading-tight">' + k.nilai + '</div>' +
+                        '<div class="text-[9px] text-slate-400 font-bold truncate">' + escapeHtml(k.ket) + '</div>' +
+                    '</div></button>';
+            }).join('');
+
+            // ── Tren bulanan (SVG sederhana, tanpa pustaka tambahan) ──
+            const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            const nilai = d.gangguan.perBulan || new Array(12).fill(0);
+            const maks = Math.max.apply(null, nilai.concat([1]));
+            const W = 640, H = 190, padKiri = 30, padBawah = 26, padAtas = 12;
+            const lebarSlot = (W - padKiri - 12) / 12;
+            const tinggiPlot = H - padAtas - padBawah;
+
+            const batang = nilai.map(function (v, i) {
+                const t = (v / maks) * tinggiPlot;
+                const x = padKiri + i * lebarSlot + lebarSlot * 0.22;
+                const lebar = lebarSlot * 0.56;
+                const y = padAtas + tinggiPlot - t;
+                return '<g><rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + lebar.toFixed(1) +
+                    '" height="' + Math.max(t, 1).toFixed(1) + '" rx="3" fill="#0c1d37" opacity="0.85">' +
+                    '<title>' + bulan[i] + ': ' + v + ' kejadian</title></rect>' +
+                    (v > 0 ? '<text x="' + (x + lebar / 2).toFixed(1) + '" y="' + (y - 4).toFixed(1) +
+                        '" text-anchor="middle" font-size="9" font-weight="800" fill="#0c1d37">' + v + '</text>' : '') +
+                    '<text x="' + (x + lebar / 2).toFixed(1) + '" y="' + (H - 8) +
+                        '" text-anchor="middle" font-size="9" font-weight="700" fill="#94a3b8">' + bulan[i] + '</text></g>';
+            }).join('');
+
+            document.getElementById('dash-tren').innerHTML =
+                '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto">' +
+                '<line x1="' + padKiri + '" y1="' + (padAtas + tinggiPlot) + '" x2="' + (W - 12) + '" y2="' + (padAtas + tinggiPlot) + '" stroke="#e2e8f0"/>' +
+                batang + '</svg>';
+            document.getElementById('dash-tren-sub').textContent =
+                d.gangguan.totalTahunIni + ' kejadian sepanjang ' + d.tahun + ' \u00B7 ' + d.gangguan.totalAndil + ' menit andil';
+
+            // ── Unit teratas ──
+            const unit = d.gangguan.unitTeratas || [];
+            const maksUnit = unit.length ? unit[0].jumlah : 1;
+            document.getElementById('dash-unit').innerHTML = unit.length
+                ? unit.map(function (u) {
+                    return '<div class="flex items-center gap-2.5">' +
+                        '<span class="text-[11px] font-bold text-slate-600 w-32 truncate" title="' + escapeHtml(u.nama) + '">' + escapeHtml(u.nama) + '</span>' +
+                        '<div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">' +
+                            '<div class="h-full bg-[#d4af37] rounded-full" style="width:' + Math.round(u.jumlah / maksUnit * 100) + '%"></div>' +
+                        '</div>' +
+                        '<span class="text-[11px] font-black text-[#0c1d37] w-8 text-right">' + u.jumlah + '</span></div>';
+                }).join('')
+                : '<p class="text-[11px] text-slate-400 font-bold italic">Belum ada data gangguan.</p>';
+
+            // ── Aktivitas terakhir ──
+            const warna = { 'Tambah': 'bg-emerald-100 text-emerald-700', 'Dibuat': 'bg-emerald-100 text-emerald-700',
+                'Ubah': 'bg-amber-100 text-amber-700', 'Diubah': 'bg-amber-100 text-amber-700',
+                'Versi Baru': 'bg-violet-100 text-violet-700', 'Hapus': 'bg-red-100 text-red-700', 'Dihapus': 'bg-red-100 text-red-700' };
+            const akt = d.aktivitas || [];
+            document.getElementById('dash-aktivitas').innerHTML = akt.length
+                ? akt.map(function (a) {
+                    return '<div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl">' +
+                        '<div class="flex items-center justify-between gap-2">' +
+                            '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ' + (warna[a.aksi] || 'bg-slate-200 text-slate-600') + '">' + escapeHtml(a.aksi) + '</span>' +
+                            '<span class="text-[9px] text-slate-400 font-bold">' + escapeHtml(waktuSingkatDash_(a.waktu)) + '</span>' +
+                        '</div>' +
+                        '<p class="text-[10px] text-slate-600 font-semibold mt-1 line-clamp-2">' + escapeHtml(a.ringkasan || '-') + '</p>' +
+                        '<p class="text-[9px] text-slate-400 font-bold mt-0.5">' + escapeHtml(a.olehNama || '-') + ' \u00B7 ' + escapeHtml(a.modulLabel || '') + '</p>' +
+                        '</div>';
+                }).join('')
+                : '<p class="text-[11px] text-slate-400 font-bold italic">Belum ada aktivitas tercatat.</p>';
+        }
+
+        /** "2026-08-30T09:37:00Z" -> "30 Agu, 16:37" (waktu lokal). */
+        function waktuSingkatDash_(iso) {
+            try {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return '-';
+                const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                return d.getDate() + ' ' + bulan[d.getMonth()] + ', ' +
+                    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            } catch (e) { return '-'; }
+        }
+
+
+        // ─── PETA PERJALANAN LANGSUNG (C-Track) ──────────────────────────
+        //
+        // Peta hanya bisa dibuka dari jaringan kantor / VPN KCI. Kalau situs
+        // menolak dibingkai atau VPN belum tersambung, bingkainya akan kosong
+        // tanpa pesan apa pun dari browser - jadi ditampilkan keterangan
+        // sendiri setelah jeda, supaya tidak terlihat seperti aplikasi macet.
+
+        function muatUlangPeta_(id) {
+            const f = document.getElementById(id);
+            if (!f) return;
+            const pesan = document.getElementById(id + '-pesan');
+            if (pesan) pesan.style.opacity = '0';
+            f.src = f.src; // memaksa muat ulang
+            pantauPeta_(id);
+        }
+
+        /**
+         * Menampilkan keterangan bila peta tidak kunjung termuat.
+         * Browser tidak memberi tahu apa pun saat sebuah situs menolak
+         * dibingkai, jadi satu-satunya cara yang bisa diandalkan adalah
+         * menunggu sebentar lalu memeriksa apakah 'load' sempat terjadi.
+         */
+        function pantauPeta_(id) {
+            const f = document.getElementById(id);
+            const pesan = document.getElementById(id + '-pesan');
+            if (!f || !pesan) return;
+            let termuat = false;
+            f.addEventListener('load', function () { termuat = true; pesan.style.opacity = '0'; }, { once: true });
+            setTimeout(function () { if (!termuat) pesan.style.opacity = '1'; }, 6000);
+        }
+
+
+        // ─── UJI AKSES PETA & PANDUAN VPN ────────────────────────────────
+
+        function ujiAksesPeta() {
+            const el = document.getElementById('peta-keterangan');
+            if (el) el.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Memeriksa dari server...';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast(res.message || 'Gagal memeriksa akses peta.'); return; }
+                    tampilkanHasilUjiPeta_(res.hasil || []);
+                })
+                .withFailureHandler(function () {
+                    if (el) el.textContent = 'Pemeriksaan gagal dijalankan.';
+                    showToast('Terjadi kesalahan saat memeriksa akses peta.');
+                })
+                .peta_ujiAkses(currentSessionToken);
+        }
+
+        function tampilkanHasilUjiPeta_(hasil) {
+            const bisaSemua = hasil.every(function (h) { return h.terjangkau && h.bolehDibingkai; });
+            const adaTerjangkau = hasil.some(function (h) { return h.terjangkau; });
+
+            const el = document.getElementById('peta-keterangan');
+            if (el) {
+                el.innerHTML = bisaSemua
+                    ? '<span class="text-emerald-600"><i class="fa-solid fa-circle-check mr-1"></i>Peta bisa dibuka tanpa VPN</span>'
+                    : (adaTerjangkau
+                        ? '<span class="text-amber-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Bisa dijangkau, tapi menolak dibingkai - buka di tab baru</span>'
+                        : '<span class="text-slate-500"><i class="fa-solid fa-shield-halved mr-1"></i>Dibatasi jaringan - VPN perlu dipasang di perangkat ini</span>');
+            }
+
+            const isi = hasil.map(function (h) {
+                const lencana = (h.terjangkau && h.bolehDibingkai)
+                    ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black">Bisa tampil di halaman</span>'
+                    : (h.terjangkau
+                        ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">Hanya lewat tab baru</span>'
+                        : '<span class="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-black">Perlu VPN</span>');
+                return '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">' +
+                    '<div class="flex items-center justify-between gap-2 flex-wrap mb-1">' +
+                        '<span class="text-[11px] font-black text-[#0c1d37]">' + escapeHtml(h.nama) + '</span>' + lencana +
+                    '</div>' +
+                    '<p class="text-[10px] text-slate-400 font-mono mb-1">' + escapeHtml(h.url) +
+                        (h.kodeHttp ? '  &middot; HTTP ' + h.kodeHttp : '') + '</p>' +
+                    '<p class="text-[11px] text-slate-600 font-semibold leading-relaxed">' + escapeHtml(h.kesimpulan) + '</p>' +
+                    (h.xFrameOptions && h.xFrameOptions !== '(tidak ada)'
+                        ? '<p class="text-[10px] text-slate-400 font-mono mt-1">X-Frame-Options: ' + escapeHtml(h.xFrameOptions) + '</p>' : '') +
+                    '</div>';
+            }).join('');
+
+            document.getElementById('uji-peta-isi').innerHTML = isi +
+                '<div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 font-semibold leading-relaxed">' +
+                '<i class="fa-solid fa-circle-info text-[#0c1d37] mr-1"></i>' +
+                'Pemeriksaan ini dijalankan dari <strong>server Google</strong>, yang berada di luar jaringan KCI. ' +
+                'Kalau server saja tidak bisa menjangkaunya, berarti pembatasannya ada di sisi situs itu &mdash; ' +
+                'dan tidak ada cara mengakalinya dari aplikasi ini.</div>';
+            document.getElementById('modal-uji-peta').classList.remove('hidden');
+        }
+
+        function tutupUjiPeta() { document.getElementById('modal-uji-peta').classList.add('hidden'); }
+        function bukaPanduanVpn() { document.getElementById('modal-panduan-vpn').classList.remove('hidden'); }
+        function tutupPanduanVpn() { document.getElementById('modal-panduan-vpn').classList.add('hidden'); }
+
+
+        // ================================================================
+        // PENANDA VERSI & PEMERIKSA PEMASANGAN (5 September 2026)
+        // ================================================================
+        //
+        // ═══ KENAPA INI ADA ═══
+        // Ketika sebuah pembaruan "tidak berfungsi", ada dua kemungkinan yang
+        // gejalanya PERSIS SAMA: kodenya memang salah, atau berkasnya belum
+        // benar-benar terpasang. Tanpa cara membedakannya, waktu habis untuk
+        // menebak.
+        //
+        // Sekarang versi yang sedang berjalan terlihat di pojok kanan atas,
+        // dan mengkliknya melaporkan fitur apa saja yang sudah ada.
+
+        // ════════════════════════════════════════════════════════════════
+        // TANGGAL SETEMPAT - JANGAN PERNAH PAKAI toISOString() UNTUK INI
+        // ════════════════════════════════════════════════════════════════
+        //
+        // `new Date().toISOString().slice(0, 10)` terlihat seperti cara ringkas
+        // mengambil "tanggal hari ini". Sebenarnya ia mengubah waktu ke UTC
+        // lebih dulu, dan untuk WIB (GMT+7) itu berarti:
+        //
+        //     setiap saat sebelum pukul 07.00 pagi, yang keluar adalah
+        //     TANGGAL KEMARIN.
+        //
+        // Dinas Pagi dimulai pukul 06.00. Jadi petugas yang membuka formulir
+        // Serah Terima di awal dinasnya SELALU disodori tanggal kemarin -
+        // persis gejala "tanggal mundur satu hari".
+        //
+        // Kedua pembantu di bawah menyusun tanggal dari komponen waktu
+        // setempat, jadi tidak pernah menyentuh UTC.
+
+        /** Tanggal sebuah Date dalam bentuk "YYYY-MM-DD" waktu setempat. */
+        function tanggalLokalIso_(d) {
+            const t = (d instanceof Date && !isNaN(d.getTime())) ? d : new Date();
+            return t.getFullYear() + '-' +
+                String(t.getMonth() + 1).padStart(2, '0') + '-' +
+                String(t.getDate()).padStart(2, '0');
+        }
+
+        /** "YYYY-MM-DD" hari ini menurut jam perangkat pengguna. */
+        function hariIniIso_() { return tanggalLokalIso_(new Date()); }
+
+        /** "YYYY-MM" bulan berjalan menurut jam perangkat pengguna. */
+        function bulanIniIso_() { return hariIniIso_().slice(0, 7); }
+
+        /**
+         * Mengambil TANGGAL dari sebuah cap waktu tersimpan.
+         *
+         * Cap waktu seperti dibuatPada, diperbaruiPada, & dihapusPada disimpan
+         * server sebagai ISO penuh dalam UTC ("2026-01-07T23:10:00.000Z").
+         * Memotongnya 10 karakter memang menghasilkan tanggal - tapi tanggal
+         * UTC, bukan tanggal setempat. Pekerjaan yang dilakukan pukul 06.00 WIB
+         * tercatat pada pukul 23.00 UTC HARI SEBELUMNYA, sehingga tampil mundur
+         * sehari.
+         *
+         * Di sini cap waktunya diurai dulu jadi Date, baru diambil tanggal
+         * setempatnya.
+         */
+        function tanggalDariCapWaktu_(iso) {
+            const t = new Date(String(iso || ''));
+            return isNaN(t.getTime()) ? String(iso || '').slice(0, 10) : tanggalLokalIso_(t);
+        }
+
+        const VERSI_APP = '2026.10.23';
+        const VERSI_CATATAN = 'Laporan Dinasan: tiap pergantian kini menyimpan & menampilkan isi laporannya sendiri; Catatan Dinas tampil rapi (penomoran & sub-poin) di lembar cetak';
+
+        /**
+         * Daftar fitur yang diperiksa. Tiap baris menyebut fungsi penandanya -
+         * kalau fungsinya ada, berkas yang membawanya sudah terpasang.
+         */
+        const FITUR_DIPERIKSA = [
+            { nama: 'Peralatan monitoring tidak menumpuk', fn: 'renderPeralatanSerah_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Upload tabel ditolak di depan', fn: 'tampilkanTolakUpload_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Unduh templat Excel tabel', fn: 'unduhTemplatKlb_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Petugas dari Struktur Organisasi', fn: 'pilihPetugasDinasan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'QR identitas tiap petugas', fn: 'gambarQrPetugas_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kelola parameter Situasi Lintas', fn: 'bukaKelolaSituasi', berkas: 'Script_TrainControl.html' },
+            { nama: 'Bagan organisasi (personil & jabatan)', fn: 'gambarBagan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Tupoksi berjenjang', fn: 'bukaTupoksi', berkas: 'Script_TrainControl.html' },
+            { nama: 'Unduh bagan organisasi', fn: 'unduhBagan', berkas: 'Script_TrainControl.html' },
+            { nama: 'Bagan menyesuaikan lebar layar', fn: 'sesuaikanSkalaBagan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Preview & unduh dari Riwayat Dokumen', fn: 'lihatDokumenRiwayat_', berkas: 'Script_SaranaPrasarana.html' },
+            { nama: 'Konfirmasi bergaya aplikasi', fn: 'konfirmasi_', berkas: 'Script_SaranaPrasarana.html' },
+            { nama: 'Sunting versi dokumen emplasemen', fn: 'simpanDataStasiunDariPerbaikan_', berkas: 'Script_SaranaPrasarana.html' },
+            { nama: 'Pemantau kapasitas penyimpanan', fn: 'muatInfoKapasitas_', berkas: 'Script_UserManagement.html' },
+            { nama: 'Pulihkan data dari cadangan', fn: 'bukaPulihkan', berkas: 'Script_UserManagement.html' },
+            { nama: 'Pembacaan tanggal hari/bulan/tahun', fn: 'bacaTanggalDMY_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Mode pilih & hapus massal', fn: 'toggleModePilih', berkas: 'Script_Gangguan.html' },
+            { nama: 'Periksa & bersihkan data ganda', fn: 'bukaPeriksaGanda', berkas: 'Script_Gangguan.html' },
+            { nama: 'Aktif/nonaktif akun sekali klik', fn: 'toggleStatusAkun', berkas: 'Script_UserManagement.html' },
+            { nama: 'Buka kunci login petugas', fn: 'bukaKunciAkun', berkas: 'Script_UserManagement.html' },
+            { nama: 'Pilihan role diambil dari server', fn: 'muatDaftarRole_', berkas: 'Script_UserManagement.html' },
+            { nama: 'Audit & cabut akses publik dokumen', fn: 'bukaAuditBerbagi', berkas: 'Script_PeraturanIzinAnggaran.html' },
+            { nama: 'Realisasi dinasan pada kisi jadwal', fn: 'keadaanSelJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Export jadwal Program + Realisasi', fn: 'exportJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kartu petugas tanpa pasfoto (QR saja)', fn: 'kosongkanQrPetugas_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Unggah tabel perjalanan bermodal', fn: 'bukaUploadKlb_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Shift & petugas terisi dari rantai', fn: 'terapkanRantaiKeForm_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Keterangan pada Cadangan / SO Sarana', fn: 'renderSarana_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kirim serah terima ke penerima', fn: 'kirimSerahTerima', berkas: 'Script_TrainControl.html' },
+            { nama: 'Penerima menyatakan Terima', fn: 'terimaSerahTerima', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kotak tindakan / notifikasi dinasan', fn: 'muatNotifikasiDinasan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Lanjutkan dari dinas sebelumnya', fn: 'lanjutkanDariDinasan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Pemeriksaan kelengkapan sebelum kirim', fn: 'periksaKelengkapanSerah_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Lompat antar-bagian formulir', fn: 'loncatKeLangkah_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Catatan keadaan dinas', fn: 'ubahKeadaanSerah_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Resume Laporan (menu baru)', fn: 'loadResume', berkas: 'Script_TrainControl.html' },
+            { nama: 'Export & cetak Resume Laporan', fn: 'exportResume', berkas: 'Script_TrainControl.html' },
+            { nama: 'Bagan organisasi layar penuh', fn: 'layarPenuhBagan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Penugasan struktur disimpan sekali', fn: 'pilihPersonilUntukJabatan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'QR petugas jadi tanda tangan cetak', fn: 'qrPetugasDataUrl_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Pengirim terkunci untuk Admin Traffic', fn: 'terapkanPetugasAkun_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Baris tanpa id disembuhkan otomatis', fn: 'konfirmasiHapusMassal_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Tanggal selesai dari jam operasional', fn: 'turunkanTanggalSelesai_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Tanggal hari ini tanpa geser UTC', fn: 'hariIniIso_', berkas: 'SharedScripts.html' },
+            { nama: 'Galat simpan jabatan terlihat', fn: 'tampilkanGalatJabatan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Resume dikelompokkan per tanggal', fn: 'kelompokkanPerTanggal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kelengkapan siklus per tanggal', fn: 'gambarSiklusResume_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Tabel jadi kartu di ponsel', fn: 'labeliTabelPonsel_', berkas: 'SharedScripts.html' },
+            { nama: 'Laci menu ponsel', fn: 'bukaLaciMenu_', berkas: 'SharedScripts.html' },
+            { nama: 'Peringatan gangguan kembar saat unggah', fn: 'pilahGandaExcel_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Pemotong pasfoto yang bisa digeser', fn: 'bukaPemotongFoto_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Tutup siklus laporan harian', fn: 'tutupSiklusHarian_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Laporan harian utuh per siklus', fn: 'lihatLaporanHarian_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Ekspor per bagian Resume', fn: 'exportBagianResume_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Sunting laporan dinasan (Super Admin)', fn: 'suntingDinasan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Buka kembali siklus (Super Admin)', fn: 'bukaSiklusHarian_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Logout ditahan sampai laporan diterima', fn: 'tampilkanTahanLogout_', berkas: 'Script_Login.html' },
+            { nama: 'Label serah terima ikut dinas tujuan', fn: 'perbaruiLabelSerah_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Satu laporan per siklus dinasan', fn: 'muatSiklusAktif_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Terima laporan antar tahap', fn: 'terimaTahapSiklus_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Closing Report membuka siklus baru', fn: 'closingSiklusAktif_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Kotak tindakan dari siklus aktif', fn: 'gambarKotakTindakanSiklus_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Dua tab pada Laporan Dinasan', fn: 'gantiTabLaporan_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Daftar serah terima per pergantian', fn: 'renderDaftarSerahTerima_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Laporan Harian dari Closing Report', fn: 'renderLaporanHarian_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Jadwal dinasan bulanan', fn: 'loadJadwalDinasan', berkas: 'Script_TrainControl.html' },
+            { nama: 'Unggah jadwal dari Excel', fn: 'uraiBerkasJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Tanda tangan barcode jadwal', fn: 'gambarTtdJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Templat & pratinjau unggah jadwal', fn: 'tampilkanHasilBacaJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Pratinjau lembar laporan final', fn: 'gambarPratinjauLembar_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Hapus laporan harian', fn: 'hapusLaporanHarian_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Uraian gangguan panjang tampil utuh', fn: 'catatanTeksTerpotongLama_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Kolom Rincian Gangguan seimbang', fn: 'selTanggalRincian_', berkas: 'Script_Gangguan.html' },
+            { nama: 'Modal Input Jadwal (Excel / Manual)', fn: 'bukaInputJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Saklar Program / Realisasi jadwal', fn: 'aturModeJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Pola dinas otomatis (input manual)', fn: 'polaManualJadwal_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Masuk dasbor tidak terhenti satu galat', fn: 'generateDinasanCalendarGrid', berkas: 'Script_TrainControl.html' },
+            { nama: 'Isi laporan per pergantian dinasan', fn: 'lihatSerahTerima_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Catatan Dinas rapi (penomoran & sub-poin)', fn: 'catatanDinasHtml_', berkas: 'Script_TrainControl.html' },
+            { nama: 'Pratinjau lembar dipakai bersama', fn: 'bukaPratinjauLembar_', berkas: 'Script_TrainControl.html' }
+        ];
+
+        function pasangLabelVersi_() {
+            const el = document.getElementById('label-versi-app');
+            if (el) el.textContent = 'v' + VERSI_APP;
+        }
+
+        /**
+         * Memeriksa fitur apa saja yang sudah terpasang, lalu menampilkannya.
+         * Fitur yang hilang dikelompokkan menurut BERKAS asalnya - itu yang
+         * langsung bisa ditindaklanjuti: berkas itulah yang belum ditimpa.
+         */
+        function cekPemasangan() {
+            const ada = [], hilang = [];
+            FITUR_DIPERIKSA.forEach(function (f) {
+                (typeof window[f.fn] === 'function' ? ada : hilang).push(f);
+            });
+
+            const perBerkas = {};
+            hilang.forEach(function (f) {
+                if (!perBerkas[f.berkas]) perBerkas[f.berkas] = [];
+                perBerkas[f.berkas].push(f.nama);
+            });
+
+            const isi =
+                '<div class="p-3.5 rounded-2xl border ' +
+                    (hilang.length ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-200') + '">' +
+                    '<p class="text-xs font-black ' + (hilang.length ? 'text-amber-900' : 'text-emerald-800') + '">' +
+                        (hilang.length
+                            ? '<i class="fa-solid fa-triangle-exclamation mr-1.5"></i>' + hilang.length + ' dari ' +
+                              FITUR_DIPERIKSA.length + ' fitur belum terpasang'
+                            : '<i class="fa-solid fa-circle-check mr-1.5"></i>Seluruh ' + FITUR_DIPERIKSA.length +
+                              ' fitur sudah terpasang') + '</p>' +
+                    '<p class="text-[11px] font-semibold mt-1 ' + (hilang.length ? 'text-amber-800' : 'text-emerald-700') + '">' +
+                        (hilang.length
+                            ? 'Berkas di bawah ini belum ditimpa, atau deployment belum diperbarui ke versi baru.'
+                            : 'Versi ' + VERSI_APP + ' berjalan penuh.') + '</p>' +
+                '</div>' +
+
+                (hilang.length
+                    ? '<div><p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Berkas yang Perlu Diperiksa</p>' +
+                      Object.keys(perBerkas).map(function (b) {
+                          return '<div class="p-2.5 bg-red-50 border border-red-200 rounded-xl mb-1.5">' +
+                              '<p class="text-[11px] font-black text-red-800 font-mono">' + escapeHtml(b) + '</p>' +
+                              '<p class="text-[10px] text-red-700 font-semibold mt-0.5">' +
+                                  escapeHtml(perBerkas[b].join(' \u00B7 ')) + '</p></div>';
+                      }).join('') + '</div>'
+                    : '') +
+
+                '<div><p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Fitur Terpasang (' + ada.length + ')</p>' +
+                    '<div class="space-y-1">' + ada.map(function (f) {
+                        return '<p class="text-[11px] text-slate-600 font-semibold flex items-start gap-1.5">' +
+                            '<i class="fa-solid fa-check text-emerald-600 text-[9px] mt-1"></i>' +
+                            '<span>' + escapeHtml(f.nama) + '</span></p>';
+                    }).join('') + '</div></div>' +
+
+                '<div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 font-semibold leading-relaxed">' +
+                    '<i class="fa-solid fa-circle-info text-[#0c1d37] mr-1"></i>' +
+                    'Menimpa berkas saja <strong>tidak cukup</strong>. Setelah menimpa, wajib: ' +
+                    '<strong>Deploy &rarr; Manage deployments &rarr; ikon pensil &rarr; Version: New version &rarr; Deploy</strong>. ' +
+                    'Tanpa langkah itu, Apps Script tetap menyajikan versi lama.' +
+                '</div>';
+
+            let modal = document.getElementById('modal-cek-pemasangan');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'modal-cek-pemasangan';
+                modal.className = 'hidden fixed inset-0 z-[96] flex items-center justify-center p-4 modal-backdrop animate-fade-in';
+                document.body.appendChild(modal);
+            }
+            modal.innerHTML =
+                '<div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">' +
+                    '<div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">' +
+                        '<div><h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">' +
+                            '<i class="fa-solid fa-code-branch text-[#d4af37]"></i><span>Versi ' + VERSI_APP + '</span></h3>' +
+                            '<p class="text-[11px] text-slate-400 font-medium mt-0.5">' + escapeHtml(VERSI_CATATAN) + '</p></div>' +
+                        '<button onclick="document.getElementById(\'modal-cek-pemasangan\').classList.add(\'hidden\')" ' +
+                            'class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>' +
+                    '</div>' +
+                    '<div class="p-6 space-y-4 overflow-y-auto flex-1">' + isi + '</div>' +
+                    '<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">' +
+                        '<button onclick="document.getElementById(\'modal-cek-pemasangan\').classList.add(\'hidden\')" ' +
+                            'class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>' +
+                    '</div>' +
+                '</div>';
+            modal.classList.remove('hidden');
+        }
+
+
+        // ─── SEBARAN EMPLASEMEN PER DAOP/DIVRE ───────────────────────────
+
+        /** Warna kartu dibedakan supaya wilayah mudah dibedakan sekilas. */
+        const WARNA_WILAYAH = [
+            { bg: 'bg-[#0c1d37]', teks: 'text-[#d4af37]', bar: 'bg-[#d4af37]' },
+            { bg: 'bg-emerald-700', teks: 'text-emerald-200', bar: 'bg-emerald-300' },
+            { bg: 'bg-sky-800', teks: 'text-sky-200', bar: 'bg-sky-300' },
+            { bg: 'bg-amber-700', teks: 'text-amber-100', bar: 'bg-amber-300' },
+            { bg: 'bg-rose-800', teks: 'text-rose-200', bar: 'bg-rose-300' },
+            { bg: 'bg-violet-800', teks: 'text-violet-200', bar: 'bg-violet-300' }
+        ];
+
+        function gambarSebaranEmplasemen_(sap) {
+            const wrap = document.getElementById('dash-emplasemen-wrap');
+            const wadah = document.getElementById('dash-emplasemen');
+            if (!wrap || !wadah) return;
+
+            // Hanya ditampilkan bagi yang boleh membuka menunya - kartu yang
+            // diklik lalu ditolak lebih membingungkan daripada tidak ada.
+            const daftar = (sap && sap.perWilayah) || [];
+            if (!daftar.length || !canDo('sap-emplasemen', 'lihat')) {
+                wrap.classList.add('hidden');
+                return;
+            }
+            wrap.classList.remove('hidden');
+
+            const total = daftar.reduce(function (t, w) { return t + w.jumlah; }, 0);
+            document.getElementById('dash-emp-sub').textContent =
+                total + ' stasiun di ' + daftar.length + ' wilayah - klik untuk membuka';
+
+            const terbesar = Math.max.apply(null, daftar.map(function (w) { return w.jumlah; }));
+
+            wadah.innerHTML = daftar.map(function (w, i) {
+                const warna = WARNA_WILAYAH[i % WARNA_WILAYAH.length];
+                const persen = terbesar ? Math.round(w.jumlah / terbesar * 100) : 0;
+                const takAktif = w.jumlah - w.aktif;
+
+                return '<button onclick="bukaEmplasemenWilayah_(\'' + escapeHtml(w.wilayah).replace(/'/g, "\\\\'") + '\')" ' +
+                    'class="' + warna.bg + ' rounded-2xl p-3.5 text-left transition hover:scale-[1.02] hover:shadow-lg group relative overflow-hidden">' +
+                    '<div class="flex items-start justify-between gap-2 mb-2.5">' +
+                        '<p class="text-[10px] font-black ' + warna.teks + ' uppercase tracking-wider leading-tight">' +
+                            escapeHtml(w.wilayah) + '</p>' +
+                        '<i class="fa-solid fa-arrow-right text-[9px] text-white/30 group-hover:text-white/80 transition shrink-0 mt-0.5"></i>' +
+                    '</div>' +
+                    '<p class="text-3xl font-black text-white leading-none">' + w.jumlah + '</p>' +
+                    '<p class="text-[9px] font-bold text-white/50 mt-1">stasiun terdaftar</p>' +
+                    '<div class="mt-2.5 h-1 bg-white/15 rounded-full overflow-hidden">' +
+                        '<div class="h-full ' + warna.bar + ' rounded-full" style="width:' + persen + '%"></div>' +
+                    '</div>' +
+                    '<p class="text-[9px] font-bold text-white/40 mt-1.5">' +
+                        w.aktif + ' aktif' + (takAktif ? ' &middot; ' + takAktif + ' tidak aktif' : '') + '</p>' +
+                    '</button>';
+            }).join('');
+        }
+
+        /**
+         * Membuka menu Emplasemen dengan filter wilayah sudah terpasang.
+         *
+         * Filter diterapkan SETELAH tab berpindah & datanya termuat - kalau
+         * disetel lebih dulu, pemuatan data akan menimpanya kembali ke
+         * "Semua Daop".
+         */
+        function bukaEmplasemenWilayah_(wilayah) {
+            switchTab('sap-emplasemen');
+            setTimeout(function () {
+                const sel = document.getElementById('emp-filter-wilayah');
+                if (sel) {
+                    sel.value = wilayah;
+                    if (typeof renderEmplasemenTable === 'function') renderEmplasemenTable();
+                    else if (typeof applyEmpFilters === 'function') applyEmpFilters();
+                }
+            }, 700);
+        }
+
+</script>

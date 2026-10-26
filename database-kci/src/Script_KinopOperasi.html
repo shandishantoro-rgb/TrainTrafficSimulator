@@ -1,0 +1,217 @@
+<!--
+  Script_KinopOperasi.html
+  Logic untuk modul Kinerja Operasi (Summary Performa, Rincian Lintas,
+  Database KA). SUDAH tersambung ke backend nyata (Google Sheets, lewat
+  Module_KinopOperasi.gs). Sama seperti desain awal, tidak ada tombol hapus
+  di modul ini (hanya lihat & tambah data).
+-->
+<script>
+        // ─── FUNGSI DASAR (cadangan mandiri) ─────────────────────────────
+        // Definisi cadangan fungsi umum yang dipakai file ini. Ditanam di
+        // SETIAP Script_*.html dengan pola idempotent (window.x = window.x
+        // || ...) supaya file ini TETAP BERFUNGSI walau SharedScripts.html
+        // kebetulan belum ter-update ke versi terbaru. Ini mencegah satu
+        // file yang ketinggalan versi merusak seluruh modul lain.
+        window.escapeHtml = window.escapeHtml || function (val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        };
+        window.startLoadingWatchdog = window.startLoadingWatchdog || function () { return null; };
+
+
+        // Cache data dari server - BUKAN dummy lagi.
+        let kinopData = [];
+        let kinopDbData = [];
+
+        // ─── SUMMARY PERFORMA ─────────────────────────────────────────
+
+        /**
+         * Mengambil data Rincian Lintas dari server (dipakai bareng oleh
+         * Summary Performa & Rincian Lintas, karena Summary dihitung dari
+         * data yang sama), lalu merender ulang tampilan yang relevan.
+         * @param {string} renderTarget "summary" | "rincian" - pane mana
+         *                               yang sedang aktif & perlu dirender.
+         */
+        function loadKinopRincian(renderTarget) {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        kinopData = res.data;
+                        if (renderTarget === 'summary') renderKinopSummary();
+                        else renderKinopTable();
+                    } else {
+                        showToast('Gagal memuat data Kinerja Operasi: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () {
+                    showToast('Terjadi kesalahan saat memuat data Kinerja Operasi.');
+                })
+                .kinop_getRincian(currentSessionToken);
+        }
+
+        function renderKinopSummary() {
+            const container = document.getElementById('kinop-bar-lines');
+            if (!container) return;
+            container.innerHTML = '';
+            let lineData = {};
+            kinopData.forEach(item => {
+                if (!lineData[item.line]) lineData[item.line] = { total: 0, delayCount: 0 };
+                lineData[item.line].total++;
+                if (Number(item.delay) > 5) lineData[item.line].delayCount++;
+            });
+            const defaultLines = ["Bogor Line", "Cikarang Line", "Rangkas Line", "Tangerang Line"];
+            defaultLines.forEach(l => {
+                const m = lineData[l] || { total: 1, delayCount: 0 };
+                const pct = (((m.total - m.delayCount) / m.total) * 100).toFixed(1);
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center text-xs font-bold animate-fade-in">
+                        <span class="w-32 text-slate-700">${l}</span>
+                        <div class="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden mr-3">
+                            <div class="bg-emerald-500 h-full" style="width: ${pct}%"></div>
+                        </div>
+                        <span class="font-black text-slate-900">${pct}%</span>
+                    </div>
+                `);
+            });
+            const totalEl = document.getElementById('kinop-total-trips');
+            if (totalEl) totalEl.innerText = kinopData.length;
+        }
+
+        // ─── RINCIAN LINTAS ───────────────────────────────────────────
+
+        function renderKinopTable(filtered) {
+            const tbody = document.getElementById('kinop-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const list = filtered || kinopData;
+            list.forEach((item, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 transition-colors h-12">
+                        <td class="px-4 py-2 text-slate-400 font-mono">${idx+1}</td>
+                        <td class="px-5 py-2">${escapeHtml(item.tanggal)}</td>
+                        <td class="px-4 py-2 font-black text-[#0c1d37]">${escapeHtml(item.noKa)}</td>
+                        <td class="px-5 py-2">${escapeHtml(item.line)}</td>
+                        <td class="px-5 py-2">${escapeHtml(item.stkAwal)}</td>
+                        <td class="px-5 py-2">${escapeHtml(item.stkAkhir)}</td>
+                        <td class="px-4 py-2 font-mono">${escapeHtml(item.jamJadwal)}</td>
+                        <td class="px-4 py-2 font-mono text-amber-600">${escapeHtml(item.jamReal)}</td>
+                        <td class="px-4 py-2 font-black ${Number(item.delay) > 5 ? 'text-red-600':'text-emerald-600'}">${escapeHtml(item.delay)} mnt</td>
+                        <td class="px-6 py-2 text-left text-slate-500 font-medium">${escapeHtml(item.ket)}</td>
+                    </tr>
+                `);
+            });
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        function applyKinopFilters() {
+            const line = document.getElementById('filter-kinop-line').value;
+            const search = document.getElementById('search-kinop-input').value.toLowerCase();
+            const res = kinopData.filter(item =>
+                (line === 'Semua' || item.line === line) &&
+                ((item.noKa||'').toLowerCase().includes(search) || (item.ket||'').toLowerCase().includes(search))
+            );
+            renderKinopTable(res);
+        }
+
+        function openKinopInputModal() { document.getElementById('modal-input-kinop').classList.remove('hidden'); }
+
+        function closeKinopInputModal() { document.getElementById('modal-input-kinop').classList.add('hidden'); }
+
+        function handleKinopManualSubmit(e) {
+            e.preventDefault();
+            const dateVal = document.getElementById('k-tanggal').value;
+            const parts = dateVal.split('-');
+            const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            const item = {
+                tanggal: formattedDate,
+                noKa: document.getElementById('k-no-ka').value.toUpperCase(),
+                line: document.getElementById('k-line').value,
+                stkAwal: document.getElementById('k-awal').value,
+                stkAkhir: document.getElementById('k-akhir').value,
+                jamJadwal: document.getElementById('k-jam-jadwal').value,
+                jamReal: document.getElementById('k-jam-real').value,
+                delay: parseInt(document.getElementById('k-delay').value) || 0,
+                ket: document.getElementById('k-ket').value || "Normal"
+            };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        closeKinopInputModal();
+                        showToast(`Data performa KA ${item.noKa} ditambahkan!`);
+                        loadKinopRincian('rincian');
+                    } else {
+                        showToast('Gagal menyimpan: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan data.'); })
+                .kinop_addRincian(currentSessionToken, item);
+        }
+
+        // ─── DATABASE KA ──────────────────────────────────────────────
+
+        function loadKinopDb() {
+            const tbody = document.getElementById('kinop-db-table-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-400 font-bold">Memuat data...</td></tr>';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { kinopDbData = res.data; renderKinopDbTable(); }
+                    else { showToast('Gagal memuat data: ' + (res.message || '')); if (tbody) tbody.innerHTML = ''; }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat data.'); })
+                .kinop_getDb(currentSessionToken);
+        }
+
+        function renderKinopDbTable() {
+            const tbody = document.getElementById('kinop-db-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            kinopDbData.forEach((item, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 text-xs font-semibold h-12">
+                        <td class="px-4 py-2 text-center text-slate-400 font-mono">${idx+1}</td>
+                        <td class="px-5 py-2 font-black text-[#0c1d37]">${escapeHtml(item.code)}</td>
+                        <td class="px-5 py-2">${escapeHtml(item.seri)}</td>
+                        <td class="px-5 py-2 text-center font-mono">${escapeHtml(item.sf)}</td>
+                        <td class="px-6 py-2 text-slate-600">${escapeHtml(item.relasi)}</td>
+                        <td class="px-5 py-2 text-center"><span class="px-2 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded-full">${escapeHtml(item.status)}</span></td>
+                    </tr>
+                `);
+            });
+            if (kinopDbData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        function openKinopDbAddModal() { document.getElementById('modal-input-kinop-db').classList.remove('hidden'); }
+
+        function closeKinopDbAddModal() { document.getElementById('modal-input-kinop-db').classList.add('hidden'); }
+
+        function handleKinopDbSubmit(e) {
+            e.preventDefault();
+            const item = {
+                code: document.getElementById('kd-no').value.toUpperCase(),
+                seri: document.getElementById('kd-seri').value,
+                sf: document.getElementById('kd-sf').value,
+                relasi: document.getElementById('kd-rute').value,
+                status: "Aktif Gapeka"
+            };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        closeKinopDbAddModal();
+                        showToast(`Armada jadwal ${item.code} didaftarkan.`);
+                        loadKinopDb();
+                    } else {
+                        showToast('Gagal menyimpan: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan data.'); })
+                .kinop_addDb(currentSessionToken, item);
+        }
+</script>

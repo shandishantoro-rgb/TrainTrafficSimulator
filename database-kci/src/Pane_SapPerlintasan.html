@@ -1,0 +1,245 @@
+<!--
+  Pane_SapPerlintasan.html
+  Pane/menu: Sarana & Prasarana - Perlintasan Sebidang KA (JPL)
+
+  Berkas ini BERDIRI SENDIRI: perubahan di sini tidak memengaruhi pane lain.
+  Logikanya di Script_Perlintasan.html, modalnya di Modals_Perlintasan.html.
+
+  ═══ AWALAN ID: jpl-f-* HANYA UNTUK PENYARING ═══
+  Seluruh kolom isian di modal memakai awalan jpl-m-*. Keduanya WAJIB
+  berbeda: document.getElementById mengembalikan elemen PERTAMA yang
+  ditemukan di halaman, & karena pane disisipkan sebelum modal, nama yang
+  sama membuat formulir menulis ke dropdown penyaring - bukan ke dirinya
+  sendiri. Gejalanya: dropdown penyaring mendadak berisi "- pilih -" &
+  formulir tidak pernah terisi.
+-->
+            <section id="pane-sap-perlintasan" class="hidden space-y-5 animate-fade-in">
+
+                <style>
+                    /* Baris yang pernah ada kecelakaan diberi batang merah di
+                       tepi kiri. Kolom Laka sudah tidak ada, jadi batang ini
+                       satu-satunya penanda cepatnya - keterangannya ada di
+                       legenda kecil di atas tabel. */
+                    .jpl-laka > td:first-child { box-shadow: inset 3px 0 0 #e11d48; }
+                    .jpl-bar > span { transition: width .45s ease-out; }
+
+                    /* Lebar kolom dipatok piksel + table-fixed. Tanpa itu,
+                       browser memeras kolom yang tidak diberi lebar - & yang
+                       paling dikorbankan justru NAMA JALAN & KETERANGAN,
+                       dua kolom terpanjang sekaligus yang paling dibaca. */
+                    #jpl-tabel { table-layout: fixed; }
+                </style>
+
+                <!-- ══ KEPALA & TOMBOL ══ -->
+                <!-- Template & Impor Excel TIDAK lagi berdiri sendiri di sini.
+                     Keduanya sama-sama "menambah data", jadi ditaruh di dalam
+                     satu tombol Tambah JPL: bilah tombol jadi jauh lebih sepi,
+                     & orang tidak perlu menebak bedanya Template dengan Impor. -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3.5 min-w-0">
+                        <div class="w-11 h-11 rounded-2xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center text-base shrink-0">
+                            <i class="fa-solid fa-road-barrier"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="text-base font-black text-[#0c1d37] tracking-tight leading-tight">Perlintasan Sebidang KA (JPL)</h3>
+                            <p id="jpl-subjudul" class="text-[11px] text-slate-400 font-bold mt-0.5">Register perlintasan lintas operasional KCI</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                        <button onclick="jplMuat_(true)" title="Muat ulang dari server" class="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-500 hover:text-[#0c1d37] flex items-center justify-center transition">
+                            <i class="fa-solid fa-rotate text-[11px]"></i>
+                        </button>
+                        <button onclick="jplExportExcel_()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <span class="w-5 h-5 rounded-md bg-emerald-500/15 text-emerald-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-file-excel"></i></span>
+                            <span>Export</span>
+                        </button>
+                        <button onclick="jplCetak_()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <span class="w-5 h-5 rounded-md bg-red-500/10 text-red-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-file-pdf"></i></span>
+                            <span>Cetak</span>
+                        </button>
+                        <button id="jpl-btn-tambah" onclick="jplBukaPilih_()" class="px-4 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                            <i class="fa-solid fa-plus text-[10px]"></i><span>Tambah JPL</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══ KARTU RINGKAS ══ -->
+                <div id="jpl-kartu" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3"></div>
+
+                <!-- ══ RINGKASAN GRAFIS ══ -->
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                        <h4 class="text-[11px] font-black text-slate-800 uppercase tracking-wider">Dijaga Oleh</h4>
+                        <p class="text-[10px] text-slate-400 font-bold mt-0.5 mb-3">Pihak yang menjaga tiap perlintasan</p>
+                        <div id="jpl-domain" class="space-y-2"></div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 xl:col-span-2">
+                        <div class="flex items-start justify-between gap-2 mb-3">
+                            <div>
+                                <h4 class="text-[11px] font-black text-slate-800 uppercase tracking-wider">Sebaran per Resor</h4>
+                                <p class="text-[10px] text-slate-400 font-bold mt-0.5">Klik batang untuk menyaring tabel ke resor itu</p>
+                            </div>
+                            <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider shrink-0">
+                                <span class="inline-block w-2 h-2 rounded-sm bg-emerald-500 mr-1"></span>dijaga
+                                <span class="inline-block w-2 h-2 rounded-sm bg-rose-500 ml-2 mr-1"></span>tidak dijaga
+                            </span>
+                        </div>
+                        <div id="jpl-resor" class="space-y-1.5 max-h-[220px] overflow-y-auto custom-scrollbar pr-1"></div>
+                    </div>
+                </div>
+
+                <!-- ══ PENYARING ══ -->
+                <!-- Tiap dropdown diberi LABEL di atasnya. Sebelumnya hanya
+                     ada tulisan di dalam pilihan pertama ("Semua Status"), &
+                     dengan dua dropdown berbeda yang sama-sama berbunyi
+                     "status", tidak ada cara mengetahui mana yang mana tanpa
+                     membukanya satu per satu.
+
+                     Deretan tombol cepat yang dulu ada di bawah juga dihapus:
+                     fungsinya kini jadi dua dropdown tersendiri (Riwayat
+                     Kecelakaan & Tingkat Prioritas), sehingga semua penyaring
+                     berada di satu tempat dengan satu cara kerja. -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                    <div class="flex items-center justify-between gap-2 mb-3.5 flex-wrap">
+                        <div>
+                            <h4 class="text-[11px] font-black text-slate-800 uppercase tracking-wider">Penyaring Data</h4>
+                            <p class="text-[10px] text-slate-400 font-bold mt-0.5">Persempit daftar di bawah sesuai yang ingin dilihat</p>
+                        </div>
+                        <button onclick="jplResetFilter_()" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-[#e11d48] text-[10px] font-black text-slate-600 hover:text-[#e11d48] transition">
+                            <i class="fa-solid fa-rotate-left mr-1"></i>Tampilkan Semua
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Pencarian Bebas</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
+                            <input id="jpl-cari" oninput="jplCariTunda_()" type="text" autocomplete="off"
+                                   placeholder="Ketik nama jalan, nomor JPL, kilometer, lintas, atau kota..."
+                                   class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-2.5 gap-y-3">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Resor</label>
+                            <select id="jpl-f-resor" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Lintas</label>
+                            <select id="jpl-f-lintas" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Provinsi</label>
+                            <select id="jpl-f-provinsi" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Terdaftar Resmi?</label>
+                            <select id="jpl-f-register" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Ada Penjaganya?</label>
+                            <select id="jpl-f-jaga" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Dijaga Oleh</label>
+                            <select id="jpl-f-domain" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Riwayat Kecelakaan</label>
+                            <select id="jpl-f-laka" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer">
+                                <option value="Semua">Semua, pernah atau belum</option>
+                                <option value="ada">Pernah terjadi kecelakaan</option>
+                                <option value="tidak">Belum pernah</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Tingkat Prioritas</label>
+                            <select id="jpl-f-prioritas" onchange="jplTerapkanFilter_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer">
+                                <option value="Semua">Semua tingkat</option>
+                                <option value="Tinggi">Tinggi &mdash; perlu dilihat dulu</option>
+                                <option value="Sedang">Sedang</option>
+                                <option value="Rendah">Rendah</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ TABEL ══ -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-xs font-black text-slate-800">Daftar Perlintasan</p>
+                            <span id="jpl-hitung" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black">0 titik</span>
+                            <!-- Legenda batang merah. Tanpa kolom Laka, penanda
+                                 ini perlu dijelaskan - garis warna tanpa
+                                 keterangan hanya menimbulkan pertanyaan. -->
+                            <span class="hidden sm:inline-flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider ml-1">
+                                <span class="inline-block w-[3px] h-3 rounded-sm bg-[#e11d48]"></span>pernah ada kecelakaan
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Urutkan</label>
+                            <select id="jpl-urut" onchange="jplGambarTabel_()" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold focus:outline-none cursor-pointer">
+                                <option value="resor">Resor &amp; kilometer</option>
+                                <option value="prioritas">Prioritas tertinggi dulu</option>
+                                <option value="laka">Kecelakaan terbanyak dulu</option>
+                                <option value="jalan">Nama jalan (A-Z)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table id="jpl-tabel" class="w-full text-left text-[11px] border-collapse" style="min-width:1130px">
+                            <thead id="jpl-kepala" class="bg-[#0c1d37] text-[9.5px] font-black text-white uppercase tracking-wider"></thead>
+                            <tbody id="jpl-isi" class="divide-y divide-slate-100 font-semibold text-slate-700"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="jpl-halaman" class="px-5 py-3.5 border-t border-slate-200 bg-slate-50"></div>
+                </div>
+
+                <!-- ══ CATATAN PRIORITAS ══ -->
+                <!-- Rumusnya ditulis terbuka. Angka prioritas yang tidak bisa
+                     ditelusuri asalnya cepat dianggap penilaian resmi, padahal
+                     ia hanya alat bantu urut - & keputusan keselamatan tidak
+                     boleh bersandar pada angka yang tidak jelas asal-usulnya. -->
+                <details class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <summary class="px-5 py-3.5 cursor-pointer text-[11px] font-black text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                        <i class="fa-solid fa-circle-question text-slate-400"></i>
+                        Bagaimana tingkat prioritas dihitung?
+                    </summary>
+                    <div class="px-5 pb-5 pt-1 border-t border-slate-100">
+                        <p class="text-[11px] text-slate-600 font-semibold leading-relaxed mb-3">
+                            Angka ini <b>alat bantu urut</b>, bukan penilaian risiko resmi, dan tidak menggantikan
+                            kajian keselamatan mana pun. Gunanya hanya membuat titik yang paling perlu dilihat
+                            muncul lebih dulu. Rinciannya ditampilkan pada tiap detail perlintasan agar bisa
+                            dinilai sendiri.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Komponen</p>
+                                <ul class="text-[11px] font-semibold text-slate-600 space-y-1">
+                                    <li class="flex justify-between gap-2"><span>Pernah ada kecelakaan</span><span class="font-black text-rose-600">25 &ndash; 55</span></li>
+                                    <li class="flex justify-between gap-2"><span>Tidak dijaga</span><span class="font-black text-slate-700">+25</span></li>
+                                    <li class="flex justify-between gap-2"><span>Tidak terdaftar resmi</span><span class="font-black text-slate-700">+12</span></li>
+                                    <li class="flex justify-between gap-2"><span>Lalu lintas padat</span><span class="font-black text-slate-700">+10</span></li>
+                                    <li class="flex justify-between gap-2"><span>Berada di pusat kota</span><span class="font-black text-slate-700">+8</span></li>
+                                </ul>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Kenapa kecelakaan berbobot terbesar</p>
+                                <p class="text-[11px] font-semibold text-slate-600 leading-relaxed">
+                                    Diperiksa ke data Daop 1: dari titik yang pernah mengalami kecelakaan,
+                                    <b>hampir tiga perempatnya justru perlintasan yang dijaga</b>. Artinya, bila
+                                    &ldquo;tidak dijaga&rdquo; ditaruh di atas segalanya, sebagian besar titik yang
+                                    sudah terbukti memakan korban akan terdorong ke bawah daftar. Kecelakaan yang
+                                    sudah terjadi adalah bukti; tidak dijaga baru dugaan &mdash; karena itu bukti
+                                    yang didahulukan.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </section>

@@ -1,0 +1,1447 @@
+<script>
+        // ================================================================
+        // PERLINTASAN SEBIDANG KA (JPL) - 11 Oktober 2026
+        // ================================================================
+        //
+        // Seluruh nama di berkas ini berawalan "jpl" karena semua
+        // Script_*.html berbagi satu lingkup global; tanpa awalan, nama
+        // seumum "gambarTabel" cepat bertabrakan dengan modul lain & gejala
+        // bentroknya sangat sulit dilacak.
+
+        let jplData_ = null;            // seluruh perlintasan dari server
+        let jplOpsi_ = {};              // pilihan baku dari server
+        let jplTampil_ = [];            // hasil saring - dipakai export & cetak
+        let jplHal_ = 1;
+        let jplPerHal_ = 25;
+        let jplBarisImpor_ = null;      // hasil baca Excel, menunggu diterapkan
+        let jplDetailId_ = null;
+
+        // CATATAN AWALAN ID
+        // jpl-f-*  = dropdown PENYARING di Pane_SapPerlintasan.html
+        // jpl-m-*  = kolom isian di dalam modal (Modals_Perlintasan.html)
+        // Keduanya WAJIB berbeda: document.getElementById mengembalikan
+        // elemen pertama yang ditemukan, & pane disisipkan sebelum modal -
+        // nama yang sama membuat formulir menulis ke penyaring, bukan ke
+        // dirinya sendiri. Jangan disamakan lagi.
+
+        /** Warna per domain penjagaan - dipakai bilah ringkas & lencana. */
+        const JPL_WARNA_DOMAIN = {
+            'JJ':                 { bar: 'bg-[#0c1d37]',  lencana: 'bg-slate-100 text-slate-700 border-slate-300' },
+            'OP':                 { bar: 'bg-sky-600',    lencana: 'bg-sky-50 text-sky-700 border-sky-200' },
+            'DISHUB':             { bar: 'bg-emerald-600',lencana: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+            'SWADAYA MASYARAKAT': { bar: 'bg-amber-500',  lencana: 'bg-amber-50 text-amber-700 border-amber-200' },
+            'INSTANSI LAIN':      { bar: 'bg-violet-500', lencana: 'bg-violet-50 text-violet-700 border-violet-200' },
+            'TAK TERJAGA':        { bar: 'bg-rose-500',   lencana: 'bg-rose-50 text-rose-700 border-rose-200' }
+        };
+        function jplWarnaDomain_(d) {
+            return JPL_WARNA_DOMAIN[String(d || '').toUpperCase()] ||
+                   { bar: 'bg-slate-400', lencana: 'bg-slate-100 text-slate-500 border-slate-200' };
+        }
+
+        function jplTingkatGaya_(t) {
+            if (t === 'Tinggi') return 'bg-rose-600 text-white border-rose-600';
+            if (t === 'Sedang') return 'bg-amber-50 text-amber-700 border-amber-300';
+            return 'bg-slate-100 text-slate-500 border-slate-200';
+        }
+
+        function jplBolehTambah_() { return (typeof canDo === 'function') ? canDo('sap-perlintasan', 'tambah') : false; }
+        function jplBolehEdit_()   { return (typeof canDo === 'function') ? canDo('sap-perlintasan', 'edit') : false; }
+        function jplBolehHapus_()  { return (typeof canDo === 'function') ? canDo('sap-perlintasan', 'hapus') : false; }
+
+        function jplAngka_(v) {
+            const n = parseInt(String(v === undefined || v === null ? '' : v).replace(/[^\d-]/g, ''), 10);
+            return isNaN(n) ? 0 : n;
+        }
+        function jplRibuan_(n) { return Number(n || 0).toLocaleString('id-ID'); }
+
+
+        // ─── MEMUAT DATA ────────────────────────────────────────────────
+
+        function loadPerlintasan() { jplMuat_(false); }
+
+        function jplMuat_(paksa) {
+            const isi = document.getElementById('jpl-isi');
+            if (!isi) return;
+            if (typeof canDo === 'function' && !canDo('sap-perlintasan', 'lihat')) return;
+            if (jplData_ && !paksa) { jplGambarSemua_(); return; }
+
+            isi.innerHTML = '<tr><td colspan="9" class="py-10 text-center text-slate-400 font-bold text-[11px]">' +
+                '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#d4af37]"></i>Memuat register perlintasan...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) {
+                        isi.innerHTML = '<tr><td colspan="9" class="py-10 text-center text-rose-500 font-bold text-[11px]">' +
+                            'Gagal memuat: ' + escapeHtml((res && res.message) || '') + '</td></tr>';
+                        return;
+                    }
+                    jplData_ = res.data || [];
+                    jplOpsi_ = res.opsi || {};
+                    jplIsiPenyaring_();
+                    jplGambarSemua_();
+                })
+                .withFailureHandler(function () {
+                    isi.innerHTML = '<tr><td colspan="9" class="py-10 text-center text-rose-500 font-bold text-[11px]">Terjadi kesalahan saat memuat data.</td></tr>';
+                })
+                .perlintasan_getAll(currentSessionToken);
+        }
+
+        function jplGambarSemua_() {
+            const bTambah = document.getElementById('jpl-btn-tambah');
+            if (bTambah) bTambah.classList.toggle('hidden', !jplBolehTambah_());
+
+            jplGambarKartu_();
+            jplGambarDomain_();
+            jplGambarResor_();
+            jplGambarTabel_();
+        }
+
+
+        // ─── KARTU RINGKAS ──────────────────────────────────────────────
+
+        function jplGambarKartu_() {
+            const wadah = document.getElementById('jpl-kartu');
+            if (!wadah) return;
+            const d = jplData_ || [];
+
+            const total = d.length;
+            const dijaga = d.filter(function (x) { return x.statusJaga === 'DIJAGA'; }).length;
+            const takJaga = d.filter(function (x) { return x.statusJaga === 'TIDAK DIJAGA'; }).length;
+            const takReg = d.filter(function (x) { return x.statusRegister === 'TIDAK REGISTER'; }).length;
+            const titikLaka = d.filter(function (x) { return x.totalLaka > 0; }).length;
+            const jmlLaka = d.reduce(function (t, x) { return t + x.totalLaka; }, 0);
+            const tinggi = d.filter(function (x) { return x.tingkat === 'Tinggi'; }).length;
+
+            const sub = document.getElementById('jpl-subjudul');
+            if (sub) {
+                const resor = {}; d.forEach(function (x) { if (x.resor) resor[x.resor] = 1; });
+                sub.textContent = total
+                    ? jplRibuan_(total) + ' perlintasan terdaftar di ' + Object.keys(resor).length + ' resor'
+                    : 'Register perlintasan lintas operasional KCI';
+            }
+
+            const kartu = [
+                { label: 'Total Perlintasan', nilai: total, ikon: 'fa-road-barrier', warna: 'bg-slate-100 text-slate-700', ket: 'seluruh titik terdaftar' },
+                { label: 'Dijaga', nilai: dijaga, ikon: 'fa-shield-halved', warna: 'bg-emerald-50 text-emerald-600',
+                  ket: total ? Math.round(dijaga * 100 / total) + '% dari total' : '-' },
+                { label: 'Tidak Dijaga', nilai: takJaga, ikon: 'fa-eye-slash', warna: 'bg-rose-50 text-rose-600',
+                  ket: total ? Math.round(takJaga * 100 / total) + '% dari total' : '-', tekan: 'tidakjaga' },
+                { label: 'Tidak Terdaftar Resmi', nilai: takReg, ikon: 'fa-ban', warna: 'bg-amber-50 text-amber-600',
+                  ket: 'di luar daftar resmi', tekan: 'liar' },
+                { label: 'Titik Berkecelakaan', nilai: titikLaka, ikon: 'fa-triangle-exclamation', warna: 'bg-rose-50 text-rose-600',
+                  ket: jmlLaka + ' kejadian tercatat', tekan: 'laka' },
+                { label: 'Prioritas Tinggi', nilai: tinggi, ikon: 'fa-arrow-up-wide-short', warna: 'bg-[#0c1d37]/10 text-[#0c1d37]',
+                  ket: 'perlu dilihat lebih dulu', tekan: 'prioritas' }
+            ];
+
+            // Kartu yang punya penyaring padanannya dibuat bisa diklik.
+            // Klik kartu kini MENYETEL DROPDOWN penyaring yang bersangkutan,
+            // bukan penyaring tersembunyi tersendiri seperti sebelumnya -
+            // sehingga keadaan penyaring selalu terlihat di satu tempat, &
+            // bisa dilepas lewat dropdown itu juga.
+            wadah.innerHTML = kartu.map(function (k) {
+                const bisa = !!k.tekan;
+                const tag = bisa ? 'button' : 'div';
+                const aksi = bisa ? ' onclick="jplKartuSaring_(\'' + k.tekan + '\')" title="Klik untuk menyaring tabel"' : '';
+                return '<' + tag + aksi + ' class="text-left bg-white rounded-2xl border border-slate-200 shadow-sm p-4 ' +
+                        (bisa ? 'hover:border-[#0c1d37]/40 hover:shadow transition cursor-pointer' : '') + '">' +
+                    '<div class="flex items-start justify-between gap-2 mb-2">' +
+                        '<span class="w-8 h-8 rounded-lg ' + k.warna + ' flex items-center justify-center text-[11px] shrink-0">' +
+                            '<i class="fa-solid ' + k.ikon + '"></i></span>' +
+                        (bisa ? '<i class="fa-solid fa-filter text-[9px] text-slate-300 mt-1"></i>' : '') +
+                    '</div>' +
+                    '<p class="text-[22px] font-black text-[#0c1d37] leading-none">' + jplRibuan_(k.nilai) + '</p>' +
+                    '<p class="text-[9.5px] font-black text-slate-500 uppercase tracking-wider mt-1.5 leading-tight">' + escapeHtml(k.label) + '</p>' +
+                    '<p class="text-[9px] font-bold text-slate-400 mt-0.5 leading-tight">' + escapeHtml(k.ket) + '</p>' +
+                '</' + tag + '>';
+            }).join('');
+        }
+
+
+        // ─── DOMAIN PENJAGAAN ───────────────────────────────────────────
+
+        function jplGambarDomain_() {
+            const wadah = document.getElementById('jpl-domain');
+            if (!wadah) return;
+            const d = jplData_ || [];
+            if (!d.length) { wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold italic py-4 text-center">Belum ada data.</p>'; return; }
+
+            const hitung = {};
+            d.forEach(function (x) {
+                const k = String(x.domainJaga || '(tidak diisi)').toUpperCase();
+                hitung[k] = (hitung[k] || 0) + 1;
+            });
+            const urut = Object.keys(hitung).sort(function (a, b) { return hitung[b] - hitung[a]; });
+            const maks = Math.max.apply(null, urut.map(function (k) { return hitung[k]; }));
+
+            wadah.innerHTML = urut.map(function (k) {
+                const n = hitung[k];
+                const w = jplWarnaDomain_(k);
+                const persen = Math.round(n * 100 / d.length);
+                return '<button onclick="jplSaringDomain_(\'' + escapeHtml(k) + '\')" title="Klik untuk menyaring" class="w-full text-left group">' +
+                    '<div class="flex items-center justify-between gap-2 mb-1">' +
+                        '<span class="text-[10px] font-black text-slate-600 truncate group-hover:text-[#0c1d37]">' + escapeHtml(k) + '</span>' +
+                        '<span class="text-[10px] font-black text-slate-400 shrink-0">' + n + ' &middot; ' + persen + '%</span>' +
+                    '</div>' +
+                    '<div class="jpl-bar h-2 rounded-full bg-slate-100 overflow-hidden">' +
+                        '<span class="block h-full rounded-full ' + w.bar + '" style="width:' + Math.round(n * 100 / maks) + '%"></span>' +
+                    '</div></button>';
+            }).join('');
+        }
+
+        function jplSaringDomain_(nilai) {
+            const el = document.getElementById('jpl-f-domain');
+            if (!el) return;
+            // Nilai "(tidak diisi)" tidak ada di daftar dropdown; dalam hal
+            // itu penyaringnya dikembalikan ke Semua daripada menyetel nilai
+            // yang tidak akan pernah cocok & menghasilkan tabel kosong.
+            const ada = Array.prototype.some.call(el.options, function (o) { return o.value === nilai; });
+            el.value = ada ? nilai : 'Semua';
+            jplTerapkanFilter_();
+        }
+
+
+        // ─── SEBARAN PER RESOR ──────────────────────────────────────────
+
+        function jplGambarResor_() {
+            const wadah = document.getElementById('jpl-resor');
+            if (!wadah) return;
+            const d = jplData_ || [];
+            if (!d.length) { wadah.innerHTML = '<p class="text-[11px] text-slate-400 font-bold italic py-4 text-center">Belum ada data.</p>'; return; }
+
+            const peta = {};
+            d.forEach(function (x) {
+                const k = x.resor || '(tanpa resor)';
+                if (!peta[k]) peta[k] = { jaga: 0, tidak: 0, laka: 0, total: 0 };
+                peta[k].total++;
+                if (x.statusJaga === 'TIDAK DIJAGA') peta[k].tidak++; else peta[k].jaga++;
+                peta[k].laka += x.totalLaka;
+            });
+            const urut = Object.keys(peta).sort(function (a, b) { return peta[b].total - peta[a].total; });
+            const maks = Math.max.apply(null, urut.map(function (k) { return peta[k].total; }));
+
+            wadah.innerHTML = urut.map(function (k) {
+                const p = peta[k];
+                const lebar = Math.round(p.total * 100 / maks);
+                const bagianJaga = p.total ? Math.round(p.jaga * 100 / p.total) : 0;
+                return '<button onclick="jplSaringResor_(\'' + escapeHtml(k).replace(/'/g, '&#39;') + '\')" ' +
+                        'title="Klik untuk menyaring tabel ke ' + escapeHtml(k) + '" class="w-full text-left group">' +
+                    '<div class="flex items-center gap-2">' +
+                        '<span class="w-[130px] shrink-0 text-[10px] font-black text-slate-600 truncate group-hover:text-[#0c1d37]">' + escapeHtml(k) + '</span>' +
+                        '<div class="flex-1 jpl-bar h-3.5 rounded bg-slate-100 overflow-hidden flex">' +
+                            '<span class="block h-full" style="width:' + lebar + '%">' +
+                                '<span class="flex h-full w-full">' +
+                                    '<span class="block h-full bg-emerald-500" style="width:' + bagianJaga + '%"></span>' +
+                                    '<span class="block h-full bg-rose-500" style="width:' + (100 - bagianJaga) + '%"></span>' +
+                                '</span>' +
+                            '</span>' +
+                        '</div>' +
+                        '<span class="w-9 shrink-0 text-right text-[10px] font-black text-slate-500">' + p.total + '</span>' +
+                        (p.laka > 0
+                            ? '<span class="w-8 shrink-0 text-right text-[9px] font-black text-rose-600" title="' + p.laka + ' kejadian kecelakaan">' +
+                              '<i class="fa-solid fa-triangle-exclamation"></i>' + p.laka + '</span>'
+                            : '<span class="w-8 shrink-0"></span>') +
+                    '</div></button>';
+            }).join('');
+        }
+
+        function jplSaringResor_(nilai) {
+            const el = document.getElementById('jpl-f-resor');
+            if (el) el.value = nilai;
+            jplTerapkanFilter_();
+        }
+
+
+        // ─── PENYARING ──────────────────────────────────────────────────
+
+        /** Mengisi dropdown dari nilai yang BENAR-BENAR ada di data. */
+        function jplIsiPenyaring_() {
+            const d = jplData_ || [];
+            const unik = function (k) {
+                const s = {};
+                d.forEach(function (x) { if (String(x[k] || '').trim()) s[x[k]] = 1; });
+                return Object.keys(s).sort(function (a, b) { return a.localeCompare(b, 'id', { numeric: true }); });
+            };
+            const isi = function (idEl, nilai, labelSemua) {
+                const el = document.getElementById(idEl);
+                if (!el) return;
+                const dulu = el.value;
+                el.innerHTML = '<option value="Semua">' + labelSemua + '</option>' +
+                    nilai.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+                if (dulu && nilai.indexOf(dulu) !== -1) el.value = dulu;
+            };
+            // Pilihan pertama ditulis dengan bahasa yang menjelaskan apa yang
+            // disaring, bukan sekadar "Semua Status". Dua dropdown yang
+            // sama-sama berbunyi "status" membuat orang harus membukanya satu
+            // per satu hanya untuk tahu mana yang mana.
+            isi('jpl-f-resor', unik('resor'), 'Semua resor');
+            isi('jpl-f-lintas', unik('lintas'), 'Semua lintas');
+            isi('jpl-f-provinsi', unik('provinsi'), 'Semua provinsi');
+            isi('jpl-f-jaga', unik('statusJaga'), 'Dijaga maupun tidak');
+            isi('jpl-f-domain', unik('domainJaga'), 'Semua pihak penjaga');
+            isi('jpl-f-register', unik('statusRegister'), 'Terdaftar maupun tidak');
+            // jpl-f-laka & jpl-f-prioritas pilihannya TETAP (ditulis langsung
+            // di pane), jadi tidak diisi ulang dari data di sini.
+        }
+
+        /**
+         * Klik kartu ringkas -> menyetel dropdown penyaring yang bersangkutan.
+         * Menekan kartu yang penyaringnya SUDAH menyala akan melepasnya, agar
+         * tidak perlu mencari dropdown-nya hanya untuk membatalkan.
+         */
+        function jplKartuSaring_(jenis) {
+            const peta = {
+                tidakjaga: ['jpl-f-jaga', 'TIDAK DIJAGA'],
+                liar:      ['jpl-f-register', 'TIDAK REGISTER'],
+                laka:      ['jpl-f-laka', 'ada'],
+                prioritas: ['jpl-f-prioritas', 'Tinggi']
+            }[jenis];
+            if (!peta) return;
+            const el = document.getElementById(peta[0]);
+            if (!el) return;
+            const ada = Array.prototype.some.call(el.options, function (o) { return o.value === peta[1]; });
+            if (!ada) { showToast('Tidak ada data dengan kriteria itu.'); return; }
+            el.value = (el.value === peta[1]) ? 'Semua' : peta[1];
+            jplTerapkanFilter_();
+        }
+
+        let jplTundaCari_ = null;
+        function jplCariTunda_() {
+            clearTimeout(jplTundaCari_);
+            jplTundaCari_ = setTimeout(jplTerapkanFilter_, 260);
+        }
+
+        function jplTerapkanFilter_() {
+            jplHal_ = 1;
+            jplGambarTabel_();
+        }
+
+        /** Seluruh id penyaring - satu daftar, dipakai reset & ringkasan cetak. */
+        const JPL_ID_FILTER = ['jpl-f-resor', 'jpl-f-lintas', 'jpl-f-provinsi',
+            'jpl-f-register', 'jpl-f-jaga', 'jpl-f-domain', 'jpl-f-laka', 'jpl-f-prioritas'];
+
+        function jplResetFilter_() {
+            JPL_ID_FILTER.forEach(function (id) { const el = document.getElementById(id); if (el) el.value = 'Semua'; });
+            const c = document.getElementById('jpl-cari');
+            if (c) c.value = '';
+            jplTerapkanFilter_();
+            showToast('Seluruh data ditampilkan kembali.');
+        }
+
+        function jplHasilSaring_() {
+            const ambil = function (id) { const el = document.getElementById(id); return el ? el.value : 'Semua'; };
+            const cari = String((document.getElementById('jpl-cari') || {}).value || '').toLowerCase().trim();
+            const fResor = ambil('jpl-f-resor'), fLintas = ambil('jpl-f-lintas'), fProv = ambil('jpl-f-provinsi');
+            const fJaga = ambil('jpl-f-jaga'), fDomain = ambil('jpl-f-domain'), fReg = ambil('jpl-f-register');
+            const fLaka = ambil('jpl-f-laka'), fPrio = ambil('jpl-f-prioritas');
+
+            return (jplData_ || []).filter(function (x) {
+                if (fResor !== 'Semua' && x.resor !== fResor) return false;
+                if (fLintas !== 'Semua' && x.lintas !== fLintas) return false;
+                if (fProv !== 'Semua' && x.provinsi !== fProv) return false;
+                if (fJaga !== 'Semua' && x.statusJaga !== fJaga) return false;
+                if (fDomain !== 'Semua' && x.domainJaga !== fDomain) return false;
+                if (fReg !== 'Semua' && x.statusRegister !== fReg) return false;
+
+                // Dua penyaring di bawah dulunya deretan "tombol cepat" di
+                // samping tabel. Dijadikan dropdown biasa supaya SEMUA
+                // penyaring berada di satu tempat dengan satu cara kerja.
+                if (fLaka === 'ada' && !(x.totalLaka > 0)) return false;
+                if (fLaka === 'tidak' && x.totalLaka > 0) return false;
+                if (fPrio !== 'Semua' && x.tingkat !== fPrio) return false;
+
+                if (cari) {
+                    const gabung = [x.resor, x.noJpl, x.lokasiKm, x.lintas, x.antara, x.koridor,
+                        x.namaJalan, x.kodyaKab, x.provinsi, x.domainJaga, x.keterangan].join(' ').toLowerCase();
+                    if (gabung.indexOf(cari) === -1) return false;
+                }
+                return true;
+            });
+        }
+
+
+        // ─── TABEL ──────────────────────────────────────────────────────
+
+        /**
+         * Kolom tabel. Lebarnya dipatok piksel karena tabelnya table-fixed;
+         * jumlah seluruh px di sini DIPAKAI sebagai min-width tabel, jadi
+         * tidak ada kolom yang diperas & dipotong (masalah yang pernah
+         * terjadi di Rekap Gangguan Sarana: tanggal "Jum, 10 Okt" terpotong
+         * jadi "Jum," karena lebar kolom lebih kecil dari isinya).
+         *
+         * Kolom LAKA & PRIORITAS sudah dihapus dari tampilan - diganti
+         * KETERANGAN, yang jauh lebih sering dibaca. Datanya tetap ada:
+         * jumlah kecelakaan ditandai batang merah di tepi kiri baris,
+         * sedangkan prioritas tetap bisa dipakai menyaring & mengurutkan,
+         * & keduanya tampil utuh di jendela detail.
+         */
+        const JPL_KOLOM = [
+            { label: 'No', px: 42 },
+            { label: 'Resor', px: 148 },
+            { label: 'No JPL', px: 70 },
+            { label: 'Lokasi KM', px: 92 },
+            { label: 'Nama Jalan', px: 210 },
+            { label: 'Lintas', px: 104 },
+            { label: 'Penjagaan', px: 142 },
+            { label: 'Keterangan', px: 230 },
+            { label: 'Aksi', px: 92 }
+        ];
+
+        function jplGambarTabel_() {
+            const kepala = document.getElementById('jpl-kepala');
+            const isi = document.getElementById('jpl-isi');
+            if (!isi) return;
+
+            const hasil = jplHasilSaring_();
+            const urut = (document.getElementById('jpl-urut') || {}).value || 'resor';
+            hasil.sort(function (a, b) {
+                if (urut === 'prioritas') return (b.skor - a.skor) || (b.totalLaka - a.totalLaka);
+                if (urut === 'laka') return (b.totalLaka - a.totalLaka) || (b.skor - a.skor);
+                if (urut === 'jalan') return String(a.namaJalan).localeCompare(String(b.namaJalan), 'id');
+                const r = String(a.resor).localeCompare(String(b.resor), 'id', { numeric: true });
+                return r !== 0 ? r : String(a.lokasiKm).localeCompare(String(b.lokasiKm), 'id', { numeric: true });
+            });
+            jplTampil_ = hasil;
+
+            const bolehEdit = jplBolehEdit_(), bolehHapus = jplBolehHapus_();
+            const kolom = JPL_KOLOM.filter(function (k) { return k.label !== 'Aksi' || bolehEdit || bolehHapus; });
+
+            if (kepala) {
+                kepala.innerHTML = '<tr>' + kolom.map(function (k) {
+                    const rata = (k.label === 'Aksi' || k.label === 'No') ? ' text-center' : '';
+                    return '<th class="px-3 py-3' + rata + '" style="width:' + k.px + 'px">' + escapeHtml(k.label) + '</th>';
+                }).join('') + '</tr>';
+                const tabel = document.getElementById('jpl-tabel');
+                if (tabel) tabel.style.minWidth = kolom.reduce(function (t, k) { return t + k.px; }, 0) + 'px';
+            }
+
+            const elHit = document.getElementById('jpl-hitung');
+            if (elHit) elHit.textContent = jplRibuan_(hasil.length) + ' titik';
+
+            if (!hasil.length) {
+                isi.innerHTML = '<tr><td colspan="' + kolom.length + '" class="py-12 text-center">' +
+                    '<div class="w-11 h-11 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center mx-auto mb-2"><i class="fa-solid fa-road-barrier"></i></div>' +
+                    '<p class="text-[11px] font-bold text-slate-400">' +
+                    ((jplData_ || []).length ? 'Tidak ada perlintasan yang cocok dengan penyaring ini.' : 'Register masih kosong.') + '</p>' +
+                    ((jplData_ || []).length
+                        ? '<button onclick="jplResetFilter_()" class="mt-2 text-[10px] font-black text-[#e11d48] hover:underline">Tampilkan semua data</button>'
+                        : (jplBolehTambah_() ? '<button onclick="jplBukaPilih_()" class="mt-2 text-[10px] font-black text-[#e11d48] hover:underline">Tambah data perlintasan</button>' : '')) +
+                    '</td></tr>';
+                const h = document.getElementById('jpl-halaman');
+                if (h) h.innerHTML = '';
+                return;
+            }
+
+            const totalHal = Math.max(1, Math.ceil(hasil.length / jplPerHal_));
+            jplHal_ = Math.min(Math.max(1, jplHal_), totalHal);
+            const mulai = (jplHal_ - 1) * jplPerHal_;
+            const potong = hasil.slice(mulai, mulai + jplPerHal_);
+
+            isi.innerHTML = potong.map(function (x, i) {
+                const w = jplWarnaDomain_(x.domainJaga);
+                const takJaga = x.statusJaga === 'TIDAK DIJAGA';
+
+                const tombol = (bolehEdit || bolehHapus)
+                    ? '<td class="px-3 py-2.5"><div class="flex items-center justify-center gap-1">' +
+                        (bolehEdit ? '<button onclick="event.stopPropagation();jplBukaForm_(\'' + x.id + '\')" title="Ubah" class="w-6 h-6 rounded-md bg-white border border-slate-200 hover:bg-[#d4af37] hover:border-[#d4af37] hover:text-[#0c1d37] text-slate-500 flex items-center justify-center transition"><i class="fa-regular fa-pen-to-square text-[10px]"></i></button>' : '') +
+                        (bolehHapus ? '<button onclick="event.stopPropagation();jplHapus_(\'' + x.id + '\')" title="Hapus" class="w-6 h-6 rounded-md bg-white border border-slate-200 hover:bg-rose-600 hover:border-rose-600 hover:text-white text-slate-500 flex items-center justify-center transition"><i class="fa-regular fa-trash-can text-[10px]"></i></button>' : '') +
+                      '</div></td>'
+                    : '';
+
+                return '<tr onclick="jplBukaDetail_(\'' + x.id + '\')" title="Klik untuk melihat seluruh data" ' +
+                        'class="hover:bg-slate-50 transition cursor-pointer' + (x.totalLaka > 0 ? ' jpl-laka' : '') + '">' +
+                    '<td class="px-3 py-2.5 text-center text-[10px] text-slate-400 font-mono">' + (mulai + i + 1) + '</td>' +
+                    '<td class="px-3 py-2.5 truncate" title="' + escapeHtml(x.resor) + '">' + escapeHtml(x.resor || '-') + '</td>' +
+                    '<td class="px-3 py-2.5 font-mono font-black text-[#0c1d37]">' +
+                        (x.noJpl ? escapeHtml(x.noJpl) : '<span class="text-slate-300 font-sans font-bold">&mdash;</span>') + '</td>' +
+                    '<td class="px-3 py-2.5 font-mono text-slate-500">' + escapeHtml(x.lokasiKm || '-') + '</td>' +
+                    '<td class="px-3 py-2.5 font-black text-slate-800 truncate" title="' + escapeHtml(x.namaJalan) + '">' +
+                        escapeHtml(x.namaJalan || '-') + '</td>' +
+                    '<td class="px-3 py-2.5 text-slate-500 truncate" title="' + escapeHtml(x.lintas) + '">' + escapeHtml(x.lintas || '-') + '</td>' +
+                    '<td class="px-3 py-2.5">' +
+                        '<span class="px-1.5 py-0.5 rounded border text-[9px] font-black ' + w.lencana + '">' +
+                            escapeHtml(x.domainJaga || 'TIDAK DIISI') + '</span>' +
+                        (takJaga ? '<span class="block text-[9px] font-black text-rose-600 mt-0.5">tidak dijaga</span>' : '') +
+                    '</td>' +
+                    // KETERANGAN. Dipotong satu baris agar tinggi baris tetap
+                    // seragam; isi utuhnya muncul saat disorot & di detail.
+                    '<td class="px-3 py-2.5 truncate text-slate-600" title="' + escapeHtml(x.keterangan) + '">' +
+                        (x.keterangan
+                            ? escapeHtml(x.keterangan)
+                            : '<span class="text-slate-300 font-bold">&mdash;</span>') +
+                    '</td>' + tombol + '</tr>';
+            }).join('');
+
+            jplGambarHalaman_(hasil.length, totalHal, mulai, potong.length);
+        }
+
+        function jplGambarHalaman_(total, totalHal, mulai, tampil) {
+            const el = document.getElementById('jpl-halaman');
+            if (!el) return;
+            const tombol = function (hal, teks, mati) {
+                return '<button ' + (mati ? 'disabled' : 'onclick="jplKeHal_(' + hal + ')"') +
+                    ' class="px-2.5 py-1.5 rounded-lg border text-[11px] font-black transition ' +
+                    (mati ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-[#0c1d37] hover:text-[#0c1d37]') + '">' + teks + '</button>';
+            };
+            el.innerHTML =
+                '<div class="flex flex-col sm:flex-row items-center justify-between gap-3">' +
+                    '<p class="text-[10px] font-bold text-slate-500">Menampilkan <b>' + (mulai + 1) + '&ndash;' + (mulai + tampil) +
+                        '</b> dari <b>' + jplRibuan_(total) + '</b> titik</p>' +
+                    '<div class="flex items-center gap-1.5">' +
+                        '<select onchange="jplUbahPerHal_(this.value)" class="px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold focus:outline-none cursor-pointer mr-1">' +
+                            [25, 50, 100].map(function (n) {
+                                return '<option value="' + n + '"' + (jplPerHal_ === n ? ' selected' : '') + '>' + n + ' / halaman</option>';
+                            }).join('') +
+                        '</select>' +
+                        tombol(jplHal_ - 1, '<i class="fa-solid fa-chevron-left text-[9px]"></i>', jplHal_ <= 1) +
+                        '<span class="px-2 text-[11px] font-black text-slate-600">' + jplHal_ + ' / ' + totalHal + '</span>' +
+                        tombol(jplHal_ + 1, '<i class="fa-solid fa-chevron-right text-[9px]"></i>', jplHal_ >= totalHal) +
+                    '</div>' +
+                '</div>';
+        }
+
+        function jplKeHal_(n) { jplHal_ = n; jplGambarTabel_(); }
+        function jplUbahPerHal_(n) { jplPerHal_ = Number(n) || 25; jplHal_ = 1; jplGambarTabel_(); }
+
+
+        // ─── DETAIL ─────────────────────────────────────────────────────
+
+        function jplCari_(id) { return (jplData_ || []).find(function (x) { return String(x.id) === String(id); }) || null; }
+
+        function jplBukaDetail_(id) {
+            const x = jplCari_(id);
+            if (!x) { showToast('Data tidak ditemukan - coba muat ulang.'); return; }
+            jplDetailId_ = id;
+
+            const w = jplWarnaDomain_(x.domainJaga);
+            document.getElementById('jpl-d-kepala').innerHTML =
+                '<div class="flex items-start justify-between gap-3">' +
+                    '<div class="min-w-0">' +
+                        '<p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">' + escapeHtml(x.resor || '-') + '</p>' +
+                        '<h3 class="font-black text-sm tracking-tight mt-0.5 break-words">' + escapeHtml(x.namaJalan || x.lokasiKm || 'Perlintasan') + '</h3>' +
+                        '<p class="text-[10px] text-slate-400 font-bold mt-0.5">' +
+                            (x.noJpl ? 'JPL ' + escapeHtml(x.noJpl) + ' &middot; ' : '') + escapeHtml(x.lokasiKm || '-') +
+                            (x.lintas ? ' &middot; ' + escapeHtml(x.lintas) : '') + '</p>' +
+                    '</div>' +
+                    '<button onclick="jplTutupDetail_()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center shrink-0"><i class="fa-solid fa-xmark"></i></button>' +
+                '</div>';
+
+            const baris = function (label, nilai, tebal) {
+                return '<div class="flex items-start justify-between gap-3 py-2 border-b border-slate-100 last:border-0">' +
+                    '<span class="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0">' + escapeHtml(label) + '</span>' +
+                    '<span class="text-[11px] ' + (tebal ? 'font-black text-slate-800' : 'font-semibold text-slate-600') + ' text-right break-words">' +
+                    (nilai || '<span class="text-slate-300">&mdash;</span>') + '</span></div>';
+            };
+
+            const tahun = Object.keys(x.laka || {}).sort();
+            const lakaHtml = tahun.length
+                ? tahun.map(function (t) {
+                    const n = jplAngka_(x.laka[t]);
+                    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black mr-1.5 mb-1 ' +
+                        (n > 0 ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-50 text-slate-400 border-slate-200') + '">' +
+                        escapeHtml(t) + ': ' + n + '</span>';
+                  }).join('')
+                : '';
+
+            // Rincian skor dibuka apa adanya. Angka prioritas tanpa
+            // perinciannya hanya menyisakan pertanyaan "kenapa segini".
+            const komponen = [];
+            if (x.totalLaka > 0) komponen.push(['Pernah ada kecelakaan (' + x.totalLaka + 'x)', Math.min(55, 25 + (x.totalLaka - 1) * 10)]);
+            if (x.statusJaga === 'TIDAK DIJAGA') komponen.push(['Tidak dijaga', 25]);
+            if (x.statusRegister === 'TIDAK REGISTER') komponen.push(['Tidak register', 12]);
+            if (x.lalin === 'PADAT') komponen.push(['Lalu lintas padat', 10]);
+            if (x.posisiKota === 'PUSAT KOTA') komponen.push(['Berada di pusat kota', 8]);
+
+            document.getElementById('jpl-d-isi').innerHTML =
+                '<div class="rounded-2xl border border-slate-200 overflow-hidden mb-4">' +
+                    '<div class="px-4 py-3 flex items-center justify-between gap-3 ' +
+                        (x.tingkat === 'Tinggi' ? 'bg-rose-50' : (x.tingkat === 'Sedang' ? 'bg-amber-50' : 'bg-slate-50')) + '">' +
+                        '<div>' +
+                            '<p class="text-[9px] font-black text-slate-500 uppercase tracking-wider">Prioritas Perhatian</p>' +
+                            '<p class="text-[10px] font-bold text-slate-400 mt-0.5">alat bantu urut, bukan penilaian resmi</p>' +
+                        '</div>' +
+                        '<div class="text-right shrink-0">' +
+                            '<p class="text-xl font-black ' + (x.tingkat === 'Tinggi' ? 'text-rose-700' : (x.tingkat === 'Sedang' ? 'text-amber-700' : 'text-slate-500')) + ' leading-none">' + x.skor + '</p>' +
+                            '<p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-0.5">' + escapeHtml(x.tingkat) + '</p>' +
+                        '</div>' +
+                    '</div>' +
+                    (komponen.length
+                        ? '<div class="px-4 py-2.5 bg-white">' + komponen.map(function (k) {
+                            return '<div class="flex items-center justify-between gap-2 py-0.5">' +
+                                '<span class="text-[10px] font-semibold text-slate-500">' + escapeHtml(k[0]) + '</span>' +
+                                '<span class="text-[10px] font-black text-slate-700">+' + k[1] + '</span></div>';
+                          }).join('') + '</div>'
+                        : '<div class="px-4 py-2.5 bg-white"><p class="text-[10px] font-semibold text-slate-400 italic">Tidak ada faktor yang menaikkan prioritas.</p></div>') +
+                '</div>' +
+
+                '<div class="rounded-2xl border border-slate-200 px-4 py-1">' +
+                    baris('Status', '<span class="px-1.5 py-0.5 rounded border text-[9px] font-black ' +
+                        (x.statusRegister === 'REGISTER' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200') + '">' +
+                        escapeHtml(x.statusRegister || '-') + '</span> ' +
+                        '<span class="px-1.5 py-0.5 rounded border text-[9px] font-black ' +
+                        (x.statusJaga === 'DIJAGA' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200') + '">' +
+                        escapeHtml(x.statusJaga || '-') + '</span>', true) +
+                    baris('Domain Penjagaan', '<span class="px-1.5 py-0.5 rounded border text-[9px] font-black ' + w.lencana + '">' + escapeHtml(x.domainJaga || '-') + '</span>') +
+                    baris('Riwayat Kecelakaan', lakaHtml) +
+                    baris('Antara', escapeHtml(x.antara)) +
+                    baris('Koridor', escapeHtml(x.koridor)) +
+                    baris('Lebar JPL', x.lebar ? escapeHtml(x.lebar) + ' m' : '') +
+                    baris('Kategori Jalan', escapeHtml(x.kategoriJalan)) +
+                    baris('Wilayah', escapeHtml([x.kodyaKab, x.provinsi].filter(Boolean).join(', '))) +
+                    baris('Lalu Lintas', escapeHtml(x.lalin)) +
+                    baris('Posisi', escapeHtml(x.posisiKota)) +
+                    baris('Keterangan', escapeHtml(x.keterangan)) +
+                    baris('Diperbarui', escapeHtml(jplTanggal_(x.diperbaruiPada)) + (x.diperbaruiOleh ? ' oleh ' + escapeHtml(x.diperbaruiOleh) : '')) +
+                '</div>';
+
+            const btn = document.getElementById('jpl-d-edit');
+            if (btn) btn.classList.toggle('hidden', !jplBolehEdit_());
+            document.getElementById('modal-jpl-detail').classList.remove('hidden');
+        }
+
+        function jplTutupDetail_() {
+            const m = document.getElementById('modal-jpl-detail');
+            if (m) m.classList.add('hidden');
+            jplDetailId_ = null;
+        }
+
+        function jplEditDariDetail_() {
+            const id = jplDetailId_;
+            jplTutupDetail_();
+            if (id) jplBukaForm_(id);
+        }
+
+        function jplTanggal_(iso) {
+            const s = String(iso || '').trim();
+            if (!s) return '-';
+            const d = new Date(s);
+            if (isNaN(d.getTime())) return s;
+            return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+
+        // ─── FORM TAMBAH / UBAH ─────────────────────────────────────────
+
+        let jplTahunLaka_ = [];
+
+        // ─── PILIHAN CARA MENAMBAH ──────────────────────────────────────
+        // Tombol "Impor Excel" & "Template" tidak lagi berdiri sendiri di
+        // bilah atas. Ketiganya sama-sama berarti "menambah data", jadi
+        // dikumpulkan di balik satu tombol Tambah JPL.
+
+        function jplBukaPilih_() {
+            if (!jplBolehTambah_()) { showToast('Anda tidak punya izin menambah perlintasan.'); return; }
+            const m = document.getElementById('modal-jpl-pilih');
+            if (m) m.classList.remove('hidden');
+        }
+
+        function jplTutupPilih_() {
+            const m = document.getElementById('modal-jpl-pilih');
+            if (m) m.classList.add('hidden');
+        }
+
+        function jplPilihManual_() { jplTutupPilih_(); jplBukaForm_(''); }
+        function jplPilihImpor_()  { jplTutupPilih_(); jplBukaImpor_(); }
+
+        function jplBukaForm_(id) {
+            if (!id && !jplBolehTambah_()) { showToast('Anda tidak punya izin menambah perlintasan.'); return; }
+            if (id && !jplBolehEdit_()) { showToast('Anda tidak punya izin mengubah perlintasan.'); return; }
+
+            const x = id ? jplCari_(id) : null;
+            if (id && !x) { showToast('Data tidak ditemukan - coba muat ulang.'); return; }
+
+            const set = function (elId, v) { const e = document.getElementById(elId); if (e) e.value = v || ''; };
+            set('jpl-m-id', x ? x.id : '');
+            set('jpl-m-resor', x ? x.resor : '');
+            set('jpl-m-nojpl', x ? x.noJpl : '');
+            set('jpl-m-km', x ? x.lokasiKm : '');
+            set('jpl-m-jalan', x ? x.namaJalan : '');
+            set('jpl-m-lintas', x ? x.lintas : '');
+            set('jpl-m-antara', x ? x.antara : '');
+            set('jpl-m-koridor', x ? x.koridor : '');
+            set('jpl-m-lebar', x ? x.lebar : '');
+            set('jpl-m-katjalan', x ? x.kategoriJalan : '');
+            set('jpl-m-kodya', x ? x.kodyaKab : '');
+            set('jpl-m-provinsi', x ? x.provinsi : '');
+            set('jpl-m-ket', x ? x.keterangan : '');
+
+            // Dropdown diisi ulang tiap kali dibuka. Nilai tersimpan yang
+            // tidak ada di daftar baku ditambahkan di depan, supaya TIDAK
+            // diam-diam berganti ke pilihan pertama saat disimpan ulang.
+            const isiSel = function (elId, kunci, nilaiKini) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                let pilihan = (jplOpsi_[kunci] || []).slice();
+                if (nilaiKini && pilihan.indexOf(nilaiKini) === -1) pilihan.unshift(nilaiKini);
+                el.innerHTML = '<option value="">- pilih -</option>' + pilihan.map(function (v) {
+                    return '<option value="' + escapeHtml(v) + '"' + (v === nilaiKini ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+                }).join('');
+            };
+            isiSel('jpl-m-register', 'statusRegister', x ? x.statusRegister : '');
+            isiSel('jpl-m-jaga', 'statusJaga', x ? x.statusJaga : '');
+            isiSel('jpl-m-domain', 'domainJaga', x ? x.domainJaga : '');
+            isiSel('jpl-m-lalin', 'lalin', x ? x.lalin : '');
+            isiSel('jpl-m-posisi', 'posisiKota', x ? x.posisiKota : '');
+
+            // Saran isian dari nilai yang sudah ada - mengetik ulang nama
+            // resor yang sama 436 kali adalah cara tercepat menimbulkan
+            // salah ketik yang memecah pengelompokan.
+            const isiDl = function (elId, kunci) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                const s = {};
+                (jplData_ || []).forEach(function (r) { if (String(r[kunci] || '').trim()) s[r[kunci]] = 1; });
+                el.innerHTML = Object.keys(s).sort().map(function (v) { return '<option value="' + escapeHtml(v) + '"></option>'; }).join('');
+            };
+            isiDl('jpl-dl-resor', 'resor');
+            isiDl('jpl-dl-lintas', 'lintas');
+            isiDl('jpl-dl-provinsi', 'provinsi');
+
+            // Tahun kecelakaan: yang sudah ada, atau dua tahun terakhir.
+            const thnAda = Object.keys((x && x.laka) || {}).sort();
+            if (thnAda.length) {
+                jplTahunLaka_ = thnAda.map(function (t) { return { tahun: t, nilai: jplAngka_(x.laka[t]) }; });
+            } else {
+                const kini = new Date().getFullYear();
+                jplTahunLaka_ = [{ tahun: String(kini - 1), nilai: 0 }, { tahun: String(kini), nilai: 0 }];
+            }
+            jplGambarTahunLaka_();
+
+            document.getElementById('jpl-m-judul').textContent = x ? 'Ubah Perlintasan' : 'Tambah Perlintasan';
+            document.getElementById('jpl-m-subjudul').textContent = x
+                ? (x.noJpl ? 'JPL ' + x.noJpl + ' - ' : '') + (x.namaJalan || x.lokasiKm || '')
+                : 'Register perlintasan sebidang';
+            const galat = document.getElementById('jpl-m-galat');
+            if (galat) galat.classList.add('hidden');
+
+            jplPratinjauSkor_();
+            document.getElementById('modal-jpl-form').classList.remove('hidden');
+            const f = document.getElementById('jpl-m-resor');
+            if (f) setTimeout(function () { f.focus(); }, 60);
+        }
+
+        function jplTutupForm_() {
+            const m = document.getElementById('modal-jpl-form');
+            if (m) m.classList.add('hidden');
+        }
+
+        function jplGambarTahunLaka_() {
+            const wadah = document.getElementById('jpl-m-laka');
+            if (!wadah) return;
+            wadah.innerHTML = jplTahunLaka_.map(function (t, i) {
+                return '<div class="relative">' +
+                    '<label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">' + escapeHtml(t.tahun) + '</label>' +
+                    '<input type="number" min="0" step="1" value="' + jplAngka_(t.nilai) + '" ' +
+                        'oninput="jplUbahLaka_(' + i + ', this.value)" ' +
+                        'class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">' +
+                    (jplTahunLaka_.length > 1
+                        ? '<button type="button" onclick="jplHapusTahunLaka_(' + i + ')" title="Hapus tahun ini" class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-500 flex items-center justify-center text-[8px] transition"><i class="fa-solid fa-xmark"></i></button>'
+                        : '') +
+                '</div>';
+            }).join('');
+        }
+
+        function jplUbahLaka_(i, v) { if (jplTahunLaka_[i]) jplTahunLaka_[i].nilai = jplAngka_(v); jplPratinjauSkor_(); }
+        function jplHapusTahunLaka_(i) { jplTahunLaka_.splice(i, 1); jplGambarTahunLaka_(); jplPratinjauSkor_(); }
+
+        function jplTambahTahunLaka_() {
+            const ada = {};
+            jplTahunLaka_.forEach(function (t) { ada[t.tahun] = 1; });
+            // Tahun berikutnya yang BELUM dipakai - tanpa ini, menekan
+            // tombol dua kali membuat dua kolom bertahun sama & salah
+            // satunya pasti terbuang saat disimpan.
+            let thn = new Date().getFullYear();
+            while (ada[String(thn)]) thn--;
+            jplTahunLaka_.push({ tahun: String(thn), nilai: 0 });
+            jplTahunLaka_.sort(function (a, b) { return String(a.tahun).localeCompare(String(b.tahun)); });
+            jplGambarTahunLaka_();
+        }
+
+        /** Pratinjau prioritas di dalam formulir - rumusnya sama dengan server. */
+        function jplPratinjauSkor_() {
+            const el = document.getElementById('jpl-m-skor');
+            if (!el) return;
+            const ambil = function (id) { const e = document.getElementById(id); return e ? String(e.value || '').toUpperCase() : ''; };
+            const laka = jplTahunLaka_.reduce(function (t, x) { return t + jplAngka_(x.nilai); }, 0);
+
+            const bagian = [];
+            let skor = 0;
+            if (laka > 0) { const n = Math.min(55, 25 + (laka - 1) * 10); skor += n; bagian.push(['Kecelakaan ' + laka + 'x', n]); }
+            if (ambil('jpl-m-jaga') === 'TIDAK DIJAGA') { skor += 25; bagian.push(['Tidak dijaga', 25]); }
+            if (ambil('jpl-m-register') === 'TIDAK REGISTER') { skor += 12; bagian.push(['Tidak register', 12]); }
+            if (ambil('jpl-m-lalin') === 'PADAT') { skor += 10; bagian.push(['Lalu lintas padat', 10]); }
+            if (ambil('jpl-m-posisi') === 'PUSAT KOTA') { skor += 8; bagian.push(['Pusat kota', 8]); }
+            skor = Math.min(100, skor);
+            const tingkat = skor >= 60 ? 'Tinggi' : (skor >= 35 ? 'Sedang' : 'Rendah');
+
+            el.innerHTML =
+                '<div class="flex items-center justify-between gap-3 flex-wrap">' +
+                    '<div>' +
+                        '<p class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Prioritas Perhatian</p>' +
+                        '<p class="text-[10px] font-bold text-slate-400 mt-0.5">terhitung otomatis dari isian di atas</p>' +
+                    '</div>' +
+                    '<div class="flex items-center gap-2">' +
+                        (bagian.length
+                            ? bagian.map(function (b) {
+                                return '<span class="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[9px] font-black text-slate-600">' +
+                                    escapeHtml(b[0]) + ' +' + b[1] + '</span>';
+                              }).join('')
+                            : '<span class="text-[10px] font-bold text-slate-400 italic">belum ada faktor</span>') +
+                        '<span class="px-2 py-1 rounded-lg border text-[10px] font-black ' + jplTingkatGaya_(tingkat) + '">' +
+                            tingkat + ' &middot; ' + skor + '</span>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        function jplSimpan_(e) {
+            e.preventDefault();
+            const galat = document.getElementById('jpl-m-galat');
+            const tombol = document.getElementById('jpl-m-simpan');
+            const tampil = function (p) {
+                if (!galat) { showToast(p); return; }
+                galat.textContent = p; galat.classList.remove('hidden');
+            };
+            if (galat) galat.classList.add('hidden');
+
+            const ambil = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+            const laka = {};
+            jplTahunLaka_.forEach(function (t) {
+                if (String(t.tahun || '').trim()) laka[String(t.tahun).trim()] = jplAngka_(t.nilai);
+            });
+
+            const data = {
+                id: ambil('jpl-m-id'),
+                resor: ambil('jpl-m-resor'), noJpl: ambil('jpl-m-nojpl'), lokasiKm: ambil('jpl-m-km'),
+                namaJalan: ambil('jpl-m-jalan'), lintas: ambil('jpl-m-lintas'), antara: ambil('jpl-m-antara'),
+                koridor: ambil('jpl-m-koridor'), lebar: ambil('jpl-m-lebar'), kategoriJalan: ambil('jpl-m-katjalan'),
+                kodyaKab: ambil('jpl-m-kodya'), provinsi: ambil('jpl-m-provinsi'),
+                statusRegister: ambil('jpl-m-register'), statusJaga: ambil('jpl-m-jaga'),
+                domainJaga: ambil('jpl-m-domain'), lalin: ambil('jpl-m-lalin'), posisiKota: ambil('jpl-m-posisi'),
+                keterangan: ambil('jpl-m-ket'), laka: laka
+            };
+
+            if (!data.resor) { tampil('Resor wajib diisi.'); return; }
+            if (!data.namaJalan && !data.lokasiKm) { tampil('Isi minimal Nama Jalan atau Lokasi KM.'); return; }
+
+            if (tombol) { tombol.disabled = true; tombol.classList.add('opacity-60', 'cursor-not-allowed'); }
+            const pulih = function () {
+                if (tombol) { tombol.disabled = false; tombol.classList.remove('opacity-60', 'cursor-not-allowed'); }
+            };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    pulih();
+                    if (!res || !res.success) { tampil((res && res.message) || 'Gagal menyimpan.'); return; }
+                    jplTutupForm_();
+                    showToast(data.id ? 'Perlintasan diperbarui.' : 'Perlintasan ditambahkan.');
+                    jplMuat_(true);
+                })
+                .withFailureHandler(function (err) { pulih(); tampil('Terjadi kesalahan: ' + ((err && err.message) || '')); })
+                .perlintasan_save(currentSessionToken, data);
+        }
+
+        function jplHapus_(id) {
+            if (!jplBolehHapus_()) { showToast('Anda tidak punya izin menghapus perlintasan.'); return; }
+            const x = jplCari_(id);
+            if (!x) { showToast('Data tidak ditemukan.'); return; }
+            if (!confirm('Hapus perlintasan ' + (x.noJpl ? 'JPL ' + x.noJpl + ' ' : '') + '"' + (x.namaJalan || x.lokasiKm) + '"?\n\n' +
+                    'Data dihapus permanen. Isinya tetap tercatat di Riwayat Aktivitas.')) return;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) { showToast('Gagal menghapus: ' + ((res && res.message) || '')); return; }
+                    showToast('Perlintasan dihapus.');
+                    jplMuat_(true);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus.'); })
+                .perlintasan_delete(currentSessionToken, id);
+        }
+
+
+        // ════════════════════════════════════════════════════════════════
+        // IMPOR BERKALA DARI EXCEL
+        // ════════════════════════════════════════════════════════════════
+
+        /**
+         * Pemetaan judul kolom -> nama field.
+         *
+         * Dicocokkan dengan POLA, bukan teks persis: judul di berkas Daop
+         * ditulis bebas ("LEBAR JPL (M')", "KODYA/KAB", "DOMAIN PENJAGAAN
+         * ( JJ / OP ...") & menuntut kecocokan huruf per huruf berarti
+         * berkas gagal dibaca hanya karena satu spasi berbeda.
+         *
+         * Urutannya penting: yang lebih khusus didahulukan.
+         */
+        const JPL_POLA_KOLOM = [
+            { k: 'noJpl',          p: /^NO\.?\s*JPL/ },
+            { k: 'resor',          p: /^RESOR/ },
+            { k: 'lokasiKm',       p: /^LOKASI/ },
+            { k: 'lintas',         p: /^LINTAS$|^LINTAS[^\w]/ },
+            { k: 'antara',         p: /^ANTARA/ },
+            { k: 'koridor',        p: /^KORIDOR/ },
+            { k: 'lebar',          p: /^LEBAR/ },
+            { k: 'namaJalan',      p: /^NAMA\s*JALAN/ },
+            { k: 'kategoriJalan',  p: /^KATEGORI\s*JALAN|^KELAS\s*JALAN/ },
+            { k: 'kodyaKab',       p: /^KODYA|^KOTA|^KABUPATEN/ },
+            { k: 'provinsi',       p: /^PROVINSI|^PROPINSI/ },
+            { k: 'statusRegister', p: /REGISTER/ },
+            { k: 'statusJaga',     p: /DIJAGA/ },
+            { k: 'domainJaga',     p: /^DOMAIN/ },
+            { k: 'lalin',          p: /^LALU\s*LINTAS/ },
+            { k: 'posisiKota',     p: /^POSISI/ },
+            { k: 'keterangan',     p: /^KETERANGAN|^CATATAN/ }
+        ];
+
+        /** Kolom bertahun ("2024") dibaca sebagai jumlah kecelakaan tahun itu. */
+        const JPL_POLA_TAHUN = /^(19|20)\d{2}$/;
+
+        /**
+         * Penanda baris contoh di template. Template berisi satu baris
+         * contoh agar bentuk isiannya terlihat - & baris itu HARUS tidak
+         * ikut terimpor walau orangnya lupa menghapusnya. Penandanya
+         * ditulis di kolom Keterangan template & dicocokkan di sini.
+         */
+        const JPL_PENANDA_CONTOH = 'HAPUS BARIS INI SEBELUM MENGIMPOR';
+
+        function jplBukaImpor_() {
+            if (!jplBolehTambah_()) { showToast('Anda tidak punya izin mengimpor data.'); return; }
+            jplBarisImpor_ = null;
+            jplLangkahImpor_(1);
+            const f = document.getElementById('jpl-i-file');
+            if (f) f.value = '';
+            document.getElementById('modal-jpl-impor').classList.remove('hidden');
+            jplPasangSeret_();
+        }
+
+        function jplTutupImpor_() {
+            const m = document.getElementById('modal-jpl-impor');
+            if (m) m.classList.add('hidden');
+            jplBarisImpor_ = null;
+        }
+
+        function jplLangkahImpor_(n) {
+            [1, 2, 3].forEach(function (i) {
+                const el = document.getElementById('jpl-i-step' + i);
+                if (el) el.classList.toggle('hidden', i !== n);
+            });
+            const terap = document.getElementById('jpl-i-terapkan');
+            if (terap) {
+                terap.classList.toggle('hidden', n !== 2);
+                terap.classList.toggle('flex', n === 2);
+                terap.disabled = n !== 2;
+            }
+            const bar = document.getElementById('jpl-i-langkah');
+            if (bar) {
+                bar.innerHTML = [['1', 'Pilih berkas'], ['2', 'Periksa'], ['3', 'Selesai']].map(function (s, i) {
+                    const ke = i + 1;
+                    const aktif = ke === n, lewat = ke < n;
+                    return '<div class="flex items-center gap-1.5' + (i ? ' flex-1' : '') + '">' +
+                        (i ? '<span class="flex-1 h-[2px] rounded ' + (lewat || aktif ? 'bg-[#0c1d37]' : 'bg-slate-200') + '"></span>' : '') +
+                        '<span class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ' +
+                            (aktif ? 'bg-[#0c1d37] text-white' : (lewat ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400')) + '">' +
+                            (lewat ? '<i class="fa-solid fa-check text-[7px]"></i>' : s[0]) + '</span>' +
+                        '<span class="text-[9px] font-black uppercase tracking-wider ' + (aktif ? 'text-[#0c1d37]' : 'text-slate-400') + '">' + s[1] + '</span>' +
+                    '</div>';
+                }).join('');
+            }
+        }
+
+        function jplPasangSeret_() {
+            const z = document.getElementById('jpl-i-drop');
+            if (!z || z.dataset.siap === '1') return;
+            z.dataset.siap = '1';
+            ['dragenter', 'dragover'].forEach(function (ev) {
+                z.addEventListener(ev, function (e) {
+                    e.preventDefault(); e.stopPropagation();
+                    z.classList.add('border-[#d4af37]', 'bg-amber-50');
+                });
+            });
+            ['dragleave', 'drop'].forEach(function (ev) {
+                z.addEventListener(ev, function (e) {
+                    e.preventDefault(); e.stopPropagation();
+                    z.classList.remove('border-[#d4af37]', 'bg-amber-50');
+                });
+            });
+            z.addEventListener('drop', function (e) {
+                const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) jplBacaBerkas_(f);
+            });
+        }
+
+        function jplPilihBerkas_(ev) {
+            const f = ev.target.files && ev.target.files[0];
+            if (f) jplBacaBerkas_(f);
+        }
+
+        /**
+         * Membaca berkas Excel jadi baris siap kirim.
+         *
+         * ═══ KENAPA TIDAK sheet_to_json BIASA ═══
+         * sheet_to_json menganggap BARIS PERTAMA sebagai judul kolom. Pada
+         * berkas Daop, baris 1 adalah judul dokumen & baris 3 tanggalnya;
+         * judul kolom sebenarnya ada di baris 4, dengan sebagian terbagi dua
+         * tingkat di baris 6 ("STATUS JPL" -> "REGISTER/TIDAK REGISTER" &
+         * "DIJAGA/TIDAK DIJAGA"). Dibaca cara biasa, seluruh berkas gagal
+         * dikenali.
+         *
+         * Di sini isinya dibaca sebagai larik mentah, baris judulnya DICARI
+         * sendiri, lalu judul bertingkat digabung.
+         */
+        function jplBacaBerkas_(file) {
+            if (typeof XLSX === 'undefined') { showToast('Pustaka Excel belum termuat - muat ulang halaman.'); return; }
+
+            const ket = document.getElementById('jpl-i-ket');
+            if (ket) ket.textContent = 'Membaca ' + file.name + '...';
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const mentah = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+                    if (!mentah.length) { jplGagalImpor_('Berkas kosong atau tidak terbaca.'); return; }
+
+                    // ── 1. Cari baris judul ──
+                    // Dinilai dari berapa banyak pola kolom yang cocok;
+                    // baris dengan kecocokan terbanyak adalah judulnya.
+                    let barisJudul = -1, skorTerbaik = 0;
+                    const batas = Math.min(mentah.length, 25);
+                    for (let r = 0; r < batas; r++) {
+                        const sel = (mentah[r] || []).map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim().toUpperCase(); });
+                        let s = 0;
+                        JPL_POLA_KOLOM.forEach(function (pk) {
+                            if (sel.some(function (t) { return t && pk.p.test(t); })) s++;
+                        });
+                        if (s > skorTerbaik) { skorTerbaik = s; barisJudul = r; }
+                    }
+                    if (barisJudul === -1 || skorTerbaik < 4) {
+                        jplGagalImpor_('Judul kolom tidak dikenali. Pastikan berkas memuat kolom seperti ' +
+                            'RESOR, NO JPL, LOKASI, NAMA JALAN. Unduh Template untuk melihat susunan yang diharapkan.');
+                        return;
+                    }
+
+                    // ── 2. Gabungkan judul bertingkat ──
+                    // Judul anak (baris di bawahnya) LEBIH KHUSUS daripada
+                    // judul induk yang ter-merge, jadi ia yang menang.
+                    const indukRaw = mentah[barisJudul] || [];
+                    const jmlKolom = Math.max.apply(null, mentah.slice(barisJudul, barisJudul + 4)
+                        .map(function (r) { return (r || []).length; }).concat([indukRaw.length]));
+
+                    /** Apakah satu teks judul dikenali sebagai kolom/tahun? */
+                    const jplJudulDikenali_ = function (t) {
+                        if (!t) return false;
+                        if (JPL_POLA_TAHUN.test(t)) return true;
+                        return JPL_POLA_KOLOM.some(function (pk) { return pk.p.test(t); });
+                    };
+
+                    const judul = [];
+                    for (let c = 0; c < jmlKolom; c++) {
+                        const sendiri = String(indukRaw[c] || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                        let anak = '';
+                        for (let k = 1; k <= 2; k++) {
+                            const v = String(((mentah[barisJudul + k] || [])[c]) || '').replace(/\s+/g, ' ').trim().toUpperCase();
+                            if (v) { anak = v; break; }
+                        }
+
+                        // ═══ SIAPA YANG MENANG, JUDUL SENDIRI ATAU ANAKNYA ═══
+                        // Judul sendiri menang BILA ia sudah dikenali. Dulu
+                        // anak selalu menang, & itu benar untuk berkas Daop
+                        // (sel "STATUS JPL" ter-merge, judul aslinya ada di
+                        // baris bawahnya) tetapi FATAL untuk berkas berjudul
+                        // satu baris saja - termasuk template & hasil Export
+                        // dari menu ini sendiri: baris data PERTAMA ikut
+                        // dianggap judul, sehingga "RESOR" berubah menjadi
+                        // "1.1 JAKARTAKOTA" & seluruh kolom gagal dipetakan.
+                        //
+                        // Anak dipakai hanya bila judul sendiri tidak
+                        // dikenali - persis keadaan sel induk yang ter-merge.
+                        const cocokSendiri = jplJudulDikenali_(sendiri);
+                        const cocokAnak = jplJudulDikenali_(anak);
+
+                        // Kolom tanpa judul sendiri MAUPUN judul anak
+                        // dibiarkan kosong - TIDAK diwarisi dari kolom kiri.
+                        // Berkas Daop punya beberapa kolom kosong di ujung
+                        // kanan; mewarisinya membuat semuanya dipetakan ke
+                        // KETERANGAN, & yang terakhir (kosong) menimpa isi
+                        // yang sebenarnya.
+                        // Bila KEDUANYA tidak dikenali, judul sendiri yang
+                        // dipakai - baris itulah yang sudah terpilih sebagai
+                        // baris judul. Tanpa aturan ini kolom "NO." berubah
+                        // jadi "1" (angka urut baris pertama) & ikut terdaftar
+                        // sebagai "kolom tidak dikenali" di layar pemeriksaan.
+                        judul[c] = cocokSendiri ? sendiri : (cocokAnak ? anak : (sendiri || anak || ''));
+                    }
+
+                    // ── 3. Petakan kolom -> field ──
+                    const peta = {};        // indeks kolom -> nama field
+                    const petaTahun = {};   // indeks kolom -> tahun
+                    const sudah = {};       // field yang sudah terambil
+                    judul.forEach(function (t, c) {
+                        if (!t) return;
+                        if (JPL_POLA_TAHUN.test(t)) { petaTahun[c] = t; return; }
+                        for (let i = 0; i < JPL_POLA_KOLOM.length; i++) {
+                            const pk = JPL_POLA_KOLOM[i];
+                            // Kolom PERTAMA yang cocok yang dipakai. Tanpa
+                            // aturan ini, kolom duplikat di kanan menimpa
+                            // yang asli dengan nilai kosong.
+                            if (!sudah[pk.k] && pk.p.test(t)) { peta[c] = pk.k; sudah[pk.k] = 1; return; }
+                        }
+                    });
+                    // Kolom "JUMLAH KEJADIAN KECELAKAAN" tanpa rincian tahun
+                    // dianggap tahun berjalan, supaya berkas yang tidak
+                    // memisah per tahun tetap terbaca.
+                    if (!Object.keys(petaTahun).length) {
+                        judul.forEach(function (t, c) {
+                            if (t && /KECELAKAAN|^LAKA/.test(t) && !peta[c]) petaTahun[c] = String(new Date().getFullYear());
+                        });
+                    }
+
+                    const wajib = ['resor', 'namaJalan', 'lokasiKm'];
+                    if (!wajib.some(function (k) { return sudah[k]; })) {
+                        jplGagalImpor_('Tidak ada kolom RESOR, NAMA JALAN, maupun LOKASI yang dikenali di berkas ini.');
+                        return;
+                    }
+
+                    // ── 4. Baca baris data ──
+                    const baris = [];
+                    let dilewati = 0;
+                    for (let r = barisJudul + 1; r < mentah.length; r++) {
+                        const sel = mentah[r] || [];
+                        const o = { laka: {} };
+                        Object.keys(peta).forEach(function (c) {
+                            o[peta[c]] = String(sel[c] === undefined || sel[c] === null ? '' : sel[c]).replace(/\s+/g, ' ').trim();
+                        });
+                        Object.keys(petaTahun).forEach(function (c) {
+                            const n = jplAngka_(sel[c]);
+                            if (n > 0) o.laka[petaTahun[c]] = n;
+                        });
+                        // Baris judul tingkat kedua & baris pemisah tidak
+                        // punya satu pun dari ketiga kolom ini - satu aturan
+                        // ini cukup untuk menyaring semuanya.
+                        if (!String(o.resor || '').trim() && !String(o.namaJalan || '').trim() && !String(o.lokasiKm || '').trim()) {
+                            dilewati++; continue;
+                        }
+                        // Baris contoh dari template - dilewati walau tidak
+                        // dihapus, supaya tidak ada "Jl. Contoh" yang
+                        // diam-diam masuk ke register sungguhan.
+                        if (String(o.keterangan || '').toUpperCase().indexOf(JPL_PENANDA_CONTOH) !== -1) {
+                            dilewati++; continue;
+                        }
+                        baris.push(o);
+                    }
+
+                    if (!baris.length) { jplGagalImpor_('Judul kolom terbaca, tetapi tidak ada satu pun baris data di bawahnya.'); return; }
+
+                    jplBarisImpor_ = baris;
+                    jplPeriksaImpor_(file.name, baris, judul, peta, petaTahun, dilewati);
+                } catch (err) {
+                    jplGagalImpor_('Berkas gagal dibaca: ' + (err && err.message ? err.message : 'format tidak dikenali'));
+                }
+            };
+            reader.onerror = function () { jplGagalImpor_('Berkas gagal dibuka.'); };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function jplGagalImpor_(pesan) {
+            jplBarisImpor_ = null;
+            jplLangkahImpor_(1);
+            const ket = document.getElementById('jpl-i-ket');
+            if (ket) ket.textContent = 'Belum ada berkas dipilih.';
+            showToast(pesan);
+        }
+
+        /** Uji kering di server: hitung dampaknya tanpa menulis apa pun. */
+        function jplPeriksaImpor_(namaBerkas, baris, judul, peta, petaTahun, dilewati) {
+            const step2 = document.getElementById('jpl-i-step2');
+            jplLangkahImpor_(2);
+            step2.innerHTML = '<div class="py-10 text-center text-slate-400 font-bold text-[11px]">' +
+                '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#d4af37]"></i>Memeriksa dampaknya terhadap data yang sudah ada...</div>';
+            const terap = document.getElementById('jpl-i-terapkan');
+            if (terap) terap.disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) { jplGagalImpor_((res && res.message) || 'Pemeriksaan gagal.'); return; }
+
+                    const dikenali = Object.keys(peta).map(function (c) { return peta[c]; });
+                    const tahun = Object.keys(petaTahun).map(function (c) { return petaTahun[c]; }).sort();
+                    const takDikenali = judul.filter(function (t, c) {
+                        return t && !peta[c] && !petaTahun[c] && !/^NO\.?$/.test(t);
+                    });
+
+                    const kotak = function (n, label, warna, ket) {
+                        return '<div class="rounded-xl border p-3 ' + warna + '">' +
+                            '<p class="text-[20px] font-black leading-none">' + jplRibuan_(n) + '</p>' +
+                            '<p class="text-[9px] font-black uppercase tracking-wider mt-1">' + label + '</p>' +
+                            (ket ? '<p class="text-[9px] font-bold opacity-70 mt-0.5">' + ket + '</p>' : '') +
+                        '</div>';
+                    };
+
+                    step2.innerHTML =
+                        '<div class="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">' +
+                            '<p class="text-[11px] font-black text-slate-700 truncate"><i class="fa-solid fa-file-excel text-emerald-600 mr-1.5"></i>' + escapeHtml(namaBerkas) + '</p>' +
+                            '<p class="text-[10px] font-bold text-slate-400 mt-1">' +
+                                jplRibuan_(res.dibaca) + ' baris data terbaca' +
+                                (dilewati ? ' &middot; ' + dilewati + ' baris judul/pemisah dilewati' : '') +
+                                ' &middot; ' + dikenali.length + ' kolom dikenali' +
+                                (tahun.length ? ' &middot; kecelakaan tahun ' + tahun.join(', ') : '') +
+                            '</p>' +
+                        '</div>' +
+
+                        '<div class="grid grid-cols-3 gap-2.5">' +
+                            kotak(res.baru, 'Baru', 'bg-emerald-50 border-emerald-200 text-emerald-800', 'akan ditambahkan') +
+                            kotak(res.diperbarui, 'Diperbarui', 'bg-amber-50 border-amber-200 text-amber-800', 'sudah ada, isinya berubah') +
+                            kotak(res.tidakBerubah, 'Tidak berubah', 'bg-slate-50 border-slate-200 text-slate-500', 'dilewati') +
+                        '</div>' +
+
+                        (res.kembarDiBerkas
+                            ? '<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">' +
+                              '<p class="text-[11px] font-black text-amber-900"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>' +
+                              res.kembarDiBerkas + ' baris kembar di dalam berkas</p>' +
+                              '<p class="text-[10px] font-semibold text-amber-800 mt-1 leading-relaxed">' +
+                              'Baris dengan Resor, No JPL, Lokasi KM, &amp; Lintas yang sama persis muncul lebih dari sekali. ' +
+                              'Hanya yang pertama yang dipakai &mdash; sisanya dilewati agar tidak saling menimpa.</p></div>'
+                            : '') +
+
+                        (takDikenali.length
+                            ? '<div class="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">' +
+                              '<p class="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Kolom yang tidak dikenali &amp; diabaikan</p>' +
+                              '<p class="text-[10px] font-semibold text-slate-500 leading-relaxed">' +
+                              takDikenali.map(function (t) { return escapeHtml(t); }).join(' &middot; ') + '</p></div>'
+                            : '') +
+
+                        ((res.contohBaru.length || res.contohUbah.length)
+                            ? '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">' +
+                                (res.contohBaru.length
+                                    ? '<div class="rounded-xl border border-emerald-200 bg-white px-3.5 py-2.5">' +
+                                      '<p class="text-[9px] font-black text-emerald-700 uppercase tracking-wider mb-1.5">Contoh yang baru</p>' +
+                                      '<ul class="space-y-0.5">' + res.contohBaru.map(function (t) {
+                                          return '<li class="text-[10px] font-semibold text-slate-600 truncate">' + escapeHtml(t) + '</li>'; }).join('') +
+                                      '</ul></div>' : '') +
+                                (res.contohUbah.length
+                                    ? '<div class="rounded-xl border border-amber-200 bg-white px-3.5 py-2.5">' +
+                                      '<p class="text-[9px] font-black text-amber-700 uppercase tracking-wider mb-1.5">Contoh yang diperbarui</p>' +
+                                      '<ul class="space-y-0.5">' + res.contohUbah.map(function (t) {
+                                          return '<li class="text-[10px] font-semibold text-slate-600 truncate">' + escapeHtml(t) + '</li>'; }).join('') +
+                                      '</ul></div>' : '') +
+                              '</div>'
+                            : '') +
+
+                        '<div class="rounded-xl bg-sky-50 border border-sky-200 px-4 py-3">' +
+                            '<p class="text-[10px] font-semibold text-sky-800 leading-relaxed">' +
+                            '<i class="fa-solid fa-circle-info mr-1"></i>Pencocokan memakai <b>Resor + No JPL + Lokasi KM + Lintas</b>. ' +
+                            'Kolom <b>Keterangan</b> yang sudah terisi tidak akan tertimpa kosong oleh berkas ini.</p>' +
+                        '</div>';
+
+                    const ket = document.getElementById('jpl-i-ket');
+                    if (ket) ket.textContent = res.baru + res.diperbarui > 0
+                        ? 'Siap diterapkan.'
+                        : 'Tidak ada yang perlu diubah.';
+                    const t = document.getElementById('jpl-i-terapkan');
+                    if (t) t.disabled = (res.baru + res.diperbarui) === 0;
+                })
+                .withFailureHandler(function () { jplGagalImpor_('Terjadi kesalahan saat memeriksa berkas.'); })
+                .perlintasan_import(currentSessionToken, baris, true);
+        }
+
+        function jplTerapkanImpor_() {
+            if (!jplBarisImpor_ || !jplBarisImpor_.length) { showToast('Belum ada berkas yang siap diterapkan.'); return; }
+            const t = document.getElementById('jpl-i-terapkan');
+            if (t) { t.disabled = true; t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[11px]"></i><span>Menerapkan...</span>'; }
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (t) t.innerHTML = '<i class="fa-solid fa-check text-[#d4af37] text-[11px]"></i><span>Terapkan Impor</span>';
+                    if (!res || !res.success) {
+                        if (t) t.disabled = false;
+                        showToast('Impor gagal: ' + ((res && res.message) || ''));
+                        return;
+                    }
+                    jplLangkahImpor_(3);
+                    document.getElementById('jpl-i-step3').innerHTML =
+                        '<div class="py-6 text-center">' +
+                            '<div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">' +
+                                '<i class="fa-solid fa-circle-check text-2xl"></i></div>' +
+                            '<p class="text-sm font-black text-slate-800">Impor selesai</p>' +
+                            '<p class="text-[11px] font-bold text-slate-500 mt-1">' +
+                                '<b class="text-emerald-700">' + jplRibuan_(res.baru) + '</b> ditambahkan &middot; ' +
+                                '<b class="text-amber-700">' + jplRibuan_(res.diperbarui) + '</b> diperbarui &middot; ' +
+                                '<b class="text-slate-500">' + jplRibuan_(res.tidakBerubah) + '</b> tidak berubah</p>' +
+                            '<p class="text-[10px] font-semibold text-slate-400 mt-3 max-w-sm mx-auto leading-relaxed">' +
+                                'Seluruh perubahan tercatat di Riwayat Aktivitas. Daftar di layar sudah dimuat ulang.</p>' +
+                        '</div>';
+                    const ket = document.getElementById('jpl-i-ket');
+                    if (ket) ket.textContent = 'Selesai.';
+                    jplBarisImpor_ = null;
+                    jplMuat_(true);
+                })
+                .withFailureHandler(function () {
+                    if (t) { t.disabled = false; t.innerHTML = '<i class="fa-solid fa-check text-[#d4af37] text-[11px]"></i><span>Terapkan Impor</span>'; }
+                    showToast('Terjadi kesalahan saat menerapkan impor.');
+                })
+                .perlintasan_import(currentSessionToken, jplBarisImpor_, false);
+        }
+
+
+        // ─── TEMPLATE, EXPORT, CETAK ────────────────────────────────────
+
+        /** Judul kolom baku - dipakai template & export, jadi berkas hasil
+         *  export bisa langsung dipakai mengimpor balik. */
+        function jplJudulEkspor_() {
+            const thn = {};
+            (jplData_ || []).forEach(function (x) { Object.keys(x.laka || {}).forEach(function (t) { thn[t] = 1; }); });
+            let tahun = Object.keys(thn).sort();
+            if (!tahun.length) { const k = new Date().getFullYear(); tahun = [String(k - 1), String(k)]; }
+            return {
+                tetap: ['NO.', 'RESOR', 'NO JPL', 'LOKASI (KM/HM)', 'LINTAS', 'ANTARA', 'KORIDOR',
+                    'LEBAR JPL (M)', 'NAMA JALAN', 'KATEGORI JALAN', 'KODYA/KAB', 'PROVINSI',
+                    'REGISTER/TIDAK REGISTER', 'DIJAGA/TIDAK DIJAGA', 'DOMAIN PENJAGAAN'],
+                tahun: tahun,
+                ekor: ['LALU LINTAS PADAT / TIDAK', 'POSISI PUSAT KOTA / TIDAK', 'KETERANGAN']
+            };
+        }
+
+        function jplBarisEkspor_(x, i, tahun) {
+            return [i + 1, x.resor, x.noJpl, x.lokasiKm, x.lintas, x.antara, x.koridor,
+                x.lebar, x.namaJalan, x.kategoriJalan, x.kodyaKab, x.provinsi,
+                x.statusRegister, x.statusJaga, x.domainJaga]
+                .concat(tahun.map(function (t) { return jplAngka_((x.laka || {})[t]) || ''; }))
+                .concat([x.lalin, x.posisiKota, x.keterangan]);
+        }
+
+        /**
+         * Template unduhan.
+         *
+         * TANPA kolom bertahun (2024, 2025, ...). Tampilan tabel sudah tidak
+         * memuat kolom Laka & Prioritas - diganti KETERANGAN - jadi template
+         * pengisian pun disusun sama: hanya kolom yang benar-benar diisi
+         * tangan. Berkas Daop yang MEMANG punya kolom bertahun tetap
+         * terbaca penuh saat diimpor; pembacanya mendeteksi kolom bertahun
+         * secara otomatis, jadi tidak ada data kecelakaan yang hilang hanya
+         * karena template ini tidak mencantumkannya.
+         */
+        function jplUnduhTemplate_() {
+            if (typeof XLSX === 'undefined') { showToast('Pustaka Excel belum termuat.'); return; }
+            const judul = ['NO.', 'RESOR', 'NO JPL', 'LOKASI (KM/HM)', 'LINTAS', 'ANTARA', 'KORIDOR',
+                'LEBAR JPL (M)', 'NAMA JALAN', 'KATEGORI JALAN', 'KODYA/KAB', 'PROVINSI',
+                'REGISTER/TIDAK REGISTER', 'DIJAGA/TIDAK DIJAGA', 'DOMAIN PENJAGAAN',
+                'LALU LINTAS PADAT / TIDAK', 'POSISI PUSAT KOTA / TIDAK', 'KETERANGAN'];
+
+            const contoh = [1, '1.1 JAKARTAKOTA', '7A', '2 + 876', 'Jakk - Tpk', 'Kpb - Ac', 'Jak - Tpk',
+                '6', 'Jl. Contoh', 'Jalan Kota', 'Jakarta Utara', 'DKI JAKARTA',
+                'REGISTER', 'TIDAK DIJAGA', 'TAK TERJAGA',
+                'PADAT', 'PUSAT KOTA', 'CONTOH - ' + JPL_PENANDA_CONTOH];
+
+            // Baris panduan isian. Ditaruh di baris ketiga & dimulai dengan
+            // tanda "-" supaya pembaca melewatinya (baris tanpa Resor, Nama
+            // Jalan, maupun Lokasi KM memang dilewati), tapi tetap terlihat
+            // oleh orang yang membuka berkasnya.
+            const panduan = ['', '', '', '', '', '', '', '', '', '', '', '',
+                'REGISTER / TIDAK REGISTER', 'DIJAGA / TIDAK DIJAGA',
+                'JJ / OP / DISHUB / SWADAYA MASYARAKAT / INSTANSI LAIN / TAK TERJAGA',
+                'PADAT / TIDAK', 'PUSAT KOTA / TIDAK', 'bebas - tidak akan tertimpa kosong saat impor'];
+
+            const ws = XLSX.utils.aoa_to_sheet([judul, contoh, panduan]);
+            ws['!cols'] = judul.map(function (h, i) { return { wch: (i === 0 ? 5 : (i === 17 ? 40 : Math.max(14, h.length + 2))) }; });
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Register Perlintasan');
+            XLSX.writeFile(wb, 'Template_Register_Perlintasan.xlsx');
+            showToast('Template diunduh. Isi datanya, lalu pilih berkasnya di langkah berikut.');
+        }
+
+        function jplExportExcel_() {
+            if (typeof XLSX === 'undefined') { showToast('Pustaka Excel belum termuat.'); return; }
+            const d = jplTampil_ || [];
+            if (!d.length) { showToast('Tidak ada data untuk diexport - longgarkan penyaringnya dulu.'); return; }
+            const j = jplJudulEkspor_();
+            const judul = j.tetap.concat(j.tahun).concat(j.ekor);
+            const aoa = [judul].concat(d.map(function (x, i) { return jplBarisEkspor_(x, i, j.tahun); }));
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Register Perlintasan');
+            XLSX.writeFile(wb, 'Register_Perlintasan_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            showToast(d.length + ' baris diexport. Berkas ini bisa langsung dipakai untuk impor balik.');
+        }
+
+        /**
+         * Cetak daftar - memakai kerangka cetak yang SAMA dengan menu
+         * Rekapitulasi Gangguan (bangunDokumenPdf_ di Script_Gangguan.html),
+         * jadi hasilnya satu keluarga dengan cetakan lain di aplikasi ini.
+         */
+        function jplCetak_() {
+            const d = jplTampil_ || [];
+            if (!d.length) { showToast('Tidak ada data untuk dicetak.'); return; }
+            if (typeof bangunDokumenPdf_ !== 'function' || typeof cetakDokumenPdf_ !== 'function') {
+                showToast('Modul cetak belum termuat - muat ulang halaman.');
+                return;
+            }
+
+            // Susunan kolom cetakan DISAMAKAN dengan tabel di layar: tanpa
+            // LAKA & PRIORITAS, dengan KETERANGAN yang lega. Cetakan yang
+            // berbeda susunan dari layarnya memaksa pembacanya mencocokkan
+            // dua bentuk yang seharusnya satu.
+            const kolom = [
+                { judul: 'NO', lebar: '3%', rata: 'center' }, { judul: 'RESOR', lebar: '14%' },
+                { judul: 'JPL', lebar: '5%', rata: 'center' }, { judul: 'KM', lebar: '7%' },
+                { judul: 'NAMA JALAN', lebar: '20%' }, { judul: 'LINTAS', lebar: '10%' },
+                { judul: 'PENJAGAAN', lebar: '12%' }, { judul: 'STATUS', lebar: '9%', rata: 'center' },
+                { judul: 'KETERANGAN', lebar: '20%' }
+            ];
+            const baris = d.map(function (x, i) {
+                return [
+                    '<span style="color:#94a3b8;font-weight:bold">' + (i + 1) + '</span>',
+                    escapeHtml(x.resor),
+                    '<b>' + escapeHtml(x.noJpl || '-') + '</b>',
+                    escapeHtml(x.lokasiKm),
+                    '<b>' + escapeHtml(x.namaJalan || '-') + '</b>',
+                    escapeHtml(x.lintas),
+                    escapeHtml(x.domainJaga || '-'),
+                    '<span style="font-weight:bold;color:' + (x.statusJaga === 'DIJAGA' ? '#107573' : '#e11d48') + '">' +
+                        escapeHtml(x.statusJaga || '-') + '</span>',
+                    escapeHtml(x.keterangan)
+                ];
+            });
+
+            const takJaga = d.filter(function (x) { return x.statusJaga === 'TIDAK DIJAGA'; }).length;
+            const takReg = d.filter(function (x) { return x.statusRegister === 'TIDAK REGISTER'; }).length;
+            const jmlLaka = d.reduce(function (t, x) { return t + x.totalLaka; }, 0);
+            const tinggi = d.filter(function (x) { return x.tingkat === 'Tinggi'; }).length;
+
+            // Penyaring yang sedang menyala dicetak di kepala dokumen. Tanpa
+            // itu, cetakan hasil saringan tidak bisa dibedakan dari cetakan
+            // seluruh data - & itu jenis kesalahan yang baru ketahuan saat
+            // dokumennya sudah beredar.
+            const ambil = function (id) { const el = document.getElementById(id); return el ? el.value : 'Semua'; };
+            const labelLaka = { ada: 'pernah ada kecelakaan', tidak: 'belum pernah kecelakaan' };
+            const saring = [['Resor', 'jpl-f-resor'], ['Lintas', 'jpl-f-lintas'], ['Provinsi', 'jpl-f-provinsi'],
+                ['Terdaftar resmi', 'jpl-f-register'], ['Penjagaan', 'jpl-f-jaga'], ['Dijaga oleh', 'jpl-f-domain'],
+                ['Riwayat kecelakaan', 'jpl-f-laka'], ['Prioritas', 'jpl-f-prioritas']]
+                .map(function (p) {
+                    const v = ambil(p[1]);
+                    if (!v || v === 'Semua') return '';
+                    return p[0] + ': ' + (labelLaka[v] || v);
+                })
+                .filter(Boolean);
+
+            cetakDokumenPdf_(bangunDokumenPdf_({
+                judul: 'Register Perlintasan Sebidang KA',
+                subJudul: d.length + ' titik perlintasan',
+                filterTeks: saring.length ? saring.join('    |    ') : 'Seluruh data (tanpa penyaring khusus)',
+                kpi: [
+                    { label: 'Total Titik', nilai: String(d.length), warna: PDF_WARNA.teal },
+                    { label: 'Tidak Dijaga', nilai: String(takJaga), warna: PDF_WARNA.merah },
+                    { label: 'Tidak Register', nilai: String(takReg), warna: PDF_WARNA.gold },
+                    { label: 'Kejadian Kecelakaan', nilai: String(jmlLaka), warna: PDF_WARNA.merahKai || PDF_WARNA.merah },
+                    { label: 'Prioritas Tinggi', nilai: String(tinggi), warna: PDF_WARNA.navy }
+                ],
+                sorotan: tinggi
+                    ? '<u>' + tinggi + ' titik</u> berprioritas tinggi &mdash; seluruhnya pernah mengalami kecelakaan. ' +
+                      'Prioritas adalah alat bantu urut, bukan penilaian risiko resmi.'
+                    : '',
+                isi: '<div class="judul-bagian">DAFTAR PERLINTASAN</div>' + tabelPdf_(kolom, baris)
+            }));
+            showToast(d.length + ' baris disiapkan - pilih "Save as PDF" di jendela cetak.');
+        }
+</script>

@@ -1,0 +1,55 @@
+<!--
+  Header.html
+  Top bar (judul halaman aktif, notifikasi, jam real-time).
+-->
+        <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center space-x-3 min-w-0">
+                <!--
+                  Tombol laci. Hanya tampak di ponsel (disembunyikan lewat
+                  media query di Styles.html) - di layar lebar sidebar-nya
+                  memang selalu terlihat, jadi tombol ini tidak punya guna.
+                -->
+                <button id="btn-laci" onclick="bukaLaciMenu_()" title="Buka menu"
+                    class="w-9 h-9 -ml-1 rounded-xl bg-[#0c1d37] text-white flex items-center justify-center shrink-0 active:scale-95 transition">
+                    <i class="fa-solid fa-bars text-sm"></i>
+                </button>
+                <h2 id="page-title" class="text-base font-black text-slate-900 uppercase tracking-tight truncate">Dashboard Utama</h2>
+            </div>
+            <div class="flex items-center space-x-6">
+                <!--
+                  DUA IKON TERPISAH (permintaan user):
+                  - Panah berputar : sinkronisasi database. Dulu fungsi ini
+                                     menempel di ikon lonceng, padahal lonceng
+                                     lazimnya berarti pemberitahuan - jadi
+                                     membingungkan.
+                  - Lonceng        : Pusat Aktivitas - melihat seluruh aktivitas
+                                     pengguna & mengunduh riwayatnya.
+                -->
+                <div class="flex items-center gap-1">
+                    <button onclick="showToast('Database COTP disinkronkan otomatis dengan server pusat.')" title="Sinkronisasi database" class="hover:bg-slate-100 p-2.5 rounded-xl transition-all text-slate-600">
+                        <i class="fa-solid fa-database text-base"></i>
+                    </button>
+                    <button onclick="openPusatAktivitas()" title="Pusat Aktivitas - riwayat seluruh pengguna" class="relative hover:bg-slate-100 p-2.5 rounded-xl transition-all text-slate-600">
+                        <i class="fa-regular fa-bell text-lg"></i>
+                        <span class="absolute top-2 right-2 w-2 h-2 bg-[#e11d48] rounded-full border border-white"></span>
+                    </button>
+                </div>
+                <div class="text-right border-l border-slate-200 pl-6">
+                    <div id="real-clock" class="text-sm font-black text-slate-800 tracking-wide">12:00:00 WIB</div>
+                    <!--
+                      PENANDA VERSI (5 September 2026)
+                      Menampilkan versi berkas yang SEDANG BERJALAN. Tanpa ini,
+                      tidak ada cara memastikan apakah pembaruan sudah benar-benar
+                      terpasang - berkas bisa saja sudah ditimpa tapi deployment
+                      masih menyajikan versi lama, dan gejalanya persis sama
+                      dengan "pembaruan tidak berfungsi".
+                      Klik untuk memeriksa fitur apa saja yang sudah terpasang.
+                    -->
+                    <div class="text-[9px] text-[#e11d48] font-black uppercase tracking-wider">Sistem Pusdalops KCI</div>
+                    <button onclick="cekPemasangan()" title="Klik untuk memeriksa versi & fitur yang terpasang"
+                            class="text-[9px] text-slate-400 hover:text-[#0c1d37] font-bold tracking-wider transition">
+                        <i class="fa-solid fa-code-branch text-[8px] mr-0.5"></i><span id="label-versi-app">-</span>
+                    </button>
+                </div>
+            </div>
+        </header>

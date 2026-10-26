@@ -1,0 +1,121 @@
+<!--
+  Pane_PeraturanCustom.html
+  Menu: Document Repository - SUMMARY ARSIP
+
+  Menggantikan menu lama "Kategori Peraturan". Pengelolaan kategori kini
+  sudah ada di dalam tiap arsip lewat tombol Kelola Parameter, jadi menu
+  terpisah untuk itu tidak diperlukan lagi.
+
+  Halaman ini adalah LAPORAN LINTAS-ARSIP: menggabungkan kelima arsip
+  (Peraturan, Notulen, Surat, Kajian, Gapeka) dalam satu tabel umum,
+  dengan filter menyeluruh & preview dokumen.
+
+  ID menunya TETAP 'peraturan-custom' supaya baris izin yang sudah ada di
+  Role_Menu_Access tidak perlu diubah sama sekali.
+-->
+            <section id="pane-peraturan-custom" class="hidden space-y-5 animate-fade-in">
+
+                <!-- ══ KARTU RINGKASAN PER ARSIP ══ -->
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" id="summary-arsip-kartu"></div>
+
+                <!-- ══ FILTER ══ -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-sm font-black text-slate-800 tracking-tight">Laporan Seluruh Arsip</h3>
+                            <p class="text-[11px] text-slate-400 font-medium">Gabungan kelima arsip dalam satu tabel umum</p>
+                        </div>
+                        <button onclick="loadSummaryArsip(true)" title="Muat ulang data" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-solid fa-rotate text-xs"></i>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div class="lg:col-span-2 relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="sum-arsip-search" onkeyup="renderSummaryArsip()" placeholder="Cari judul, nomor, atau keterangan..."
+                                class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition">
+                        </div>
+                        <select id="sum-arsip-jenis" onchange="renderSummaryArsip()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 transition">
+                            <option value="Semua">Semua Jenis Arsip</option>
+                            <option value="peraturan">Peraturan Perusahaan</option>
+                            <option value="notulen">Notulen &amp; Risalah Rapat</option>
+                            <option value="surat">Surat Masuk &amp; Keluar</option>
+                            <option value="kajian">Dokumen Kajian / Studi</option>
+                            <option value="gapeka">Gapeka</option>
+                        </select>
+                        <select id="sum-arsip-kategori" onchange="renderSummaryArsip()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 transition"></select>
+                        <select id="sum-arsip-status" onchange="renderSummaryArsip()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 transition">
+                            <option value="Semua">Semua Status</option>
+                            <option value="Berlaku">Berlaku / Aktif</option>
+                            <option value="Perlu Review">Perlu Review</option>
+                            <option value="Dicabut">Tidak Berlaku / Expired</option>
+                            <option value="(tanpa status)">Tanpa Status</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Tanggal Mulai</label>
+                            <input type="date" id="sum-arsip-tgl-mulai" onchange="renderSummaryArsip()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Tanggal Akhir</label>
+                            <input type="date" id="sum-arsip-tgl-akhir" onchange="renderSummaryArsip()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 transition">
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <button onclick="resetSummaryArsipFilter()" class="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-rotate-left"></i><span>Reset Filter</span>
+                            </button>
+                            <div class="relative flex-1">
+                                <button onclick="openSummaryExportMenu()" class="w-full py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5">
+                                    <i class="fa-solid fa-file-export"></i><span>Export</span><i class="fa-solid fa-chevron-down text-[9px]"></i>
+                                </button>
+                                <!-- Dua pilihan format; keduanya menyertakan kolom tautan
+                                     Drive yang HANYA BISA DILIHAT (tidak bisa diedit). -->
+                                <div id="sum-export-menu" class="hidden absolute right-0 bottom-full mb-2 w-60 bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 py-1.5 font-bold text-xs text-slate-700">
+                                    <button onclick="exportSummaryArsip('excel')" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-2.5">
+                                        <i class="fa-solid fa-file-excel text-emerald-600"></i><span>Export ke Excel (.xlsx)</span>
+                                    </button>
+                                    <button onclick="exportSummaryArsip('pdf')" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-2.5">
+                                        <i class="fa-solid fa-file-pdf text-red-600"></i><span>Cetak / Simpan PDF</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ TABEL UMUM ══ -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left border-collapse min-w-[1000px]">
+                            <thead>
+                                <tr class="bg-slate-900 text-white text-[11px] uppercase tracking-wider font-semibold">
+                                    <th class="py-3.5 px-3 text-center w-12 border-r border-slate-800">NO</th>
+                                    <th class="py-3.5 px-4 w-32 border-r border-slate-800">TANGGAL</th>
+                                    <th class="py-3.5 px-3 w-44 text-center border-r border-slate-800">JENIS ARSIP</th>
+                                    <th class="py-3.5 px-4 w-48 border-r border-slate-800">NOMOR DOKUMEN</th>
+                                    <th class="py-3.5 px-4 border-r border-slate-800">JUDUL / PERIHAL</th>
+                                    <th class="py-3.5 px-3 w-48 text-center border-r border-slate-800">KATEGORI</th>
+                                    <th class="py-3.5 px-4 text-center w-32 border-r border-slate-800">STATUS</th>
+                                    <th class="py-3.5 px-4 text-center w-24">AKSI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sum-arsip-body" class="divide-y divide-slate-100 text-xs text-slate-700"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="sum-arsip-empty" class="hidden py-16 text-center">
+                        <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-solid fa-folder-open text-2xl"></i>
+                        </div>
+                        <p class="font-medium text-slate-600 text-sm">Tidak ada dokumen yang cocok dengan filter ini.</p>
+                    </div>
+
+                    <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                        <div>Menampilkan <span id="sum-arsip-showing" class="font-bold text-slate-800">0</span> dari <span id="sum-arsip-total" class="font-bold text-slate-800">0</span> dokumen</div>
+                        <div id="sum-arsip-info" class="text-[11px] text-slate-400"></div>
+                    </div>
+                </div>
+            </section>

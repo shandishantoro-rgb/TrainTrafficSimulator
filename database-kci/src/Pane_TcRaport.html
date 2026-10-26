@@ -1,0 +1,18 @@
+<!--
+  Pane_TcRaport.html
+  Pane/menu: Train Control - Buku Raport Staf
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-tc-raport" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                        <div>
+                            <h4 class="font-extrabold text-[#0c1d37] text-sm uppercase">Buku Raport Penilaian Staf COTP</h4>
+                            <p class="text-xs text-slate-400 mt-1">Asesmen kepatuhan regulasi, ketepatan, dan aspek keselamatan kerja</p>
+                        </div>
+                        <button id="btn-add-tc-raport" onclick="openAddRaportModal()" class="bg-[#0c1d37] text-white px-4 py-2 rounded-xl text-xs font-bold"><i class="fa-solid fa-user-check mr-1.5"></i> Beri Penilaian</button>
+                    </div>
+                    <div id="raport-cards-container" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+                </div>
+            </section>

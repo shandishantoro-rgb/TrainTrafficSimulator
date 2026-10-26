@@ -1,0 +1,87 @@
+<!--
+  Modals_Admin.html
+  Modal untuk modul Peraturan / Izin Linpel & IOPS (termasuk modal konfirmasi hapus & pembaca dokumen, dipakai bersama oleh ketiganya)
+-->
+    <div id="confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4 border border-slate-100">
+            <div class="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-slate-900 text-sm">Hapus Berkas?</h4>
+                <p class="text-xs text-slate-500 mt-1">Dokumen yang dihapus tidak akan ditampilkan lagi di daftar arsip.</p>
+            </div>
+            <div class="flex items-center justify-center space-x-3 pt-2 text-xs">
+                <button onclick="closeConfirmModal()" class="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-lg transition">Batal</button>
+                <button id="btn-confirm-delete" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition">Hapus Berkas</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-upload" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center">
+                <h3 class="font-bold text-xs uppercase"><i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Upload Dokumen Regulasi</h3>
+                <button onclick="closeUploadModal()" class="text-slate-300 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-upload-internal" onsubmit="handleFormSubmission(event)" class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Nomor Dokumen</label>
+                    <input type="text" id="input-doc-number" required placeholder="cth: PD-10A-2024" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Judul Dokumen</label>
+                    <input type="text" id="input-doc-title" required placeholder="cth: Tata Cara Isyarat &amp; Semboyan" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Kategori / Tipe</label>
+                    <select id="input-doc-category" class="w-full p-2 border border-slate-300 rounded-lg font-bold"></select>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Status Berlaku</label>
+                    <select id="input-doc-status" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                        <option value="Berlaku">Berlaku</option>
+                        <option value="Dalam Revisi">Dalam Revisi</option>
+                        <option value="Tidak Berlaku">Tidak Berlaku</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Deskripsi / Ringkasan</label>
+                    <textarea id="input-doc-desc" rows="2" placeholder="Tuliskan deskripsi singkat dokumen..." class="w-full p-2 border border-slate-300 rounded-lg resize-none"></textarea>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Lampiran Berkas (opsional)</label>
+                    <input type="file" id="input-doc-file" class="w-full p-2 border border-slate-300 rounded-lg text-[11px]" />
+                    <p class="text-[10px] text-slate-400 font-semibold mt-1">Kalau diisi, berkas disimpan ke folder Peraturan di Google Drive.</p>
+                </div>
+                <div class="flex items-center justify-between gap-4 pt-2">
+                    <button type="button" onclick="previewBeforeUpload()" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg transition">Preview</button>
+                    <button type="submit" class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-lg transition">Simpan Dokumen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="document-reader-fullscreen" class="hidden fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center border-b border-[#1a3d6d]">
+                <div>
+                    <p id="reader-doc-type" class="text-[9px] text-[#d4af37] font-black uppercase tracking-widest">DOKUMEN REGULASI</p>
+                    <h4 id="reader-doc-title" class="font-extrabold text-sm tracking-tight">Judul Dokumen</h4>
+                    <p id="reader-doc-number" class="text-xs font-bold text-slate-400">PRODUK HUKUM: PD-10A-2024</p>
+                </div>
+                <button onclick="closeFullscreenReader()" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50">
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-inner">
+                    <p id="reader-doc-desc" class="text-sm text-slate-700 leading-relaxed font-medium">Deskripsi dokumen akan ditampilkan di sini. Silakan lengkapi form untuk melihat pratinjau.</p>
+                    <a id="reader-doc-file-link" href="#" target="_blank" class="hidden mt-4 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800"><i class="fa-solid fa-paperclip"></i><span>Buka berkas terlampir</span></a>
+                </div>
+            </div>
+            <div class="bg-slate-100 p-4 border-t border-slate-200 flex justify-end">
+                <button onclick="closeFullscreenReader()" class="px-5 py-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition">Tutup</button>
+            </div>
+        </div>
+    </div>

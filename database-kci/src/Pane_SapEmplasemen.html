@@ -1,0 +1,180 @@
+<!--
+  Pane_SapEmplasemen.html
+  Pane/menu: Sarana & Prasarana - Emplasemen Stasiun (v2). Palet warna &
+  font mengikuti identitas visual dashboard yang sudah ada (navy #0c1d37 +
+  gold #d4af37, Plus Jakarta Sans).
+
+  Update 25 Agustus 2026 (koreksi ke-5): tabel dibatasi 5 stasiun per
+  halaman dengan navigasi Sebelumnya/Selanjutnya di bawah tabel; filter &
+  pencarian otomatis kembali ke halaman 1.
+
+  Update 25 Agustus 2026 (koreksi ke-3, 5 poin dari user):
+  - LEBAR KOLOM ditata ulang total. Tabel sekarang memakai "table-fixed" +
+    <colgroup> dengan lebar PERSENTASE, jadi proporsi tiap kolom sudah
+    ditentukan pasti & tidak lagi ditentukan browser dari panjang isi sel
+    (itu sebab kolom NAMA STASIUN dulu melar sangat lebar sementara kolom
+    lain menyempit). Total 100%: 5 / 24 / 10 / 18 / 12 / 17 / 14.
+    min-w-[980px] menjaga tabel tetap terbaca di layar sempit (geser
+    horizontal), tidak gepeng.
+  - TOMBOL RIWAYAT AKTIVITAS tidak lagi tombol mengambang yang menimpa
+    tabel. Kini berupa tautan kecil bergaya teks di bawah kanan tabel
+    (koreksi lanjutan user: "cukup button catatan kecil ... agar lebih
+    terlihat elegan").
+
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-sap-emplasemen" class="hidden space-y-6 animate-fade-in">
+
+                <!-- KPI Summary -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total Stasiun</p>
+                            <h3 id="emp-stat-total" class="text-2xl font-black text-[#0c1d37] mt-0.5">0</h3>
+                            <p class="text-[10px] font-bold text-slate-400 mt-1">Terdaftar di Sistem Layout</p>
+                        </div>
+                        <div class="w-11 h-11 bg-blue-50 text-[#0c1d37] rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-building-flag"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Emplasemen Aktif</p>
+                            <h3 id="emp-stat-aktif" class="text-2xl font-black text-emerald-600 mt-0.5">0</h3>
+                            <p class="text-[10px] font-bold text-emerald-600 mt-1"><i class="fa-solid fa-circle-check text-[9px] mr-0.5"></i>Siap Operasional</p>
+                        </div>
+                        <div class="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-square-check"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total Jalur Terdaftar</p>
+                            <h3 id="emp-stat-jalur" class="text-2xl font-black text-[#0c1d37] mt-0.5">0</h3>
+                            <p class="text-[10px] font-bold text-slate-400 mt-1">Jalur Utama &amp; Stabling</p>
+                        </div>
+                        <div class="w-11 h-11 bg-[#d4af37]/15 text-[#b8902c] rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-route"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Tidak Aktif</p>
+                            <h3 id="emp-stat-nonaktif" class="text-2xl font-black text-amber-600 mt-0.5">0</h3>
+                            <p class="text-[10px] font-bold text-amber-600 mt-1"><i class="fa-solid fa-triangle-exclamation text-[9px] mr-0.5"></i>Perbaikan / Non-Aktif</p>
+                        </div>
+                        <div class="w-11 h-11 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-lg"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    </div>
+                </div>
+
+                <!-- Toolbar + Table -->
+                <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-slate-50/50">
+                        <div>
+                            <h4 class="font-extrabold text-[#0c1d37] text-sm tracking-tight flex items-center gap-2">
+                                Emplasemen Stasiun
+                                <!-- Penanda halus saat tabel tampil dari ingatan & data barunya sedang diambil di latar belakang. -->
+                                <span id="emp-refresh-indicator" class="hidden text-[10px] font-bold text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>menyegarkan</span>
+                            </h4>
+                            <p class="text-[11px] text-slate-400 font-bold mt-1">Layout Stasiun &amp; Jalur Kereta Api</p>
+                        </div>
+                        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+                            <div class="relative min-w-[190px] flex-1 sm:flex-none">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                <input type="text" id="emp-search" onkeyup="empFilterBerubah()" placeholder="Cari nama / singkatan..."
+                                    class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                            </div>
+                            <select id="emp-filter-wilayah" onchange="empFilterBerubah()" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer">
+                                <option value="ALL">Semua Daop / Divre</option>
+                            </select>
+                            <select id="emp-filter-status" onchange="empFilterBerubah()" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer">
+                                <option value="ALL">Aktif / Tidak Aktif</option>
+                                <option value="Aktif">Aktif</option>
+                                <option value="Tidak Aktif">Tidak Aktif</option>
+                            </select>
+                            <button id="btn-add-sap-emplasemen" onclick="openEmpUploadModal()" class="bg-[#0c1d37] hover:bg-slate-800 text-white font-black text-xs px-5 py-2.5 rounded-xl shadow flex items-center gap-2 uppercase tracking-wider transition shrink-0">
+                                <i class="fa-solid fa-plus-circle text-[#d4af37]"></i><span>Tambah Emplasemen</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <!--
+                          table-fixed + colgroup = lebar kolom DITENTUKAN di sini, bukan dihitung
+                          browser dari isi sel. Kalau suatu saat mau menggeser proporsi kolom,
+                          cukup ubah angka persentase di <colgroup> di bawah ini (total harus 100%),
+                          tidak perlu menyentuh <th> maupun fungsi render di Script_SaranaPrasarana.html.
+                        -->
+                        <table class="w-full min-w-[980px] table-fixed text-left text-xs border-collapse">
+                            <colgroup>
+                                <col style="width:5%">
+                                <col style="width:24%">
+                                <col style="width:10%">
+                                <col style="width:18%">
+                                <col style="width:12%">
+                                <col style="width:17%">
+                                <col style="width:14%">
+                            </colgroup>
+                            <thead>
+                                <tr class="bg-[#0c1d37] text-white text-[10px] font-extrabold uppercase tracking-wider">
+                                    <!--
+                                      Lebar & perataan dibakukan (5 September 2026):
+                                        angka & lencana -> RATA TENGAH
+                                        teks & nama     -> RATA KIRI
+                                      Lebarnya dipatok agar tidak ada kolom yang
+                                      melar mengikuti isi terpanjang sementara
+                                      yang lain terjepit.
+                                    -->
+                                    <th class="px-3 py-3.5 text-center border-r border-[#1a3d6d] w-14">NO</th>
+                                    <th class="px-4 py-3.5 text-left border-r border-[#1a3d6d] w-64">NAMA STASIUN</th>
+                                    <th class="px-3 py-3.5 text-center border-r border-[#1a3d6d] w-28">SINGKATAN</th>
+                                    <th class="px-4 py-3.5 text-left border-r border-[#1a3d6d] w-48">LOKASI (WILAYAH)</th>
+                                    <th class="px-3 py-3.5 text-center border-r border-[#1a3d6d] w-28">STATUS</th>
+                                    <th class="px-3 py-3.5 text-left border-r border-[#1a3d6d] w-56">JALUR KA</th>
+                                    <th class="px-3 py-3.5 text-center w-36">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="emplasemen-table-body" class="divide-y divide-slate-100 bg-white font-bold text-slate-700"></tbody>
+                        </table>
+                    </div>
+
+                    <!--
+                      Navigasi halaman: 5 stasiun per halaman (permintaan user).
+                      Jumlahnya diatur lewat EMP_TABLE_PAGE_SIZE di
+                      Script_SaranaPrasarana.html kalau suatu saat mau diubah.
+                    -->
+                    <div id="emp-pagination" class="px-6 py-3.5 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+                        <span id="emp-page-range" class="text-[11px] text-slate-500 font-bold">Menampilkan 0 dari 0 stasiun</span>
+                        <div class="flex items-center gap-2">
+                            <button id="emp-page-prev" onclick="empHalamanTabelSebelumnya()"
+                                class="px-3.5 py-1.5 bg-white border border-slate-200 hover:border-[#0c1d37] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-chevron-left text-[10px]"></i> Sebelumnya
+                            </button>
+                            <span id="emp-page-info" class="text-[11px] text-slate-600 font-extrabold px-2 whitespace-nowrap">Halaman 1 / 1</span>
+                            <button id="emp-page-next" onclick="empHalamanTabelBerikutnya()"
+                                class="px-3.5 py-1.5 bg-white border border-slate-200 hover:border-[#0c1d37] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                Selanjutnya <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="emp-empty-state" class="hidden py-16 text-center bg-slate-50/50">
+                        <div class="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400 text-xl border border-slate-200">
+                            <i class="fa-solid fa-folder-open"></i>
+                        </div>
+                        <h3 class="text-sm font-bold text-slate-700">Tidak ada data emplasemen stasiun</h3>
+                        <p class="text-xs text-slate-400 mt-1">Sesuaikan filter, atau tambahkan emplasemen stasiun baru.</p>
+                    </div>
+                </div>
+
+                <!--
+                  Riwayat Aktivitas (koreksi user: "cukup button catatan kecil").
+                  Dulu tombol mengambang yang menimpa tabel, lalu sempat jadi panel
+                  besar setinggi kartu. Sekarang: satu baris tipis, rata kanan,
+                  gaya teks - hadir saat dibutuhkan tapi tidak merebut perhatian
+                  dari tabel yang jadi isi utama halaman.
+                -->
+                <div class="flex justify-end -mt-2">
+                    <button onclick="openEmpActivityLogModal()" title="Lihat catatan aktivitas menu ini"
+                        class="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-400 hover:text-[#0c1d37] hover:bg-slate-100 transition">
+                        <i class="fa-solid fa-clock-rotate-left text-[10px] group-hover:text-[#d4af37]"></i>
+                        <span>Riwayat Aktivitas</span>
+                    </button>
+                </div>
+
+            </section>

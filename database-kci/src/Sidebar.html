@@ -1,0 +1,274 @@
+<!--
+  Sidebar.html
+  Navigasi utama (menu & submenu) di sisi kiri aplikasi.
+  Semua tombol memanggil switchTab()/toggleAccordion() yang didefinisikan
+  di SharedScripts.html, supaya menambah/mengubah menu di sini tidak perlu
+  menyentuh file pane atau file script modul lain.
+-->
+    <aside id="main-sidebar" class="w-80 bg-[#0c1d37] text-slate-300 flex flex-col h-full shadow-2xl flex-shrink-0 z-30 transition-all duration-300 border-r border-[#1a2d4c]">
+
+        <!-- collapsed view -->
+        <div id="sidebar-collapsed-view" class="hidden flex-col items-center py-6 space-y-6 h-full w-20 bg-[#09152a]">
+            <div class="bg-[#e11d48] text-white w-12 h-12 rounded-2xl font-black text-lg shadow-lg flex items-center justify-center border border-red-400/30">
+                <span>KCI</span>
+            </div>
+            <button onclick="toggleSidebar()" class="w-10 h-10 rounded-full border border-slate-700 bg-[#0c1d37] text-[#d4af37] hover:text-white flex items-center justify-center transition" title="Buka Sidebar">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </button>
+            <div class="flex-1"></div>
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-[#d4af37] flex items-center justify-center font-bold">
+                <i class="fa-solid fa-user-shield"></i>
+            </div>
+        </div>
+
+        <!-- expanded view -->
+        <div id="sidebar-expanded-view" class="flex flex-col h-full w-full overflow-hidden">
+            <!-- brand -->
+            <div class="p-6 border-b border-[#1a2d4c] bg-[#09152a] flex items-center justify-between">
+                <div class="flex items-center space-x-3.5">
+                    <div class="bg-[#e11d48] text-white p-3 rounded-2xl font-black text-xl shadow-lg border border-red-400/30 flex items-center justify-center">
+                        <span class="text-sm">KCI</span>
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-white text-md tracking-tight leading-none">DATABASE KCI</h1>
+                        <p class="text-[9px] text-[#d4af37] font-black tracking-widest uppercase mt-1">COTP Department</p>
+                    </div>
+                </div>
+                <button onclick="toggleSidebar()" class="w-8 h-8 rounded-full border border-slate-700 bg-[#0c1d37] text-slate-400 hover:text-[#d4af37] flex items-center justify-center transition" title="Lipat Sidebar">
+                    <i class="fa-solid fa-chevron-left text-xs"></i>
+                </button>
+            </div>
+
+            <!-- navigation -->
+            <nav class="flex-1 overflow-y-auto custom-scrollbar px-4 py-6 space-y-4">
+
+                <!-- Dashboard -->
+                <div>
+                    <button onclick="switchTab('dashboard')" id="btn-dashboard" class="sidebar-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-bold text-sm sidebar-btn-active">
+                        <i class="fa-solid fa-chart-line text-lg w-5"></i>
+                        <span>Dashboard Utama</span>
+                    </button>
+                </div>
+
+                <!-- KINERJA & OPERASIONAL -->
+                <div class="space-y-1">
+                    <span class="px-4 text-[10px] font-black text-[#d4af37] uppercase tracking-widest block mb-2 opacity-80">Kinerja &amp; Operasional</span>
+
+                    <!-- Kinerja Operasi -->
+                    <button onclick="toggleAccordion('acc-kinerja','arrow-kinerja')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-gauge-high w-5"></i>
+                            <span>Kinerja Operasi</span>
+                        </div>
+                        <i id="arrow-kinerja" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-kinerja" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <button onclick="switchTab('kinop-summary')" id="btn-kinop-summary" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Summary Performa</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('kinop-rincian')" id="btn-kinop-rincian" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Rincian Lintas</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('kinop-db')" id="btn-kinop-db" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Database KA</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+
+                    <!-- Rekapitulasi Gangguan -->
+                    <button onclick="toggleAccordion('acc-gangguan','arrow-gangguan')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-triangle-exclamation w-5 text-red-500"></i>
+                            <span>Rekapitulasi Gangguan</span>
+                        </div>
+                        <i id="arrow-gangguan" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-gangguan" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <button onclick="switchTab('gangguan-summary')" id="btn-gangguan-summary" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Summary Gangguan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('gangguan-rincian')" id="btn-gangguan-rincian" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Rincian Gangguan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('gangguan-custom')" id="btn-gangguan-custom" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Rekap Gangguan Sarana</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+
+                    <!-- Train Control -->
+                    <button onclick="toggleAccordion('acc-tc','arrow-tc')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-network-wired w-5"></i>
+                            <span>Train Control (TC)</span>
+                        </div>
+                        <i id="arrow-tc" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-tc" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <button onclick="switchTab('tc-struktur')" id="btn-tc-struktur" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-sitemap text-[11px] w-3.5 text-center opacity-70"></i>Struktur Organisasi</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('tc-roster')" id="btn-tc-roster" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Prog &amp; Real Jadwal Dinasan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('tc-serah')" id="btn-tc-serah" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Serah Terima Dinasan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('tc-dinasan')" id="btn-tc-dinasan" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Laporan Dinasan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('tc-resume')" id="btn-tc-resume" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Resume Laporan</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('tc-raport')" id="btn-tc-raport" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Buku Raport Staf</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SARANA & PRASARANA -->
+                <div class="space-y-1">
+                    <span class="px-4 text-[10px] font-black text-[#d4af37] uppercase tracking-widest block mb-2 opacity-80">Sarana &amp; Prasarana</span>
+                    <button onclick="toggleAccordion('acc-sap','arrow-sap')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-cubes w-5"></i>
+                            <span>Sarana &amp; Prasarana</span>
+                        </div>
+                        <i id="arrow-sap" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-sap" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <button onclick="switchTab('sap-emplasemen')" id="btn-sap-emplasemen" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Emplasemen Stasiun</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('sap-spesifikasi')" id="btn-sap-spesifikasi" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Spesifikasi Sarana</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('sap-perlintasan')" id="btn-sap-perlintasan" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Perlintasan Sebidang</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ADMINISTRASI & ANGGARAN -->
+                <div class="space-y-1">
+                    <span class="px-4 text-[10px] font-black text-[#d4af37] uppercase tracking-widest block mb-2 opacity-80">Administrasi &amp; Anggaran</span>
+
+                    <button onclick="toggleAccordion('acc-peraturan','arrow-peraturan')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-book-open-reader w-5"></i>
+                            <span>Document Repository</span>
+                        </div>
+                        <i id="arrow-peraturan" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-peraturan" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <!--
+                          LIMA ARSIP - mengikuti rancangan yang dikirim user.
+                          Semuanya membuka pane yang sama (peraturan-dokumen),
+                          hanya arsipnya yang berbeda. Karena itu id tombolnya
+                          diberi awalan btn-arsip-* & dipetakan ke izin
+                          'peraturan-dokumen' di sembunyikanMenuTanpaIzin_ -
+                          matriks izin tidak perlu diubah sama sekali.
+                        -->
+                        <!--
+                          SUMMARY ARSIP - laporan lintas-arsip, diletakkan paling
+                          atas sesuai permintaan user. Menggantikan menu lama
+                          "Kategori Peraturan": pengelolaan kategori kini sudah
+                          ada di dalam tiap arsip lewat tombol Kelola Parameter,
+                          jadi menu terpisah untuk itu tidak diperlukan lagi.
+                          ID menunya TETAP 'peraturan-custom' supaya baris izin
+                          yang sudah ada tidak perlu diubah sama sekali.
+                        -->
+                        <button onclick="switchTab('peraturan-custom')" id="btn-peraturan-custom" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between border-b border-slate-800/60 mb-1 pb-2">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-chart-pie text-[11px] w-3.5 text-center opacity-70"></i>Summary Arsip</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="bukaArsip('peraturan')" id="btn-arsip-peraturan" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-scale-balanced text-[11px] w-3.5 text-center opacity-70"></i>Peraturan Perusahaan</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="bukaArsip('notulen')" id="btn-arsip-notulen" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-clipboard-list text-[11px] w-3.5 text-center opacity-70"></i>Notulen &amp; Risalah Rapat</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="bukaArsip('surat')" id="btn-arsip-surat" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-envelope-open-text text-[11px] w-3.5 text-center opacity-70"></i>Surat Masuk &amp; Keluar</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="bukaArsip('kajian')" id="btn-arsip-kajian" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-file-lines text-[11px] w-3.5 text-center opacity-70"></i>Dokumen Kajian / Studi</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="bukaArsip('gapeka')" id="btn-arsip-gapeka" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-train-subway text-[11px] w-3.5 text-center opacity-70"></i>Gapeka</span>
+                            <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+
+                    <button onclick="toggleAccordion('acc-izin','arrow-izin')" class="sidebar-btn w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-stamp w-5"></i>
+                            <span>Izin Linpel &amp; IOPS</span>
+                        </div>
+                        <i id="arrow-izin" class="fa-solid fa-chevron-right text-[10px] accordion-arrow"></i>
+                    </button>
+                    <div id="acc-izin" class="hidden pl-11 pr-2 py-1 space-y-1 bg-[#09152a]/50 rounded-xl mt-1">
+                        <button onclick="switchTab('izin-linpel')" id="btn-izin-linpel" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Izin Lintas (Linpel)</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                        <button onclick="switchTab('izin-iops')" id="btn-izin-iops" class="w-full text-left py-2 text-xs font-bold hover:text-[#d4af37] transition text-slate-400 flex items-center justify-between">
+                            <span>Izin Operasi (IOPS)</span> <i class="fa-solid fa-angle-right text-[9px] opacity-40"></i>
+                        </button>
+                    </div>
+
+                    <button onclick="switchTab('anggaran')" id="btn-anggaran" class="sidebar-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <i class="fa-solid fa-wallet w-5"></i>
+                        <span>Serapan Anggaran</span>
+                    </button>
+
+                    <button onclick="switchTab('user-mgmt')" id="btn-user-mgmt" class="sidebar-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/40 font-semibold">
+                        <i class="fa-solid fa-users-gear w-5"></i>
+                        <span>User Management</span>
+                    </button>
+                </div>
+            </nav>
+
+            <!--
+              footer
+              Tombol Ganti Password ditaruh di sini - BUKAN di dalam menu User
+              Management - supaya tetap terjangkau oleh role yang tidak punya
+              akses ke menu itu (misalnya ADMIN GANGSAR yang hanya melihat satu
+              menu). Setiap petugas berhak mengganti passwordnya sendiri.
+            -->
+            <!--
+              Footer sidebar: avatar, nama+role, lalu dua tombol ikon - semuanya
+              SEJAJAR dalam satu baris (permintaan user). Sebelumnya tombolnya
+              menumpuk di baris kedua sehingga footer terlihat tinggi & kosong
+              di sebelah kanan nama.
+              Kunci  = ganti password akun sendiri (semua role)
+              Pintu  = keluar dari sistem
+            -->
+            <div class="border-t border-[#1a2d4c] bg-[#070e1a] px-4 py-3 flex items-center gap-3">
+                <!--
+                  Foto petugas diambil dari Struktur Organisasi bila namanya
+                  cocok. Kalau belum ada fotonya, ikon perisai tetap dipakai -
+                  jadi tampilannya tidak pernah bolong.
+                -->
+                <div id="sidebar-user-avatar" class="w-9 h-9 rounded-xl bg-slate-800 text-[#d4af37] flex items-center justify-center border border-slate-700 shrink-0 overflow-hidden">
+                    <i class="fa-solid fa-user-shield text-sm"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h4 id="sidebar-user-name" class="text-xs font-bold text-white truncate leading-tight">-</h4>
+                    <p id="sidebar-user-role" class="text-[9px] text-emerald-400 font-bold tracking-wide truncate mt-0.5">-</p>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button onclick="openMyPasswordModal()" title="Ganti password akun Anda"
+                        class="w-8 h-8 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-[#d4af37] flex items-center justify-center text-[11px] transition border border-slate-700">
+                        <i class="fa-solid fa-key"></i>
+                    </button>
+                    <button onclick="handleLogout()" title="Keluar dari sistem"
+                        class="w-8 h-8 rounded-lg bg-slate-800/70 hover:bg-red-600 text-slate-400 hover:text-white flex items-center justify-center text-[11px] transition border border-slate-700 hover:border-red-600">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </aside>

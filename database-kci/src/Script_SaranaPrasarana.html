@@ -1,0 +1,2325 @@
+<!--
+  Script_SaranaPrasarana.html
+  Logic browser untuk modul Sarana & Prasarana:
+  Spesifikasi Sarana, Perlintasan Sebidang, & Emplasemen Stasiun.
+
+  EMPLASEMEN STASIUN v3 (25 Agustus 2026) - perubahan besar:
+  berkas yang diupload (PDF/PNG/apa pun) DIUBAH JADI JPG MUTU TINGGI DI
+  BROWSER INI sebelum dikirim ke server, satu JPG per halaman. Gambar JPG
+  bisa ditampilkan di mana saja tanpa syarat apa pun, jadi masalah
+  "dokumen tidak bisa dibuka" tidak bisa muncul lagi - bukan ditambal,
+  tapi dihilangkan sumbernya. Penjelasan lengkap ada di komentar bagian
+  "EMPLASEMEN STASIUN v3" di bawah.
+-->
+<script>
+        // ─── FUNGSI DASAR (cadangan mandiri) ─────────────────────────────
+        // Definisi cadangan fungsi umum yang dipakai file ini. Ditanam di
+        // SETIAP Script_*.html dengan pola idempotent (window.x = window.x
+        // || ...) supaya file ini TETAP BERFUNGSI walau SharedScripts.html
+        // kebetulan belum ter-update ke versi terbaru. Ini mencegah satu
+        // file yang ketinggalan versi merusak seluruh modul lain.
+        window.escapeHtml = window.escapeHtml || function (val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        };
+        window.startLoadingWatchdog = window.startLoadingWatchdog || function () { return null; };
+
+
+        // ================================================================
+        // SPESIFIKASI SARANA & PERLINTASAN SEBIDANG (tidak diubah)
+        // ================================================================
+        let sapDataCache = { spesifikasi: [], perlintasan: [] };
+        const SAP_TBODY_ID = { spesifikasi: 'spesifikasi-table-body', perlintasan: 'perlintasan-table-body' };
+
+        function loadSapData(type) {
+            const tbody = document.getElementById(SAP_TBODY_ID[type]);
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-400 font-bold">Memuat data...</td></tr>';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { sapDataCache[type] = res.data; renderSapTable(type); }
+                    else { showToast('Gagal memuat data: ' + (res.message || '')); if (tbody) tbody.innerHTML = ''; }
+                })
+                .withFailureHandler(function () {
+                    showToast('Terjadi kesalahan saat memuat data.');
+                    if (tbody) tbody.innerHTML = '';
+                })
+                .sap_getData(currentSessionToken, type);
+        }
+
+        function renderSapTable(type) {
+            if (type === 'spesifikasi') renderSpesifikasiTable();
+            else renderPerlintasanTable();
+        }
+
+        function renderSpesifikasiTable() {
+            const tbody = document.getElementById('spesifikasi-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            sapDataCache.spesifikasi.forEach((item, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 text-xs font-semibold h-12">
+                        <td class="px-4 py-2 border-r border-slate-200 text-center text-slate-400 font-mono">${idx+1}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-[#0c1d37] font-extrabold">${escapeHtml(item.seri)}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-slate-600">${escapeHtml(item.sf)}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-emerald-600">${escapeHtml(item.status)}</td>
+                        <td class="px-4 py-2 text-center">
+                            <button onclick="removeSapAssetItem('spesifikasi', '${item.id}')" class="text-red-500 font-black tracking-wider text-[9px] uppercase bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg">DELETE</button>
+                        </td>
+                    </tr>
+                `);
+            });
+            if (sapDataCache.spesifikasi.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        function renderPerlintasanTable() {
+            const tbody = document.getElementById('perlintasan-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            sapDataCache.perlintasan.forEach((item, idx) => {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 text-xs font-semibold h-12">
+                        <td class="px-4 py-2 border-r border-slate-200 text-center text-slate-400 font-mono">${idx+1}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-[#0c1d37] font-extrabold">${escapeHtml(item.nama)}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-slate-600">${escapeHtml(item.lokasi)}</td>
+                        <td class="px-5 py-2 border-r border-slate-200 text-left text-emerald-600">${escapeHtml(item.klasifikasi)}</td>
+                        <td class="px-4 py-2 text-center">
+                            <button onclick="removeSapAssetItem('perlintasan', '${item.id}')" class="text-red-500 font-black tracking-wider text-[9px] uppercase bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg">DELETE</button>
+                        </td>
+                    </tr>
+                `);
+            });
+            if (sapDataCache.perlintasan.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-400 font-bold">Belum ada data.</td></tr>';
+            }
+        }
+
+        async function removeSapAssetItem(type, id) {
+            const setujuHapus = await konfirmasi_({
+                judul: 'Hapus data ini?',
+                pesan: 'Data yang dihapus tidak bisa dikembalikan dari aplikasi. Pastikan sudah ada cadangan bila datanya masih diperlukan.',
+                ya: 'Ya, Hapus', ikonYa: 'fa-trash-can'
+            });
+            if (!setujuHapus) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { showToast('Data berhasil dihapus.'); loadSapData(type); }
+                    else { showToast('Gagal menghapus: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus data.'); })
+                .sap_deleteAsset(currentSessionToken, type, id);
+        }
+
+        function openSapInputModal(type) {
+            document.getElementById('modal-input-sap').classList.remove('hidden');
+            document.getElementById('sap-type').value = type;
+            const container = document.getElementById('sap-form-fields');
+            container.innerHTML = '';
+            if (type === 'spesifikasi') {
+                document.getElementById('sap-modal-title').innerText = "Registrasi Spesifikasi Sarana";
+                container.innerHTML = `
+                    <div><label class="font-bold">Seri Armada</label><input type="text" id="sap-f1" required class="w-full p-2 border rounded-lg mt-1"></div>
+                    <div><label class="font-bold">Formasi Car (SF)</label><input type="text" id="sap-f2" required class="w-full p-2 border rounded-lg mt-1"></div>
+                    <div><label class="font-bold">Status Operasi</label><input type="text" id="sap-f3" required class="w-full p-2 border rounded-lg mt-1"></div>
+                `;
+            } else {
+                document.getElementById('sap-modal-title').innerText = "Registrasi Perlintasan Sebidang";
+                container.innerHTML = `
+                    <div><label class="font-bold">Nama Perlintasan (KM)</label><input type="text" id="sap-f1" required class="w-full p-2 border rounded-lg mt-1"></div>
+                    <div><label class="font-bold">Lokasi Lintas</label><input type="text" id="sap-f2" required class="w-full p-2 border rounded-lg mt-1"></div>
+                    <div><label class="font-bold">Klasifikasi Penjagaan</label><input type="text" id="sap-f3" required class="w-full p-2 border rounded-lg mt-1"></div>
+                `;
+            }
+        }
+
+        function closeSapInputModal() { document.getElementById('modal-input-sap').classList.add('hidden'); }
+
+        function handleSapSubmit(e) {
+            e.preventDefault();
+            const type = document.getElementById('sap-type').value;
+            const f1 = document.getElementById('sap-f1').value;
+            const f2 = document.getElementById('sap-f2').value;
+            const f3 = document.getElementById('sap-f3').value;
+            const payload = (type === 'spesifikasi') ? { seri: f1, sf: f2, status: f3 } : { nama: f1, lokasi: f2, klasifikasi: f3 };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { closeSapInputModal(); showToast(`Sukses menyimpan data ${f1}!`); loadSapData(type); }
+                    else { showToast('Gagal menyimpan: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan data.'); })
+                .sap_addAsset(currentSessionToken, type, payload);
+        }
+
+        // ================================================================
+        // EMPLASEMEN STASIUN v3 (25 Agustus 2026)
+        // ================================================================
+        //
+        // INTI PERUBAHAN: berkas apa pun (PDF/PNG/WEBP/dll) DIUBAH JADI JPG
+        // MUTU TINGGI DI BROWSER INI sebelum dikirim ke server. Gambar JPG
+        // bisa ditampilkan di mana saja tanpa syarat apa pun - itulah yang
+        // menghentikan masalah "dokumen tidak bisa dibuka" secara permanen.
+        //
+        // Kenapa konversinya di browser, bukan di server: Apps Script memang
+        // tidak punya cara resmi mengubah PDF jadi gambar. Di browser, PDF.js
+        // bisa menggambar tiap halaman ke <canvas> pada resolusi berapa pun,
+        // jadi mutunya justru bisa dikendalikan (lihat EMP_JPG_TARGET_WIDTH).
+        //
+        // Berkas ASLI tetap ikut disimpan sebagai arsip (bisa dimatikan lewat
+        // centang di form) - jadi mutu aslinya tidak pernah hilang.
+
+        const EMP_WILAYAH_LIST = [
+            "Daop 1 Jakarta", "Daop 2 Bandung", "Daop 3 Cirebon", "Daop 4 Semarang",
+            "Daop 5 Purwokerto", "Daop 6 Yogyakarta", "Daop 7 Madiun", "Daop 8 Surabaya",
+            "Daop 9 Jember", "Divre I Sumatera Utara & Aceh", "Divre II Sumatera Barat",
+            "Divre III Palembang", "Divre IV Tanjungkarang"
+        ];
+
+        // ── Pengaturan mutu konversi JPG ──────────────────────────────────
+        // 2600 px lebar ≈ 220 DPI untuk kertas A3 - cukup tajam untuk dizoom
+        // dalam-dalam saat presentasi, tapi ukuran berkasnya masih wajar
+        // (±400-900 KB/halaman) sehingga tetap cepat dibuka. Mutu 0.92
+        // adalah titik di mana artefak JPEG praktis tidak terlihat pada
+        // gambar teknis bergaris.
+        const EMP_JPG_TARGET_WIDTH = 3000;  // disamakan dengan Document Repository - tajam sampai zoom 250%
+        const EMP_JPG_QUALITY = 0.94;
+        const EMP_JPG_MAX_PAGES = 40;
+
+        let empStations = [];       // cache dari server
+        let activeEmpStation = null;
+        let tempEmpTrackDetails = []; // dipakai selama form Tambah (sebelum stasiun benar-benar ada)
+        /** true selama pemeriksaan nama stasiun berjalan di latar. */
+        let empSedangCekNama_ = false;
+        let empCekNamaBatasTimer_ = null;
+
+        let pendingDeleteEmpTrackIdx = -1;
+        let pendingDeleteEmpStationId = null;
+        let editingEmpHistoryId = null;
+        let empEditingStationId = null;   // null = mode TAMBAH, berisi id = mode EDIT
+        let empUploadInProgress = false;  // guard cegah double-submit
+        let empHalamanSiapKirim = [];     // hasil konversi: [{base64, lebar, tinggi}]
+        let empBerkasAsliPayload = null;  // {base64, name, mimeType} berkas pra-konversi
+        let empDokumenTargetStationId = null; // stasiun tujuan saat menambah versi dokumen dari modal Kelola
+
+        // Cache gambar halaman di memori: pageId -> dataURL. Inilah yang
+        // membuat membuka ulang stasiun yang sama jadi seketika (poin
+        // kecepatan) - tidak ada permintaan ke server sama sekali.
+        let empPageCache = {};
+
+        // Riwayat Aktivitas
+        let empActivityLogData = [];
+        let empActivityLogSort = 'terbaru';
+        let empActivityLogPage = 1;
+        const EMP_ACTIVITY_LOG_PAGE_SIZE = 10;
+
+        // Paginasi tabel: 5 stasiun per halaman (permintaan user).
+        const EMP_TABLE_PAGE_SIZE = 5;
+        let empTablePage = 1;
+
+        // Penanda bahwa data sudah pernah dimuat - dipakai supaya berpindah
+        // ke menu ini untuk KEDUA kalinya menampilkan tabel seketika dari
+        // ingatan, lalu menyegarkan diri diam-diam di latar belakang.
+        let empSudahPernahDimuat = false;
+
+        // Sub-modal perbaiki dokumen
+        let empDocSedangDiperbaiki = null; // {id, versi}
+        let empHalamanPerbaikan = [];      // hasil konversi berkas pengganti
+        let empBerkasAsliPerbaikan = null;
+
+        // Viewer
+        let empViewerDoc = null;      // objek dokumen yang sedang dibuka
+        let empViewerHalaman = 1;
+        let empViewerZoom = 1;
+        let empViewerRotasi = 0;      // derajat: 0 / 90 / 180 / 270
+        let empViewerPanX = 0, empViewerPanY = 0;
+        let empViewerDragging = false, empViewerDragStartX = 0, empViewerDragStartY = 0;
+        let empPreviewFullscreen = false;
+
+        /** Format tanggal ISO ke "dd-mm-yyyy HH:MM WIB". */
+        function formatEmpDate(isoString) {
+            if (!isoString) return '-';
+            const d = new Date(isoString);
+            if (isNaN(d.getTime())) return isoString;
+            const pad = n => String(n).padStart(2, '0');
+            return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} WIB`;
+        }
+
+        /**
+         * "dd-MM-yyyy HH:mm" (bentuk yang dikembalikan Sheets setelah teks
+         * tanggal otomatis dikenali sebagai tanggal) -> "yyyy-MM-dd" yang
+         * dimengerti <input type="date">.
+         */
+        function empTanggalUntukInputDate_(nilai) {
+            const teks = String(nilai || '').trim();
+            if (!teks) return '';
+            let m = teks.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return m[1] + '-' + m[2] + '-' + m[3];
+            m = teks.match(/^(\d{2})-(\d{2})-(\d{4})/);
+            if (m) return m[3] + '-' + m[2] + '-' + m[1];
+            return '';
+        }
+
+        // ─── PDF.js (dipakai HANYA saat konversi, bukan saat menampilkan) ──
+
+        const EMP_PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        let empPdfjsSiap_ = false;
+
+        /**
+         * Menyiapkan PDF.js sekali saja. Worker-nya dimuat lewat Blob kecil
+         * yang meng-importScripts URL CDN - trik standar supaya worker
+         * lintas-domain tetap boleh dibuat browser. Kalau ditolak, workerSrc
+         * diarahkan langsung ke CDN & PDF.js jatuh ke mode tanpa worker.
+         * @return {boolean} false kalau pustakanya sendiri gagal dimuat.
+         */
+        function empSiapkanPdfJs_() {
+            if (typeof pdfjsLib === 'undefined') {
+                console.log('[emp] pustaka pdfjsLib tidak tersedia - cek <script> PDF.js di Index.html & akses ke cdnjs.cloudflare.com.');
+                return false;
+            }
+            if (empPdfjsSiap_) return true;
+            try {
+                const blob = new Blob(["importScripts('" + EMP_PDFJS_WORKER_URL + "');"], { type: 'application/javascript' });
+                pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+            } catch (err) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = EMP_PDFJS_WORKER_URL;
+            }
+            empPdfjsSiap_ = true;
+            return true;
+        }
+
+        /** base64 -> Uint8Array (bentuk yang diminta PDF.js). */
+        function empBase64KeBytes_(base64) {
+            const biner = atob(base64);
+            const bytes = new Uint8Array(biner.length);
+            for (let i = 0; i < biner.length; i++) bytes[i] = biner.charCodeAt(i);
+            return bytes;
+        }
+
+        // ─── KONVERSI BERKAS -> JPG ───────────────────────────────────────
+
+        /**
+         * Mengubah berkas apa pun jadi daftar halaman JPG mutu tinggi.
+         *  - PDF   : tiap halaman digambar PDF.js ke canvas lalu di-JPG-kan.
+         *  - Gambar: digambar ulang ke canvas (sekaligus menormalkan PNG/WEBP/
+         *            HEIC-yang-didukung-browser jadi JPG). JPG yang sudah
+         *            sesuai ukuran dipakai apa adanya tanpa dikompres ulang,
+         *            supaya tidak turun mutu dua kali.
+         *  - Lainnya (DXF/CAD): TIDAK bisa dikonversi di browser mana pun -
+         *            dikembalikan sebagai daftar kosong & berkasnya tetap
+         *            tersimpan utuh sebagai arsip.
+         * @param {File} file
+         * @param {function(number,number,string)} onProgress (selesai, total, keterangan)
+         * @return {Promise<{pages:Array, jenis:string, alasan?:string}>}
+         */
+        async function empKonversiBerkasKeJpg_(file, onProgress) {
+            const tipe = file.type || '';
+            const namaKecil = (file.name || '').toLowerCase();
+            const isPdf = tipe === 'application/pdf' || namaKecil.endsWith('.pdf');
+            const isGambar = tipe.indexOf('image/') === 0;
+
+            if (isPdf) {
+                if (!empSiapkanPdfJs_()) {
+                    return { pages: [], jenis: 'gagal', alasan: 'Pustaka pembaca PDF gagal dimuat (periksa koneksi ke cdnjs.cloudflare.com).' };
+                }
+                const base64 = await empBacaFileSebagaiBase64_(file);
+                const pdf = await pdfjsLib.getDocument({ data: empBase64KeBytes_(base64) }).promise;
+                const total = Math.min(pdf.numPages, EMP_JPG_MAX_PAGES);
+                const pages = [];
+                for (let n = 1; n <= total; n++) {
+                    if (onProgress) onProgress(n - 1, total, 'Mengubah halaman ' + n + ' jadi JPG...');
+                    const page = await pdf.getPage(n);
+                    const asli = page.getViewport({ scale: 1 });
+                    // Skala dipilih agar lebar hasil ≈ EMP_JPG_TARGET_WIDTH, tapi
+                    // tidak pernah MEMPERBESAR halaman yang aslinya sudah besar
+                    // secara berlebihan (batas 6x) - itu cuma menambah ukuran
+                    // berkas tanpa menambah detail.
+                    const skala = Math.min(EMP_JPG_TARGET_WIDTH / asli.width, 6);
+                    const viewport = page.getViewport({ scale: skala });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.floor(viewport.width);
+                    canvas.height = Math.floor(viewport.height);
+                    const ctx = canvas.getContext('2d');
+                    // Latar putih: PDF berlatar transparan kalau langsung
+                    // di-JPG-kan akan jadi HITAM (JPG tidak kenal transparansi).
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                    pages.push({
+                        base64: canvas.toDataURL('image/jpeg', EMP_JPG_QUALITY).split(',')[1],
+                        lebar: canvas.width, tinggi: canvas.height
+                    });
+                    canvas.width = 0; canvas.height = 0; // lepaskan memori canvas
+                }
+                if (onProgress) onProgress(total, total, 'Konversi selesai.');
+                return { pages: pages, jenis: 'pdf', jumlahAsli: pdf.numPages };
+            }
+
+            if (isGambar) {
+                if (onProgress) onProgress(0, 1, 'Menyiapkan gambar...');
+                const gambar = await empMuatGambar_(file);
+                const skala = Math.min(EMP_JPG_TARGET_WIDTH / gambar.naturalWidth, 1); // gambar kecil tidak diperbesar
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(gambar.naturalWidth * skala);
+                canvas.height = Math.round(gambar.naturalHeight * skala);
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(gambar, 0, 0, canvas.width, canvas.height);
+                const hasil = {
+                    base64: canvas.toDataURL('image/jpeg', EMP_JPG_QUALITY).split(',')[1],
+                    lebar: canvas.width, tinggi: canvas.height
+                };
+                canvas.width = 0; canvas.height = 0;
+                if (onProgress) onProgress(1, 1, 'Konversi selesai.');
+                return { pages: [hasil], jenis: 'gambar' };
+            }
+
+            return {
+                pages: [], jenis: 'tidak-didukung',
+                alasan: 'Format ini (mis. DXF/DWG/CAD) tidak bisa diubah jadi gambar oleh browser. Berkasnya tetap tersimpan utuh sebagai arsip & bisa diunduh, tapi tidak bisa dipratinjau.'
+            };
+        }
+
+        /** Baca File jadi base64 (tanpa prefix data:). */
+        function empBacaFileSebagaiBase64_(file) {
+            return new Promise(function (resolve, reject) {
+                const reader = new FileReader();
+                reader.onload = function () { resolve(reader.result.split(',')[1]); };
+                reader.onerror = function () { reject(new Error('Gagal membaca berkas.')); };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /** Muat File gambar jadi objek <img> yang siap digambar ke canvas. */
+        function empMuatGambar_(file) {
+            return new Promise(function (resolve, reject) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                    const img = new Image();
+                    img.onload = function () { resolve(img); };
+                    img.onerror = function () { reject(new Error('Berkas gambar tidak bisa dibaca (kemungkinan rusak).')); };
+                    img.src = reader.result;
+                };
+                reader.onerror = function () { reject(new Error('Gagal membaca berkas.')); };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ─── MUAT & TAMPILKAN TABEL ───────────────────────────────────────
+
+        /**
+         * Memuat data stasiun.
+         *
+         * PERILAKU CACHE (perbaikan kecepatan): kalau data sudah pernah
+         * dimuat di sesi ini, tabel langsung digambar dari ingatan supaya
+         * berpindah ke menu ini terasa seketika, lalu data disegarkan
+         * diam-diam di latar belakang. Menunggu layar kosong cuma terjadi
+         * pada pemuatan pertama saja.
+         * @param {boolean} [paksa] true = selalu tunggu data baru dari server.
+         */
+        function loadEmpStations(paksa) {
+            const tbody = document.getElementById('emplasemen-table-body');
+            setupEmpWilayahDropdowns();
+
+            const pakaiCache = empSudahPernahDimuat && empStations.length > 0 && !paksa;
+            if (pakaiCache) {
+                renderEmplasemenTable();
+                empTandaiMenyegarkan_(true);
+            } else if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-400 font-bold"><i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#d4af37]"></i>Memuat data...</td></tr>';
+            }
+
+            const watchdog = pakaiCache ? null : startLoadingWatchdog('emplasemen-table-body', 'loadEmpStations()');
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (watchdog) clearTimeout(watchdog);
+                    empTandaiMenyegarkan_(false);
+                    if (res.success) {
+                        empStations = res.data;
+                        empSudahPernahDimuat = true;
+                        renderEmplasemenTable();
+                    } else {
+                        showToast('Gagal memuat data Emplasemen: ' + (res.message || ''));
+                        if (!pakaiCache && tbody) tbody.innerHTML = '';
+                    }
+                })
+                .withFailureHandler(function (err) {
+                    if (watchdog) clearTimeout(watchdog);
+                    empTandaiMenyegarkan_(false);
+                    console.log('[emp] gagal memuat:', err);
+                    if (!pakaiCache) {
+                        showToast('Terjadi kesalahan saat memuat data Emplasemen.');
+                        if (tbody) tbody.innerHTML = '';
+                    }
+                })
+                .sap_emplasemen_getAll(currentSessionToken);
+        }
+
+        /** Penanda halus "sedang menyegarkan" saat tabel tampil dari cache. */
+        function empTandaiMenyegarkan_(sedang) {
+            const el = document.getElementById('emp-refresh-indicator');
+            if (el) el.classList.toggle('hidden', !sedang);
+        }
+
+        function setupEmpWilayahDropdowns() {
+            populateSelect('emp-filter-wilayah', EMP_WILAYAH_LIST, 'ALL', 'Semua Daop / Divre');
+            populateSelect('emp-input-wilayah', EMP_WILAYAH_LIST);
+        }
+
+        /** Isi kolom JALUR KA: daftar ringkas nama + panjang, bisa diklik untuk buka rincian. */
+        function buildEmpTrackListCell(item) {
+            const tracks = item.trackDetails || [];
+            if (tracks.length === 0) {
+                return `<button onclick="openEmpTrackDetailModal('${item.id}')" class="text-slate-400 font-bold hover:text-[#0c1d37] transition">+ Atur Jalur</button>`;
+            }
+            const rows = tracks.map(function (t) {
+                return `<div class="flex items-center justify-between gap-2">
+                    <span class="text-slate-600 truncate">${escapeHtml(t.name)}</span>
+                    <span class="text-[#0c1d37] font-mono font-bold shrink-0">${escapeHtml(t.length)}m</span>
+                </div>`;
+            }).join('');
+
+            // ═══ TANPA GULIR DI DALAM SEL ═══
+            // Dulu tingginya dibatasi (max-h-20) sehingga stasiun berjalur
+            // banyak seperti Bekasi harus digulir di dalam selnya sendiri -
+            // gulir kecil di dalam tabel sulit disadari & merepotkan dibaca.
+            //
+            // Sekarang seluruh jalur ditampilkan. Untuk stasiun berjalur
+            // sangat banyak, daftarnya dipecah jadi dua kolom supaya barisnya
+            // tidak menjulang - lebih terbaca daripada satu kolom panjang.
+            const duaKolom = tracks.length > 6;
+            return `<button onclick="openEmpTrackDetailModal('${item.id}')" title="Lihat/atur semua jalur (${tracks.length} total)" class="w-full text-left hover:text-[#0c1d37] transition block">
+                <div class="${duaKolom ? 'grid grid-cols-2 gap-x-3 gap-y-0.5' : 'space-y-0.5'}">${rows}</div>
+                ${tracks.length > 1 ? `<div class="text-[9px] text-slate-400 font-bold mt-1 pt-1 border-t border-slate-100">${tracks.length} jalur</div>` : ''}
+            </button>`;
+        }
+
+        function renderEmplasemenTable() {
+            const tbody = document.getElementById('emplasemen-table-body');
+            const emptyState = document.getElementById('emp-empty-state');
+            if (!tbody) return;
+
+            const search = (document.getElementById('emp-search').value || '').toLowerCase();
+            const wilayah = document.getElementById('emp-filter-wilayah').value;
+            const status = document.getElementById('emp-filter-status').value;
+
+            const filtered = empStations.filter(function (s) {
+                const matchSearch = (s.nama || '').toLowerCase().includes(search) || (s.singkatan || '').toLowerCase().includes(search);
+                const matchWilayah = (wilayah === 'ALL') || (s.wilayah === wilayah);
+                const matchStatus = (status === 'ALL') || (s.status === status);
+                return matchSearch && matchWilayah && matchStatus;
+            });
+
+            // KPI dihitung dari SELURUH data, bukan cuma hasil filter/halaman.
+            document.getElementById('emp-stat-total').innerText = empStations.length;
+            document.getElementById('emp-stat-aktif').innerText = empStations.filter(s => s.status === 'Aktif').length;
+            document.getElementById('emp-stat-nonaktif').innerText = empStations.filter(s => s.status === 'Tidak Aktif').length;
+            let totalTracks = 0;
+            empStations.forEach(s => totalTracks += (s.tracks || 0));
+            document.getElementById('emp-stat-jalur').innerText = totalTracks;
+
+            tbody.innerHTML = '';
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                empPerbaruiKontrolHalaman_(0, 1, 0);
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            // ── Potong per halaman: 5 stasiun sekaligus ──
+            const totalPages = Math.max(1, Math.ceil(filtered.length / EMP_TABLE_PAGE_SIZE));
+            empTablePage = Math.min(Math.max(1, empTablePage), totalPages);
+            const mulai = (empTablePage - 1) * EMP_TABLE_PAGE_SIZE;
+            const halamanIni = filtered.slice(mulai, mulai + EMP_TABLE_PAGE_SIZE);
+
+            // Dihitung SEKALI di luar loop - canDo() menelusuri array izin.
+            const bolehEditEmp = (typeof canDo === 'function') ? canDo('sap-emplasemen', 'edit') : true;
+            const bolehHapusEmp = (typeof canDo === 'function') ? canDo('sap-emplasemen', 'hapus') : true;
+
+            let gagalRenderEmp = 0;
+            halamanIni.forEach((item, i) => {
+                const idx = mulai + i; // nomor urut ikut halaman, bukan mulai dari 1 terus
+                try {
+                    const badge = item.status === 'Aktif'
+                        ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Aktif</span>`
+                        : `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Tidak Aktif</span>`;
+
+                    const jumlahDok = item.jumlahDokumen || 0;
+                    const badgeDok = jumlahDok > 0
+                        ? `<span class="ml-1.5 px-1.5 py-0.5 rounded-md bg-[#d4af37]/20 text-[#8a6d1f] text-[9px] font-extrabold align-middle" title="${jumlahDok} versi dokumen tersimpan">${jumlahDok}v</span>`
+                        : '';
+
+                    const tombolEdit = bolehEditEmp
+                        ? `<button onclick="openEmpEditModal('${item.id}')" title="Edit data & kelola dokumen" class="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition"><i class="fa-solid fa-pen-to-square text-xs"></i></button>`
+                        : '';
+                    const tombolHapus = bolehHapusEmp
+                        ? `<button onclick="confirmDeleteEmplasemen('${item.id}')" title="Hapus" class="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition"><i class="fa-solid fa-trash-can text-xs"></i></button>`
+                        : '';
+
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr class="hover:bg-blue-50/40 transition">
+                            <td class="py-3 px-3 text-center text-slate-400 border-r border-slate-100 font-mono">${idx+1}</td>
+                            <td class="py-3 px-4 border-r border-slate-100 text-[#0c1d37] font-extrabold truncate" title="${escapeHtml(item.nama)}">${escapeHtml(item.nama)}${badgeDok}</td>
+                            <td class="py-3 px-3 text-center border-r border-slate-100"><span class="bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 font-mono">${escapeHtml(item.singkatan)}</span></td>
+                            <td class="py-3 px-4 border-r border-slate-100 text-slate-600 truncate" title="${escapeHtml(item.wilayah)}"><i class="fa-solid fa-location-dot text-red-500 mr-1.5 text-[10px]"></i>${escapeHtml(item.wilayah)}</td>
+                            <td class="py-3 px-3 text-center border-r border-slate-100">${badge}</td>
+                            <td class="py-3 px-3 border-r border-slate-100">${buildEmpTrackListCell(item)}</td>
+                            <td class="py-3 px-3 text-center">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <button onclick="openEmpPreviewModal('${item.id}')" title="Preview dokumen" class="p-2 bg-blue-50 text-[#0c1d37] hover:bg-[#0c1d37] hover:text-white rounded-lg transition"><i class="fa-solid fa-eye text-xs"></i></button>
+                                    ${tombolEdit}
+                                    <button onclick="openEmpHistoryModal('${item.id}')" title="Riwayat versi GAPEKA" class="p-2 bg-[#d4af37]/15 text-[#b8902c] hover:bg-[#d4af37] hover:text-white rounded-lg transition"><i class="fa-solid fa-clock-rotate-left text-xs"></i></button>
+                                    ${tombolHapus}
+                                </div>
+                            </td>
+                        </tr>
+                    `);
+                } catch (err) {
+                    // Satu stasiun bermasalah TIDAK boleh menghapus seluruh tabel.
+                    gagalRenderEmp++;
+                    console.log('[emp render] stasiun ke-' + (idx + 1) + ' gagal ditampilkan:', err, item);
+                }
+            });
+            if (gagalRenderEmp > 0) {
+                showToast(gagalRenderEmp + ' stasiun tidak bisa ditampilkan karena datanya tidak wajar - cek di Spreadsheet.');
+            }
+
+            empPerbaruiKontrolHalaman_(filtered.length, totalPages, halamanIni.length, mulai);
+            empPramuatHalamanPertama_(halamanIni);
+        }
+
+        /** Perbarui teks & tombol navigasi halaman tabel. */
+        function empPerbaruiKontrolHalaman_(totalData, totalPages, jumlahDitampilkan, mulai) {
+            const info = document.getElementById('emp-page-info');
+            const rentang = document.getElementById('emp-page-range');
+            const prev = document.getElementById('emp-page-prev');
+            const next = document.getElementById('emp-page-next');
+            if (info) info.innerText = `Halaman ${totalData ? empTablePage : 0} / ${totalData ? totalPages : 0}`;
+            if (rentang) {
+                rentang.innerText = totalData
+                    ? `Menampilkan ${mulai + 1}-${mulai + jumlahDitampilkan} dari ${totalData} stasiun`
+                    : 'Tidak ada data untuk ditampilkan';
+            }
+            if (prev) prev.disabled = empTablePage <= 1 || !totalData;
+            if (next) next.disabled = empTablePage >= totalPages || !totalData;
+        }
+
+        function empHalamanTabelSebelumnya() {
+            if (empTablePage > 1) { empTablePage--; renderEmplasemenTable(); }
+        }
+        function empHalamanTabelBerikutnya() {
+            empTablePage++; renderEmplasemenTable();
+        }
+        /** Filter/pencarian selalu mengembalikan tampilan ke halaman 1. */
+        function empFilterBerubah() { empTablePage = 1; renderEmplasemenTable(); }
+
+        /**
+         * Pramuat gambar halaman PERTAMA dari dokumen aktif milik stasiun yang
+         * sedang tampil di layar (maksimal 5 karena satu halaman tabel berisi 5
+         * stasiun) - dalam SATU panggilan borongan.
+         *
+         * Efeknya: saat user menekan tombol Preview, gambarnya sudah ada di
+         * ingatan, jadi terbuka seketika tanpa menunggu server. Ini jawaban
+         * untuk keluhan "preview dokumen juga cukup lama".
+         * @param {Object[]} stasiunTampil
+         */
+        function empPramuatHalamanPertama_(stasiunTampil) {
+            const idHalaman = [];
+            stasiunTampil.forEach(function (st) {
+                const doc = (st.docs || []).find(function (d) { return d.id === st.docAktifId; });
+                if (doc && doc.pages && doc.pages.length && !empPageCache[doc.pages[0].id]) idHalaman.push(doc.pages[0].id);
+            });
+            if (!idHalaman.length) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) return;
+                    (res.items || []).forEach(function (it) {
+                        empPageCache[it.pageId] = 'data:' + (it.mimeType || 'image/jpeg') + ';base64,' + it.base64;
+                    });
+                    console.log('[emp pramuat] ' + (res.items || []).length + ' halaman disiapkan di ingatan.');
+                })
+                .withFailureHandler(function () { /* pramuat gagal tidak apa-apa - preview tetap jalan, hanya perlu menunggu sesaat */ })
+                .sap_emplasemen_getPagesBatch(currentSessionToken, idHalaman);
+        }
+
+        // ─── FORM TAMBAH / EDIT ───────────────────────────────────────────
+
+        function initializeTempEmpTracks(count, defaultLen) {
+            tempEmpTrackDetails = [];
+            for (let i = 1; i <= count; i++) tempEmpTrackDetails.push({ name: `Jalur ${i}`, length: defaultLen });
+        }
+
+        /** Kosongkan & seragamkan modal sebelum dipakai (mode Tambah maupun Edit). */
+        function empResetUploadModal_() {
+            document.getElementById('emp-upload-form').reset();
+            document.getElementById('emp-file-name-display').classList.add('hidden');
+            document.getElementById('emp-upload-file-preview').classList.add('hidden');
+            document.getElementById('emp-upload-status-line').classList.add('hidden');
+            document.getElementById('emp-upload-preview-strip').innerHTML = 
+            document.getElementById('emp-upload-progress').classList.add('hidden');
+            document.getElementById('emp-duplikat-notice').classList.add('hidden');
+            document.getElementById('emp-doc-manager').classList.add('hidden');
+            document.getElementById('emp-simpan-asli').checked = true;
+            empHalamanSiapKirim = [];
+            empBerkasAsliPayload = null;
+        }
+
+        function openEmpUploadModal() {
+            empResetUploadModal_();
+            empEditingStationId = null;
+            empDokumenTargetStationId = null;
+
+            document.getElementById('emp-upload-modal-title').innerText = 'Tambah Emplasemen Stasiun Baru';
+            document.getElementById('emp-upload-modal-icon').className = 'fa-solid fa-plus-circle text-[#d4af37]';
+            document.getElementById('emp-upload-submit-btn').innerHTML = '<i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Emplasemen</span>';
+            document.getElementById('emp-track-config-section').classList.remove('hidden');
+            document.getElementById('emp-edit-track-note').classList.add('hidden');
+
+            document.getElementById('emp-input-tanggal').value = hariIniIso_();
+            initializeTempEmpTracks(6, 750);
+            document.getElementById('emp-track-config-badge').innerHTML = `<i class="fa-solid fa-list-check text-amber-500"></i> 6 Jalur Siap Diatur`;
+            document.getElementById('emp-upload-modal').classList.remove('hidden');
+        }
+
+        /**
+         * Mode EDIT: memakai ulang modal Tambah. Selain mengubah data pokok,
+         * di sini tersedia PENGELOLA DOKUMEN - daftar semua versi yang pernah
+         * diupload, lengkap dengan tombol jadikan-aktif, lihat, & hapus
+         * permanen; plus jalur untuk menambah versi baru.
+         * @param {string} stationId
+         */
+        function openEmpEditModal(stationId) {
+            const station = empStations.find(function (s) { return s.id === stationId; });
+            if (!station) { showToast('Data stasiun tidak ditemukan, coba muat ulang halaman.'); return; }
+
+            empResetUploadModal_();
+            empEditingStationId = stationId;
+            empDokumenTargetStationId = stationId;
+            activeEmpStation = station;
+
+            document.getElementById('emp-upload-modal-title').innerText = 'Edit Data & Dokumen Emplasemen';
+            document.getElementById('emp-upload-modal-icon').className = 'fa-solid fa-pen-to-square text-[#d4af37]';
+            document.getElementById('emp-upload-submit-btn').innerHTML = '<i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Perubahan</span>';
+            document.getElementById('emp-track-config-section').classList.add('hidden');
+            document.getElementById('emp-edit-track-note').classList.remove('hidden');
+            document.getElementById('emp-doc-manager').classList.remove('hidden');
+
+            document.getElementById('emp-input-nama').value = station.nama || '';
+            document.getElementById('emp-input-singkatan').value = station.singkatan || '';
+            document.getElementById('emp-input-status').value = station.status || 'Aktif';
+            document.getElementById('emp-input-tanggal').value = empTanggalUntukInputDate_(station.tanggalUpload);
+
+            // Wilayah: kalau nilai tersimpan tidak ada di daftar (data lama/typo),
+            // tambahkan sebagai opsi supaya tidak diam-diam berubah saat disimpan.
+            const selWilayah = document.getElementById('emp-input-wilayah');
+            selWilayah.value = station.wilayah || '';
+            if (selWilayah.value !== (station.wilayah || '') && station.wilayah) {
+                const opt = document.createElement('option');
+                opt.value = station.wilayah;
+                opt.innerText = station.wilayah + ' (nilai lama)';
+                selWilayah.appendChild(opt);
+                selWilayah.value = station.wilayah;
+            }
+
+            renderEmpDocManager_();
+            document.getElementById('emp-upload-modal').classList.remove('hidden');
+        }
+
+        function closeEmpUploadModal() {
+            document.getElementById('emp-upload-modal').classList.add('hidden');
+            empEditingStationId = null;
+            empDokumenTargetStationId = null;
+            empHalamanSiapKirim = [];
+            empBerkasAsliPayload = null;
+        }
+
+        /**
+         * Peringatan dini kalau nama/singkatan yang diketik ternyata sudah
+         * terdaftar - user langsung tahu bahwa simpanan ini akan MEMPERBARUI
+         * stasiun yang ada (bukan bikin data kembar), sebelum menekan Simpan.
+         */
+        let empCekDuplikatTimer_ = null;
+        function empCekDuplikatStasiun() {
+            clearTimeout(empCekDuplikatTimer_);
+            empSedangCekNama_ = true;   // menyala sejak user masih mengetik
+
+            // Jaring pengaman: apa pun yang terjadi, penanda dimatikan setelah
+            // 6 detik. Tanpa ini, satu balasan yang tidak pernah datang akan
+            // membuat tombol Simpan tertahan selamanya tanpa penjelasan.
+            clearTimeout(empCekNamaBatasTimer_);
+            empCekNamaBatasTimer_ = setTimeout(function () { empSedangCekNama_ = false; }, 6000);
+            empCekDuplikatTimer_ = setTimeout(function () {
+                const nama = document.getElementById('emp-input-nama').value.trim();
+                const singkatan = document.getElementById('emp-input-singkatan').value.trim();
+                const notice = document.getElementById('emp-duplikat-notice');
+                if (!nama && !singkatan) { notice.classList.add('hidden'); empSedangCekNama_ = false; return; }
+
+                // Penanda dinyalakan tepat sebelum permintaan dikirim &
+                // dimatikan di kedua jalur balasannya - kalau hanya
+                // dimatikan di jalur sukses, satu kegagalan jaringan akan
+                // membuat tombol Simpan tertahan selamanya.
+                empSedangCekNama_ = true;
+                const tandaiSelesai = function () { empSedangCekNama_ = false; };
+
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        tandaiSelesai();
+                        if (res && res.success && res.ditemukan) {
+                            document.getElementById('emp-duplikat-text').innerHTML =
+                                `<strong>${escapeHtml(res.station.nama)}</strong> (${escapeHtml(res.station.singkatan)}) sudah terdaftar dengan ${res.station.jumlahDokumen} versi dokumen. ` +
+                                `Menyimpan sekarang akan <strong>memperbarui</strong> data stasiun itu &amp; menambah versi dokumen baru - dokumen lama tetap tersimpan sebagai arsip.`;
+                            notice.classList.remove('hidden');
+                        } else {
+                            notice.classList.add('hidden');
+                        }
+                    })
+                    .withFailureHandler(function () { tandaiSelesai(); notice.classList.add('hidden'); })
+                    .sap_emplasemen_cekDuplikat(currentSessionToken, nama, singkatan, empEditingStationId);
+            }, 450);
+        }
+
+        // ─── PILIH BERKAS -> KONVERSI -> PRATINJAU LANGSUNG ───────────────
+
+        /**
+         * Dipanggil begitu user memilih berkas. Berkasnya LANGSUNG dikonversi
+         * jadi JPG di sini (bukan nanti saat disimpan), supaya user bisa
+         * melihat persis apa yang akan tersimpan - sekaligus memenuhi
+         * permintaan "pratinjau langsung muncul".
+         */
+        /**
+         * Dipanggil begitu user memilih berkas. Berkasnya LANGSUNG dikonversi
+         * jadi JPG di sini, supaya user melihat persis apa yang akan tersimpan.
+         *
+         * Tampilan hasilnya berbeda menurut mode:
+         *  - TAMBAH : deretan gambar tiap halaman (stasiun ini belum punya apa
+         *             pun, jadi pratinjau di sini memang satu-satunya cara
+         *             memastikan berkasnya benar).
+         *  - EDIT   : cukup SATU BARIS ringkas berisi nama berkas & jumlah
+         *             halaman - permintaan user, karena di modal Edit sudah ada
+         *             pengelola dokumen di atasnya yang punya tombol Lihat
+         *             sendiri, jadi deretan gambar di bawah cuma mengulang.
+         */
+        async function handleEmpFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const modeEdit = !!empEditingStationId;
+
+            const display = document.getElementById('emp-file-name-display');
+            display.innerText = file.name + ' (' + empFormatUkuran_(file.size) + ')';
+            display.classList.remove('hidden');
+
+            const kotak = document.getElementById('emp-upload-file-preview');
+            const strip = document.getElementById('emp-upload-preview-strip');
+            const judul = document.getElementById('emp-upload-preview-title');
+            const baris = document.getElementById('emp-upload-status-line');
+
+            // ═══ PRATINJAU DI KEDUA MODE ═══
+            // Dulu pratinjau disembunyikan saat mode Edit & hanya menyisakan
+            // satu baris status. Padahal justru saat MENGGANTI berkas
+            // pratinjau paling dibutuhkan: yang lama akan dihapus permanen,
+            // jadi memastikan berkas penggantinya benar itu penting.
+            baris.classList.remove('hidden');
+            baris.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[#d4af37] mr-1.5"></i>Mengubah berkas jadi JPG mutu tinggi...';
+            kotak.classList.remove('hidden');
+            strip.innerHTML = '<div class="flex items-center gap-2.5 text-slate-400 py-4"><i class="fa-solid fa-circle-notch fa-spin text-[#d4af37]"></i><span class="text-[11px] font-bold">Mengubah berkas jadi JPG mutu tinggi...</span></div>';
+            judul.textContent = 'Pratinjau Berkas';
+
+            empHalamanSiapKirim = [];
+            empBerkasAsliPayload = null;
+
+            try {
+                const hasil = await empKonversiBerkasKeJpg_(file, function (selesai, total, ket) {
+                    const teks = `${ket} (${selesai}/${total})`;
+                    if (modeEdit) baris.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[#d4af37] mr-1.5"></i>' + escapeHtml(teks);
+                    else strip.innerHTML = `<div class="flex items-center gap-2.5 text-slate-400 py-4"><i class="fa-solid fa-circle-notch fa-spin text-[#d4af37]"></i><span class="text-[11px] font-bold">${escapeHtml(teks)}</span></div>`;
+                });
+
+                // Berkas asli selalu disiapkan - dipakai kalau centang "simpan
+                // berkas asli" aktif, atau kalau formatnya memang tak bisa dikonversi.
+                empBerkasAsliPayload = { base64: await empBacaFileSebagaiBase64_(file), name: file.name, mimeType: file.type || 'application/octet-stream' };
+
+                if (hasil.pages.length === 0) {
+                    document.getElementById('emp-simpan-asli').checked = true;
+                    const pesan = hasil.alasan || 'Berkas tidak bisa dikonversi.';
+                    baris.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500 mr-1.5"></i>' + escapeHtml(pesan);
+                    {
+                        strip.innerHTML = `<div class="flex items-start gap-3 text-slate-300 py-2">
+                            <i class="fa-solid fa-triangle-exclamation text-2xl text-amber-400 shrink-0"></i>
+                            <div class="flex-1 min-w-0 text-left">
+                                <p class="text-xs font-bold break-all">${escapeHtml(file.name)}</p>
+                                <p class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(pesan)}</p>
+                            </div>
+                        </div>`;
+                    }
+                    return;
+                }
+
+                empHalamanSiapKirim = hasil.pages;
+                const totalByte = hasil.pages.reduce(function (t, p) { return t + p.base64.length * 0.75; }, 0);
+
+                // Baris status & pratinjau gambar ditampilkan bersama di
+                // kedua mode - keterangannya berbeda, gambarnya sama.
+                baris.innerHTML = modeEdit
+                    ? `<i class="fa-solid fa-circle-check text-emerald-500 mr-1.5"></i>Siap diunggah sebagai versi baru: <strong>${escapeHtml(file.name)}</strong> - ${hasil.pages.length} halaman JPG (${empFormatUkuran_(totalByte)}).`
+                    : `<i class="fa-solid fa-circle-check text-emerald-500 mr-1.5"></i><strong>${escapeHtml(file.name)}</strong> - ${hasil.pages.length} halaman JPG (${empFormatUkuran_(totalByte)}).`;
+
+                judul.textContent = `Pratinjau Berkas - ${hasil.pages.length} halaman JPG (${empFormatUkuran_(totalByte)})`;
+                strip.innerHTML = hasil.pages.map(function (p, i) {
+                    return `<div class="inline-block align-top mr-2 mb-2 text-center">
+                        <img src="data:image/jpeg;base64,${p.base64}" class="h-40 rounded-lg border border-slate-800 bg-white" alt="Halaman ${i+1}">
+                        <p class="text-[9px] text-slate-500 font-bold mt-1">Hal. ${i+1} &middot; ${p.lebar}&times;${p.tinggi}px</p>
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                console.log('[emp konversi] gagal:', err);
+                const pesan = 'Gagal memproses berkas: ' + (err.message || err);
+                baris.innerHTML = '<i class="fa-solid fa-circle-exclamation text-red-500 mr-1.5"></i>' + escapeHtml(pesan);
+                strip.innerHTML = `<div class="flex items-center gap-2.5 text-red-300 py-3"><i class="fa-solid fa-circle-exclamation"></i><span class="text-[11px] font-bold">${escapeHtml(pesan)}</span></div>`;
+            }
+        }
+
+        /** Format ukuran byte jadi teks pendek yang mudah dibaca. */
+        function empFormatUkuran_(bytes) {
+            if (!bytes) return '0 KB';
+            if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+            return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+        }
+
+        // ─── SIMPAN (tambah/edit + upload dokumen bertahap) ───────────────
+
+        async function handleEmpUploadForm(e) {
+            // ═══ HARUS PALING ATAS ═══
+            // Sebelumnya penjaga di bawah ini melakukan `return` SEBELUM
+            // preventDefault dipanggil. Akibatnya form tersubmit seperti form
+            // HTML biasa & halaman termuat ulang - persis gejala "simpan tidak
+            // berjalan, tampilan tidak berubah". Apa pun yang terjadi setelah
+            // ini, pengiriman bawaan browser harus dicegah lebih dulu.
+            e.preventDefault();
+
+            // Pemeriksaan nama berjalan di latar sambil user mengetik. Kalau
+            // Simpan ditekan saat pemeriksaan masih jalan, stasiun kembar bisa
+            // lolos & baru ketahuan setelah datanya terlanjur ganda.
+            if (empSedangCekNama_) {
+                showToast('Sedang memeriksa nama stasiun - tunggu sebentar lalu simpan lagi.');
+                return;
+            }
+            if (empUploadInProgress) { showToast('Masih dalam proses menyimpan, mohon tunggu sebentar...'); return; }
+            empUploadInProgress = true;
+
+            const btn = document.getElementById('emp-upload-submit-btn');
+            const originalBtnHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Menyimpan...</span>';
+
+            function selesai(pesanSukses) {
+                empUploadInProgress = false;
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = originalBtnHtml;
+                document.getElementById('emp-upload-progress').classList.add('hidden');
+                if (pesanSukses) {
+                    closeEmpUploadModal();
+                    showToast(pesanSukses);
+                    loadEmpStations();
+                }
+            }
+
+            const meta = {
+                // Nama & singkatan SELALU kapital (server juga menegakkan hal
+                // yang sama lewat kapitalkanMetaEmp_, jadi apa pun jalur
+                // masuknya hasil akhirnya tetap seragam).
+                nama: document.getElementById('emp-input-nama').value.trim().toUpperCase(),
+                singkatan: document.getElementById('emp-input-singkatan').value.trim().toUpperCase(),
+                wilayah: document.getElementById('emp-input-wilayah').value,
+                status: document.getElementById('emp-input-status').value,
+                tanggalUpload: document.getElementById('emp-input-tanggal').value
+            };
+
+            try {
+                // 1. Simpan data pokok stasiun (tambah / perbarui otomatis / edit).
+                let stationId, mode;
+                if (empEditingStationId) {
+                    const res = await empPanggil_('sap_emplasemen_update', [currentSessionToken, empEditingStationId, meta]);
+                    if (!res.success) { showToast('Gagal menyimpan: ' + (res.message || '')); selesai(); return; }
+                    stationId = empEditingStationId; mode = 'edit';
+                } else {
+                    const trackList = tempEmpTrackDetails.length ? tempEmpTrackDetails : [{ name: 'Jalur 1', length: 750 }];
+                    const res = await empPanggil_('sap_emplasemen_add', [currentSessionToken, meta, trackList]);
+                    if (!res.success) { showToast('Gagal menyimpan: ' + (res.message || '')); selesai(); return; }
+                    stationId = res.id; mode = res.mode;
+                }
+
+                // 2. Kalau tidak ada berkas baru, cukup sampai di sini.
+                if (empHalamanSiapKirim.length === 0 && !empBerkasAsliPayload) {
+                    selesai(mode === 'update'
+                        ? `Data ${meta.nama} diperbarui (stasiun sudah terdaftar sebelumnya).`
+                        : (mode === 'edit' ? `Data ${meta.nama} berhasil diperbarui.` : `Emplasemen ${meta.nama} berhasil ditambahkan!`));
+                    return;
+                }
+
+                // 3. Upload dokumen bertahap dengan progres yang terlihat.
+                await empUploadDokumen_(stationId, meta.nama);
+                selesai(mode === 'update'
+                    ? `Data ${meta.nama} diperbarui & dokumen versi baru ditambahkan. Dokumen lama tersimpan sebagai arsip.`
+                    : `Emplasemen ${meta.nama} tersimpan lengkap dengan dokumennya.`);
+            } catch (err) {
+                console.log('[emp simpan] gagal:', err);
+                showToast('Gagal menyimpan: ' + (err.message || err));
+                selesai();
+            }
+        }
+
+        /**
+         * Membungkus google.script.run jadi Promise, supaya alur simpan yang
+         * berlapis (stasiun -> dokumen -> tiap halaman) bisa ditulis lurus
+         * dengan await, bukan callback bersarang yang sulit dibaca & rawan
+         * salah urutan.
+         * @param {string} namaFungsi Nama fungsi backend.
+         * @param {Array} args Argumen fungsi itu.
+         * @return {Promise<Object>}
+         */
+        function empPanggil_(namaFungsi, args) {
+            return new Promise(function (resolve, reject) {
+                // runner disimpan dulu lalu dipakai sebagai konteks .apply() -
+                // google.script.run mengandalkan `this`, jadi memanggil
+                // runner[nama].apply(null, ...) akan gagal.
+                const runner = google.script.run
+                    .withSuccessHandler(resolve)
+                    .withFailureHandler(function (err) { reject(new Error((err && err.message) || 'Server tidak merespons.')); });
+                runner[namaFungsi].apply(runner, args);
+            });
+        }
+
+        /**
+         * Mengirim hasil konversi ke server: mulai versi baru -> kirim tiap
+         * halaman satu per satu -> tutup. Kalau gagal di tengah, versi draft
+         * beserta halaman yang sudah terkirim DIBERSIHKAN dari Drive supaya
+         * tidak ada berkas nyangkut yang memakan kuota.
+         * @param {string} stationId
+         * @param {string} namaStasiun
+         */
+        async function empUploadDokumen_(stationId, namaStasiun) {
+            const bar = document.getElementById('emp-upload-progress');
+            const barIsi = document.getElementById('emp-upload-progress-bar');
+            const barTeks = document.getElementById('emp-upload-progress-text');
+            bar.classList.remove('hidden');
+
+            const total = empHalamanSiapKirim.length;
+            const simpanAsli = document.getElementById('emp-simpan-asli').checked;
+            // Format yang tidak bisa dikonversi WAJIB menyimpan berkas asli -
+            // kalau tidak, tidak ada apa pun yang tersimpan.
+            const wajibSimpanAsli = total === 0;
+
+            function progres(n, teks) {
+                const persen = total ? Math.round((n / (total + 1)) * 100) : 50;
+                barIsi.style.width = persen + '%';
+                barTeks.innerText = teks;
+            }
+
+            progres(0, 'Menyiapkan versi dokumen baru...');
+            const mulai = await empPanggil_('sap_emplasemen_startDoc', [currentSessionToken, stationId, {
+                namaAsli: empBerkasAsliPayload ? empBerkasAsliPayload.name : '',
+                mimeAsli: empBerkasAsliPayload ? empBerkasAsliPayload.mimeType : '',
+                jumlahHalaman: total, catatan: ''
+            }]);
+            if (!mulai.success) throw new Error(mulai.message || 'Gagal memulai penyimpanan dokumen.');
+
+            try {
+                for (let i = 0; i < total; i++) {
+                    progres(i, `Mengunggah halaman ${i + 1} dari ${total}...`);
+                    const p = empHalamanSiapKirim[i];
+                    const res = await empPanggil_('sap_emplasemen_addDocPage', [currentSessionToken, mulai.docId, i + 1, p.base64, p.lebar, p.tinggi]);
+                    if (!res.success) throw new Error(res.message || ('Halaman ' + (i + 1) + ' gagal diunggah.'));
+                }
+
+                progres(total, (simpanAsli || wajibSimpanAsli) ? 'Menyimpan berkas asli sebagai arsip...' : 'Menyelesaikan...');
+                const kirimAsli = (simpanAsli || wajibSimpanAsli) && empBerkasAsliPayload;
+                const tutup = await empPanggil_('sap_emplasemen_finishDoc', [
+                    currentSessionToken, mulai.docId,
+                    kirimAsli ? empBerkasAsliPayload.base64 : null,
+                    kirimAsli ? empBerkasAsliPayload.name : null,
+                    kirimAsli ? empBerkasAsliPayload.mimeType : null
+                ]);
+                if (!tutup.success) throw new Error(tutup.message || 'Gagal menutup penyimpanan dokumen.');
+                progres(total + 1, 'Selesai.');
+
+                // Cache halaman stasiun ini tidak valid lagi - dokumen aktifnya berubah.
+                empBersihkanCacheStasiun_(stationId);
+            } catch (err) {
+                // Bersihkan draft yang gagal supaya tidak jadi sampah di Drive.
+                try { await empPanggil_('sap_emplasemen_cancelDoc', [currentSessionToken, mulai.docId]); } catch (e2) { /* diabaikan */ }
+                throw err;
+            }
+        }
+
+        /** Buang cache gambar milik satu stasiun (dipanggil setelah dokumennya berubah). */
+        function empBersihkanCacheStasiun_(stationId) {
+            const station = empStations.find(function (s) { return s.id === stationId; });
+            if (!station || !station.docs) { empPageCache = {}; return; }
+            station.docs.forEach(function (d) {
+                (d.pages || []).forEach(function (p) { delete empPageCache[p.id]; });
+            });
+        }
+
+        // ─── PENGELOLA VERSI DOKUMEN (di dalam modal Edit) ────────────────
+
+        /**
+         * Menampilkan seluruh versi dokumen stasiun yang sedang diedit:
+         * mana yang aktif, kapan & oleh siapa diunggah, berapa halaman, plus
+         * tombol jadikan-aktif / lihat / hapus permanen. Inilah "opsi untuk
+         * memperbaharui atau menghapus dokumen terdahulu" yang diminta.
+         */
+        function renderEmpDocManager_() {
+            const wadah = document.getElementById('emp-doc-list');
+            const station = empStations.find(function (s) { return s.id === empEditingStationId; });
+            if (!wadah || !station) return;
+
+            // ═══ URUTAN BERDASARKAN TANGGAL DOKUMEN ═══
+            // Sebelumnya mengikuti nomor versi (urutan unggah). Yang lebih
+            // berarti bagi pembaca adalah TANGGAL dokumennya - sebuah layout
+            // bisa saja diunggah belakangan padahal tanggal sahnya lebih lama.
+            // Kalau tanggalnya sama, nomor versi yang lebih besar didahulukan.
+            const docs = (station.docs || []).slice().sort(function (a, b) {
+                const ta = String(a.tanggalUpload || ''), tb = String(b.tanggalUpload || '');
+                if (ta !== tb) return tb.localeCompare(ta);
+                return (Number(b.versi) || 0) - (Number(a.versi) || 0);
+            });
+            document.getElementById('emp-doc-count-badge').textContent = docs.length + ' versi';
+
+            if (docs.length === 0) {
+                wadah.innerHTML = `<p class="text-[11px] text-slate-400 font-semibold py-3 text-center">Belum ada dokumen tersimpan untuk stasiun ini. Pilih berkas di bawah untuk mengunggah versi pertama.</p>`;
+                return;
+            }
+
+            const bolehHapus = (typeof canDo === 'function') ? canDo('sap-emplasemen', 'hapus') : true;
+            const bolehEdit = (typeof canDo === 'function') ? canDo('sap-emplasemen', 'edit') : true;
+            wadah.innerHTML = docs.map(function (d) {
+                const aktif = d.status === 'aktif';
+                const tglDok = d.tanggalUpload ? formatEmpDate(d.tanggalUpload) : '-';
+                const badgeStatus = aktif
+                    ? `<span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold">AKTIF</span>`
+                    : `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[9px] font-extrabold">ARSIP</span>`;
+                const tombolAktif = aktif ? '' :
+                    `<button type="button" onclick="empJadikanDokumenAktif('${d.id}')" title="Jadikan dokumen aktif" class="px-2.5 py-1 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-arrow-up-from-bracket mr-1"></i>Aktifkan</button>`;
+                const tombolHapus = bolehHapus
+                    ? `<button type="button" onclick="empHapusVersiDokumen('${d.id}', ${d.versi})" title="Hapus versi ini permanen dari Drive" class="px-2 py-1 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-trash-can"></i></button>`
+                    : '';
+                const tombolLihat = d.jumlahHalaman > 0
+                    ? `<button type="button" onclick="empLihatVersiDokumen('${station.id}','${d.id}')" title="Lihat isi versi ini" class="px-2.5 py-1 bg-blue-50 hover:bg-[#0c1d37] hover:text-white text-[#0c1d37] rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-eye mr-1"></i>Lihat</button>`
+                    : `<span class="text-[10px] text-slate-400 font-bold px-1">tanpa pratinjau</span>`;
+                const tombolAsli = d.punyaBerkasAsli
+                    ? `<button type="button" onclick="empUnduhBerkasAsli('${d.id}')" title="Unduh berkas asli sebelum konversi" class="px-2 py-1 bg-slate-100 hover:bg-slate-700 hover:text-white text-slate-600 rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-download"></i></button>`
+                    : '';
+                // Perbaiki: untuk versi yang isinya keliru/tidak tepat - ganti
+                // berkasnya di tempat, tanpa membuat versi baru & tanpa
+                // meninggalkan berkas lama yang membebani kuota Drive.
+                const tombolPerbaiki = bolehEdit
+                    ? `<button type="button" onclick="openEmpDocEditSubModal('${d.id}', ${d.versi})" title="Perbaiki: ganti berkas / ubah catatan versi ini" class="px-2 py-1 bg-amber-50 hover:bg-amber-500 hover:text-white text-amber-700 rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-screwdriver-wrench"></i></button>`
+                    : '';
+
+                return `<div class="p-3 rounded-xl border ${aktif ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/60'}">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="px-2 py-0.5 rounded-md bg-[#0c1d37] text-white text-[10px] font-extrabold">v${d.versi}</span>
+                            ${badgeStatus}
+                            <span class="text-[11px] font-bold text-slate-700">${d.jumlahHalaman} halaman</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">${tombolLihat}${tombolAktif}${tombolPerbaiki}${tombolAsli}${tombolHapus}</div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-semibold mt-1.5 break-all">
+                        <i class="fa-regular fa-clock mr-1"></i>${escapeHtml(formatEmpDate(d.tanggalUpload))}
+                        &middot; ${escapeHtml(d.uploadedByNama || '-')}
+                        ${d.namaAsli ? '&middot; ' + escapeHtml(d.namaAsli) : ''}
+                    </p>
+                    ${d.catatan ? `<p class="text-[10px] text-slate-600 font-bold mt-1 italic"><i class="fa-solid fa-note-sticky text-[#d4af37] mr-1"></i>${escapeHtml(d.catatan)}</p>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        function empJadikanDokumenAktif(docId) {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal: ' + (res.message || '')); return; }
+                    showToast('Versi dokumen ini sekarang jadi dokumen aktif.');
+                    // Modal ditutup setelah selesai - pekerjaannya sudah rampung,
+                    // dan membiarkannya terbuka membuat user ragu apakah masih
+                    // ada yang perlu ditekan.
+                    empMuatUlangUntukModalEdit_();
+                    setTimeout(function () { tutupModalEditEmp_(); }, 500);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat mengganti dokumen aktif.'); })
+                .sap_emplasemen_setActiveDoc(currentSessionToken, docId);
+        }
+
+        async function empHapusVersiDokumen(docId, versi) {
+            const setuju = await konfirmasi_({
+                judul: 'Hapus dokumen versi ' + versi + '?',
+                pesan: 'Seluruh halaman JPG dan berkas aslinya akan dihapus <strong>permanen</strong> dari Google Drive. Tindakan ini tidak bisa dibatalkan.',
+                rincian: '<i class="fa-solid fa-file-pdf text-red-500 mr-1.5"></i>Versi ' + versi + ' &mdash; termasuk berkas asli di Drive',
+                ya: 'Ya, Hapus Permanen', ikonYa: 'fa-trash-can'
+            });
+            if (!setuju) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal menghapus: ' + (res.message || '')); return; }
+                    showToast('Dokumen versi ' + versi + ' dihapus permanen dari Drive.');
+                    empPageCache = {};
+                    empMuatUlangUntukModalEdit_();
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus dokumen.'); })
+                .sap_emplasemen_deleteDoc(currentSessionToken, docId);
+        }
+
+        /** Muat ulang data lalu segarkan daftar dokumen di modal Edit yang sedang terbuka. */
+        /** Menutup modal Edit Data & Dokumen Emplasemen. */
+        function tutupModalEditEmp_() {
+            const modal = document.getElementById('emp-upload-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function empMuatUlangUntukModalEdit_() {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) return;
+                    empStations = res.data;
+                    renderEmplasemenTable();
+                    if (empEditingStationId) {
+                        activeEmpStation = empStations.find(function (s) { return s.id === empEditingStationId; }) || null;
+                        renderEmpDocManager_();
+                    }
+                })
+                .withFailureHandler(function () {})
+                .sap_emplasemen_getAll(currentSessionToken);
+        }
+
+        /**
+         * Buka viewer untuk satu versi tertentu (dipanggil dari pengelola
+         * dokumen). Untuk versi ARSIP, daftar halamannya belum ikut terkirim
+         * di sap_emplasemen_getAll (sengaja, demi kecepatan muat pertama),
+         * jadi diambil dulu di sini baru viewer dibuka.
+         */
+        function empLihatVersiDokumen(stationId, docId) {
+            const station = empStations.find(function (s) { return s.id === stationId; });
+            if (!station) return;
+            const doc = (station.docs || []).find(function (d) { return d.id === docId; });
+            if (!doc) return;
+
+            if (doc.pagesDimuat || (doc.pages && doc.pages.length)) { empBukaViewer_(station, doc); return; }
+
+            showToast('Menyiapkan dokumen versi ' + doc.versi + '...');
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) { showToast('Gagal memuat halaman dokumen.'); return; }
+                    doc.pages = res.pages || [];
+                    doc.pagesDimuat = true;
+                    empBukaViewer_(station, doc);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat halaman dokumen.'); })
+                .sap_emplasemen_getDocPages(currentSessionToken, docId);
+        }
+
+        // ─── SUB-MODAL: perbaiki satu versi dokumen ───────────────────────
+        //
+        // Untuk versi yang isinya keliru atau tidak tepat: berkasnya bisa
+        // diganti DI TEMPAT (nomor versi & status aktif/arsipnya tetap),
+        // dan/atau catatannya diperbaiki. Berkas lama dihapus permanen dari
+        // Drive supaya tidak menumpuk jadi beban kuota.
+
+        function openEmpDocEditSubModal(docId, versi) {
+            const station = empStations.find(function (s) { return s.id === empEditingStationId; });
+            const doc = station ? (station.docs || []).find(function (d) { return d.id === docId; }) : null;
+            if (!doc) { showToast('Versi dokumen tidak ditemukan.'); return; }
+
+            empDocSedangDiperbaiki = { id: docId, versi: versi };
+            empHalamanPerbaikan = [];
+            empBerkasAsliPerbaikan = null;
+
+            document.getElementById('emp-docedit-title').innerText = `Perbaiki Dokumen Versi ${versi}`;
+            document.getElementById('emp-docedit-subtitle').innerText = `${station.nama} - ${doc.jumlahHalaman} halaman tersimpan saat ini`;
+            document.getElementById('emp-docedit-catatan').value = doc.catatan || '';
+
+            // Isian stasiun & tanggal dokumen ikut dimuat, supaya modal ini
+            // bisa dipakai menyunting seluruh data - bukan hanya catatan.
+            document.getElementById('emp-docedit-nama').value = station.nama || '';
+            document.getElementById('emp-docedit-singkatan').value = station.singkatan || '';
+            document.getElementById('emp-docedit-status-emp').value = station.status || 'Aktif';
+            document.getElementById('emp-docedit-tanggal').value = empTanggalKeInput_(doc.tanggalUpload);
+            isiPilihanWilayah_('emp-docedit-wilayah', station.wilayah);
+
+            document.getElementById('emp-docedit-file').value = '';
+            const pvKotak = document.getElementById('emp-docedit-preview');
+            if (pvKotak) {
+                pvKotak.classList.add('hidden');
+                document.getElementById('emp-docedit-preview-strip').innerHTML = '';
+            }
+            document.getElementById('emp-docedit-status').classList.add('hidden');
+            document.getElementById('emp-docedit-progress').classList.add('hidden');
+            document.getElementById('emp-doc-edit-submodal').classList.remove('hidden');
+        }
+
+        function closeEmpDocEditSubModal() {
+            document.getElementById('emp-doc-edit-submodal').classList.add('hidden');
+            empDocSedangDiperbaiki = null;
+            empHalamanPerbaikan = [];
+            empBerkasAsliPerbaikan = null;
+        }
+
+        /** Konversi berkas pengganti begitu dipilih (tanpa deretan gambar - cukup ringkasan). */
+        async function handleEmpDocEditFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const status = document.getElementById('emp-docedit-status');
+            const kotakPv = document.getElementById('emp-docedit-preview');
+            const stripPv = document.getElementById('emp-docedit-preview-strip');
+            const judulPv = document.getElementById('emp-docedit-preview-title');
+
+            status.classList.remove('hidden');
+            status.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[#d4af37] mr-1.5"></i>Mengubah berkas jadi JPG...';
+            kotakPv.classList.remove('hidden');
+            stripPv.innerHTML = '<div class="flex items-center gap-2.5 text-slate-400 py-4"><i class="fa-solid fa-circle-notch fa-spin text-[#d4af37]"></i><span class="text-[11px] font-bold">Menyiapkan pratinjau...</span></div>';
+            judulPv.textContent = 'Pratinjau Berkas Pengganti';
+            empHalamanPerbaikan = [];
+            empBerkasAsliPerbaikan = null;
+            try {
+                const hasil = await empKonversiBerkasKeJpg_(file, function (selesai, total, ket) {
+                    status.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-[#d4af37] mr-1.5"></i>${escapeHtml(ket)} (${selesai}/${total})`;
+                });
+                empBerkasAsliPerbaikan = { base64: await empBacaFileSebagaiBase64_(file), name: file.name, mimeType: file.type || 'application/octet-stream' };
+                if (hasil.pages.length === 0) {
+                    status.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500 mr-1.5"></i>' + escapeHtml(hasil.alasan || 'Berkas tidak bisa dikonversi.');
+                    stripPv.innerHTML = '<div class="flex items-start gap-3 text-slate-300 py-2">' +
+                        '<i class="fa-solid fa-triangle-exclamation text-2xl text-amber-400 shrink-0"></i>' +
+                        '<div class="flex-1 min-w-0 text-left"><p class="text-xs font-bold break-all">' + escapeHtml(file.name) + '</p>' +
+                        '<p class="text-[10px] text-slate-500 mt-0.5">Tidak bisa dipratinjau, tapi berkasnya tetap tersimpan utuh.</p></div></div>';
+                    return;
+                }
+                empHalamanPerbaikan = hasil.pages;
+                const totalByte = hasil.pages.reduce(function (t, p) { return t + p.base64.length * 0.75; }, 0);
+                status.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500 mr-1.5"></i>Siap menggantikan isi versi ini: <strong>${escapeHtml(file.name)}</strong> - ${hasil.pages.length} halaman (${empFormatUkuran_(totalByte)}).`;
+
+                judulPv.textContent = `Pratinjau Berkas Pengganti - ${hasil.pages.length} halaman (${empFormatUkuran_(totalByte)})`;
+                stripPv.innerHTML = hasil.pages.map(function (p, i) {
+                    return `<div class="inline-block align-top mr-2 mb-2 text-center">
+                        <img src="data:image/jpeg;base64,${p.base64}" class="h-40 rounded-lg border border-slate-800 bg-white" alt="Halaman ${i + 1}">
+                        <p class="text-[9px] text-slate-500 font-bold mt-1">Hal. ${i + 1} &middot; ${p.lebar}&times;${p.tinggi}px</p>
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                status.innerHTML = '<i class="fa-solid fa-circle-exclamation text-red-500 mr-1.5"></i>' + escapeHtml('Gagal memproses berkas: ' + (err.message || err));
+                stripPv.innerHTML = '<div class="flex items-center gap-2.5 text-red-300 py-3"><i class="fa-solid fa-circle-exclamation"></i><span class="text-[11px] font-bold">Pratinjau tidak tersedia.</span></div>';
+            }
+        }
+
+        async function simpanEmpDocEdit() {
+            if (!empDocSedangDiperbaiki) return;
+            const docId = empDocSedangDiperbaiki.id;
+            const versi = empDocSedangDiperbaiki.versi;
+            const catatan = document.getElementById('emp-docedit-catatan').value.trim();
+            const adaBerkasBaru = empHalamanPerbaikan.length > 0 || !!empBerkasAsliPerbaikan;
+
+            const btn = document.getElementById('emp-docedit-save-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Menyimpan...</span>';
+
+            function tutup(pesan) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = htmlAsli;
+                if (pesan) {
+                    closeEmpDocEditSubModal();
+                    showToast(pesan);
+                    empPageCache = {}; // gambar lama sudah tidak berlaku
+                    empMuatUlangUntukModalEdit_();
+                }
+            }
+
+            try {
+                // Data stasiun & tanggal dokumen disimpan lebih dulu - keduanya
+                // berlaku baik saat berkasnya diganti maupun tidak.
+                const hasilData = await simpanDataStasiunDariPerbaikan_(docId);
+                if (hasilData && hasilData.gagal) { showToast(hasilData.pesan); tutup(); return; }
+
+                // Hanya catatan & data yang diubah - berkasnya tidak disentuh.
+                if (!adaBerkasBaru) {
+                    const res = await empPanggil_('sap_emplasemen_updateDocNote', [currentSessionToken, docId, catatan]);
+                    if (!res.success) { showToast('Gagal menyimpan: ' + (res.message || '')); tutup(); return; }
+                    tutup('Data & catatan versi ' + versi + ' diperbarui.');
+                    return;
+                }
+
+                const setujuGanti = await konfirmasi_({
+                    judul: 'Ganti isi dokumen versi ' + versi + '?',
+                    pesan: 'Seluruh halaman dan berkas asli versi ini akan <strong>dihapus permanen</strong> dari Google Drive, lalu digantikan berkas baru. Nomor versi dan statusnya tidak berubah.',
+                    rincian: '<i class="fa-solid fa-arrows-rotate text-amber-500 mr-1.5"></i>Isi lama versi ' + versi + ' tidak bisa dikembalikan',
+                    ya: 'Ya, Ganti Isinya', ikonYa: 'fa-arrows-rotate', bahaya: false
+                });
+                if (!setujuGanti) { tutup(); return; }
+
+                const bar = document.getElementById('emp-docedit-progress');
+                const barIsi = document.getElementById('emp-docedit-progress-bar');
+                const barTeks = document.getElementById('emp-docedit-progress-text');
+                bar.classList.remove('hidden');
+                const total = empHalamanPerbaikan.length;
+                function progres(n, teks) {
+                    barIsi.style.width = Math.round((n / (total + 1)) * 100) + '%';
+                    barTeks.innerText = teks;
+                }
+
+                progres(0, 'Menghapus berkas lama dari Drive...');
+                const mulai = await empPanggil_('sap_emplasemen_beginReplaceDoc', [currentSessionToken, docId, {
+                    namaAsli: empBerkasAsliPerbaikan ? empBerkasAsliPerbaikan.name : '',
+                    mimeAsli: empBerkasAsliPerbaikan ? empBerkasAsliPerbaikan.mimeType : ''
+                }]);
+                if (!mulai.success) throw new Error(mulai.message || 'Gagal menyiapkan penggantian.');
+
+                for (let i = 0; i < total; i++) {
+                    progres(i + 1, `Mengunggah halaman ${i + 1} dari ${total}...`);
+                    const pg = empHalamanPerbaikan[i];
+                    const res = await empPanggil_('sap_emplasemen_addDocPage', [currentSessionToken, docId, i + 1, pg.base64, pg.lebar, pg.tinggi]);
+                    if (!res.success) throw new Error(res.message || ('Halaman ' + (i + 1) + ' gagal diunggah.'));
+                }
+
+                progres(total + 1, 'Menyelesaikan...');
+                const simpanAsli = document.getElementById('emp-docedit-simpan-asli').checked || total === 0;
+                const tutupRes = await empPanggil_('sap_emplasemen_finishReplaceDoc', [
+                    currentSessionToken, docId,
+                    simpanAsli && empBerkasAsliPerbaikan ? empBerkasAsliPerbaikan.base64 : null,
+                    simpanAsli && empBerkasAsliPerbaikan ? empBerkasAsliPerbaikan.name : null,
+                    simpanAsli && empBerkasAsliPerbaikan ? empBerkasAsliPerbaikan.mimeType : null,
+                    catatan
+                ]);
+                if (!tutupRes.success) throw new Error(tutupRes.message || 'Gagal menutup penggantian.');
+                tutup('Dokumen versi ' + versi + ' berhasil diperbaiki.');
+            } catch (err) {
+                console.log('[emp perbaiki dokumen] gagal:', err);
+                showToast('Gagal memperbaiki dokumen: ' + (err.message || err));
+                tutup();
+            }
+        }
+
+        /** Unduh berkas asli (pra-konversi) satu versi dokumen. */
+        function empUnduhBerkasAsli(docId) {
+            showToast('Menyiapkan berkas asli...');
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal: ' + (res.message || '')); return; }
+                    empUnduhDataUri_(res.base64, res.mimeType, res.fileName);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat mengambil berkas asli.'); })
+                .sap_emplasemen_getOriginalFile(currentSessionToken, docId);
+        }
+
+        /**
+         * Memicu unduhan dari data URI + atribut download - satu-satunya cara
+         * mengunduh yang konsisten dari dalam iframe sandbox Apps Script
+         * (Blob URL diblokir di lingkungan ini).
+         */
+        function empUnduhDataUri_(base64, mimeType, fileName) {
+            try {
+                const a = document.createElement('a');
+                a.href = 'data:' + (mimeType || 'application/octet-stream') + ';base64,' + base64;
+                a.download = fileName || 'dokumen';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) {
+                console.log('[emp unduh] gagal:', err);
+                showToast('Unduhan diblokir browser.');
+            }
+        }
+
+        // ─── VIEWER: preview dengan zoom & geser ──────────────────────────
+
+        function openEmpPreviewModal(id) {
+            const station = empStations.find(s => s.id === id);
+            if (!station) return;
+            const docAktif = (station.docs || []).find(function (d) { return d.id === station.docAktifId; }) || (station.docs || [])[0] || null;
+            empBukaViewer_(station, docAktif);
+        }
+
+        /**
+         * Membuka viewer dokumen. Yang diminta ke server HANYA halaman yang
+         * sedang dilihat (halaman 1 lebih dulu) - halaman lain menyusul di
+         * latar belakang. Halaman yang sudah pernah diambil tersimpan di
+         * empPageCache, jadi membuka ulang stasiun yang sama seketika tanpa
+         * permintaan apa pun ke server.
+         * @param {Object} station
+         * @param {Object|null} doc Versi dokumen yang mau ditampilkan.
+         */
+        function empBukaViewer_(station, doc) {
+            activeEmpStation = station;
+            empViewerDoc = doc;
+            empViewerHalaman = 1;
+            empViewerRotasi = 0;
+            empResetZoom();
+
+            document.getElementById('emp-preview-title').innerText = `Layout ${station.nama} (${station.singkatan})`;
+            document.getElementById('emp-preview-subtitle').innerText =
+                `${station.wilayah} • Status: ${station.status}` + (doc ? ` • Dokumen v${doc.versi} (${doc.jumlahHalaman} halaman)` : '');
+            empResetPreviewSize();
+            document.getElementById('emp-preview-modal').classList.remove('hidden');
+
+            if (!doc || !doc.pages || doc.pages.length === 0) {
+                empSetDocViewState(doc ? 'openexternal' : 'empty');
+                if (doc) {
+                    document.getElementById('emp-doc-openexternal-name').innerText = doc.namaAsli || 'Berkas';
+                    document.getElementById('emp-doc-openexternal-desc').innerText =
+                        'Versi ini tersimpan sebagai berkas asli saja (format yang tidak bisa diubah jadi gambar). Silakan unduh berkasnya.';
+                }
+                return;
+            }
+            empTampilkanHalaman_(1);
+            empPrefetchHalamanLain_(doc);
+        }
+
+        /** Tampilkan tepat SATU state di dalam modal Preview. */
+        function empSetDocViewState(state) {
+            const idMap = { loading: 'emp-doc-loading', empty: 'emp-doc-empty', image: 'emp-doc-stage', openexternal: 'emp-doc-openexternal', 'doc-error': 'emp-doc-error' };
+            Object.keys(idMap).forEach(function (key) {
+                document.getElementById(idMap[key]).classList.toggle('hidden', key !== state);
+            });
+            document.getElementById('emp-doc-toolbar').classList.toggle('hidden', state !== 'image');
+        }
+
+        /**
+         * Menampilkan satu halaman. Kalau gambarnya sudah ada di cache,
+         * tampil seketika; kalau belum, diambil dari server sekali lalu
+         * disimpan ke cache.
+         * @param {number} nomor Nomor halaman (mulai 1).
+         */
+        function empTampilkanHalaman_(nomor) {
+            if (!empViewerDoc || !empViewerDoc.pages.length) return;
+            const total = empViewerDoc.pages.length;
+            empViewerHalaman = Math.min(Math.max(1, nomor), total);
+            const page = empViewerDoc.pages[empViewerHalaman - 1];
+            document.getElementById('emp-doc-page-info').innerText = `Halaman ${empViewerHalaman} / ${total}`;
+            document.getElementById('emp-doc-prev-btn').disabled = empViewerHalaman <= 1;
+            document.getElementById('emp-doc-next-btn').disabled = empViewerHalaman >= total;
+
+            const img = document.getElementById('emp-doc-image');
+            if (empPageCache[page.id]) {
+                img.src = empPageCache[page.id];
+                empSetDocViewState('image');
+                empTerapkanTransformasi_();
+                return;
+            }
+
+            empSetDocViewState('loading');
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) {
+                        document.getElementById('emp-doc-error-desc').innerText = res.message || 'Halaman ini gagal diambil dari Drive.';
+                        empSetDocViewState('doc-error');
+                        return;
+                    }
+                    empPageCache[page.id] = 'data:' + (res.mimeType || 'image/jpeg') + ';base64,' + res.base64;
+                    // Kalau user sudah pindah halaman/stasiun sebelum ini datang, jangan timpa tampilan.
+                    if (empViewerDoc && empViewerDoc.pages[empViewerHalaman - 1] && empViewerDoc.pages[empViewerHalaman - 1].id === page.id) {
+                        img.src = empPageCache[page.id];
+                        empSetDocViewState('image');
+                        empTerapkanTransformasi_();
+                    }
+                })
+                .withFailureHandler(function () {
+                    document.getElementById('emp-doc-error-desc').innerText = 'Terjadi kesalahan saat mengambil halaman dokumen.';
+                    empSetDocViewState('doc-error');
+                })
+                .sap_emplasemen_getPageImage(currentSessionToken, page.id);
+        }
+
+        /**
+         * Mengambil halaman-halaman lain diam-diam di latar belakang, satu per
+         * satu (tidak berbarengan, supaya tidak menyita jatah permintaan &
+         * memperlambat halaman yang sedang dilihat). Hasilnya: pindah halaman
+         * saat presentasi terasa tanpa jeda.
+         */
+        /**
+         * Mengambil sisa halaman dokumen diam-diam di latar belakang, dalam
+         * panggilan BORONGAN (bukan satu per satu seperti sebelumnya) - satu
+         * panggilan bisa membawa beberapa halaman sekaligus, sehingga ongkos
+         * tetap tiap panggilan cuma dibayar sekali. Server memotong sendiri
+         * kalau responsnya sudah terlalu besar, dan sisanya diminta lagi di
+         * putaran berikutnya.
+         * @param {Object} doc
+         */
+        function empPrefetchHalamanLain_(doc) {
+            const sisa = doc.pages.filter(function (p) { return !empPageCache[p.id]; }).map(function (p) { return p.id; });
+            if (!sisa.length) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) return;
+                    if (!empViewerDoc || empViewerDoc.id !== doc.id) return; // dokumen sudah ditutup/diganti
+                    (res.items || []).forEach(function (it) {
+                        empPageCache[it.pageId] = 'data:' + (it.mimeType || 'image/jpeg') + ';base64,' + it.base64;
+                    });
+                    // Kalau server memotong karena ukuran, lanjutkan sisanya.
+                    if ((res.items || []).length && (res.items || []).length < sisa.length) empPrefetchHalamanLain_(doc);
+                })
+                .withFailureHandler(function () { /* diabaikan - halaman tetap bisa diambil satuan saat dibuka */ })
+                .sap_emplasemen_getPagesBatch(currentSessionToken, sisa);
+        }
+
+        function empHalamanSebelumnya() { empTampilkanHalaman_(empViewerHalaman - 1); }
+        function empHalamanBerikutnya() { empTampilkanHalaman_(empViewerHalaman + 1); }
+
+        // Zoom & geser - dibuat untuk dipakai saat presentasi: perbesar
+        // bagian tertentu layout lalu geser dengan menyeret mouse.
+
+        /**
+         * Menerapkan geser + zoom + ROTASI sekaligus ke satu CSS transform.
+         * Urutannya penting: translate dulu, lalu scale, baru rotate - dengan
+         * urutan ini arah menyeret tetap terasa wajar bagi user walau
+         * gambarnya sedang diputar.
+         */
+        function empTerapkanTransformasi_() {
+            const img = document.getElementById('emp-doc-image');
+            img.style.transform = `translate(${empViewerPanX}px, ${empViewerPanY}px) scale(${empViewerZoom}) rotate(${empViewerRotasi}deg)`;
+            document.getElementById('emp-doc-zoom-label').innerText = Math.round(empViewerZoom * 100) + '%';
+            const labelRotasi = document.getElementById('emp-doc-rotate-label');
+            if (labelRotasi) labelRotasi.innerText = empViewerRotasi + '\u00B0';
+            img.style.cursor = empViewerZoom > 1 ? 'grab' : 'default';
+        }
+
+        /**
+         * Memutar gambar 90 derajat. Nilainya selalu dijaga di rentang
+         * 0-359 dengan sisa bagi, jadi memutar terus-menerus ke arah mana pun
+         * akan kembali sendiri ke 0 setelah satu putaran penuh - tidak pernah
+         * menumpuk jadi angka besar atau negatif.
+         * @param {number} derajat +90 (kanan) atau -90 (kiri).
+         */
+        function empPutar(derajat) {
+            empViewerRotasi = (empViewerRotasi + derajat + 360) % 360;
+            empTerapkanTransformasi_();
+        }
+        function empPutarKiri() { empPutar(-90); }
+        function empPutarKanan() { empPutar(90); }
+        function empResetRotasi() { empViewerRotasi = 0; empTerapkanTransformasi_(); }
+
+        function empZoomIn() { empViewerZoom = Math.min(empViewerZoom * 1.25, 8); empTerapkanTransformasi_(); }
+        function empZoomOut() {
+            empViewerZoom = Math.max(empViewerZoom / 1.25, 0.25);
+            if (empViewerZoom <= 1) { empViewerPanX = 0; empViewerPanY = 0; } // kembali ke tengah saat sudah tidak diperbesar
+            empTerapkanTransformasi_();
+        }
+        /** Kembalikan tampilan ke keadaan awal: zoom 100%, tanpa geser, tanpa putaran. */
+        function empResetZoom() {
+            empViewerZoom = 1; empViewerPanX = 0; empViewerPanY = 0; empViewerRotasi = 0;
+            empTerapkanTransformasi_();
+        }
+
+        /** Zoom dengan roda mouse (tanpa perlu menekan tombol apa pun di dalam area gambar). */
+        function empWheelZoom(e) {
+            if (!empViewerDoc) return;
+            e.preventDefault();
+            if (e.deltaY < 0) empZoomIn(); else empZoomOut();
+        }
+
+        function empMulaiGeser(e) {
+            if (empViewerZoom <= 1) return;
+            empViewerDragging = true;
+            empViewerDragStartX = e.clientX - empViewerPanX;
+            empViewerDragStartY = e.clientY - empViewerPanY;
+            document.getElementById('emp-doc-image').style.cursor = 'grabbing';
+        }
+        function empSedangGeser(e) {
+            if (!empViewerDragging) return;
+            empViewerPanX = e.clientX - empViewerDragStartX;
+            empViewerPanY = e.clientY - empViewerDragStartY;
+            empTerapkanTransformasi_();
+        }
+        function empSelesaiGeser() {
+            if (!empViewerDragging) return;
+            empViewerDragging = false;
+            document.getElementById('emp-doc-image').style.cursor = empViewerZoom > 1 ? 'grab' : 'default';
+        }
+
+        function closeEmpPreviewModal() {
+            document.getElementById('emp-preview-modal').classList.add('hidden');
+            empViewerDoc = null;
+            empSelesaiGeser();
+        }
+
+        /** Kembalikan modal Preview ke ukuran normal. */
+        function empResetPreviewSize() {
+            empPreviewFullscreen = false;
+            const modal = document.getElementById('emp-preview-modal');
+            const card = document.getElementById('emp-preview-card');
+            const btn = document.getElementById('emp-fullscreen-btn');
+            if (modal) modal.classList.add('p-4');
+            if (card) card.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden border border-slate-700';
+            if (btn) btn.innerHTML = '<i class="fa-solid fa-expand"></i> Layar Penuh';
+        }
+
+        /** Perbesar modal memenuhi layar - murni CSS (bukan Fullscreen API), supaya tetap konsisten di dalam iframe Apps Script. */
+        function empTogglePreviewFullscreen() {
+            empPreviewFullscreen = !empPreviewFullscreen;
+            const modal = document.getElementById('emp-preview-modal');
+            const card = document.getElementById('emp-preview-card');
+            const btn = document.getElementById('emp-fullscreen-btn');
+            if (empPreviewFullscreen) {
+                modal.classList.remove('p-4');
+                card.className = 'bg-white shadow-2xl w-full h-full flex flex-col overflow-hidden';
+                btn.innerHTML = '<i class="fa-solid fa-compress"></i> Kecilkan';
+            } else {
+                empResetPreviewSize();
+            }
+        }
+
+        /** Unduh halaman yang sedang tampil sebagai JPG. */
+        function empUnduhHalamanAktif() {
+            if (!empViewerDoc || !empViewerDoc.pages.length) { showToast('Tidak ada halaman yang sedang dibuka.'); return; }
+            const page = empViewerDoc.pages[empViewerHalaman - 1];
+            const dataUrl = empPageCache[page.id];
+            if (!dataUrl) { showToast('Halaman belum selesai dimuat, coba sebentar lagi.'); return; }
+            const nama = (activeEmpStation ? activeEmpStation.singkatan : 'layout') + '_v' + empViewerDoc.versi + '_hal' + empViewerHalaman + '.jpg';
+            empUnduhDataUri_(dataUrl.split(',')[1], 'image/jpeg', nama);
+        }
+
+        /** Unduh berkas asli versi yang sedang dibuka. */
+        function empUnduhAsliDariViewer() {
+            if (!empViewerDoc) { showToast('Tidak ada dokumen yang sedang dibuka.'); return; }
+            if (!empViewerDoc.punyaBerkasAsli) { showToast('Versi dokumen ini tidak menyimpan berkas asli.'); return; }
+            empUnduhBerkasAsli(empViewerDoc.id);
+        }
+
+        // ─── SUB-MODAL: konfigurasi jalur (dipakai saat Tambah) ───────────
+
+        function openEmpTrackConfigSubModal() {
+            renderEmpSubModalTrackList();
+            document.getElementById('emp-track-config-submodal').classList.remove('hidden');
+        }
+
+        function closeEmpTrackConfigSubModal() { document.getElementById('emp-track-config-submodal').classList.add('hidden'); }
+
+        function renderEmpSubModalTrackList() {
+            const container = document.getElementById('emp-submodal-track-list');
+            container.innerHTML = '';
+            document.getElementById('emp-submodal-track-count-info').innerText = `${tempEmpTrackDetails.length} Jalur Terkonfigurasi`;
+            tempEmpTrackDetails.forEach((item, idx) => {
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center space-x-2 bg-slate-50 p-2.5 border border-slate-200 rounded-xl text-xs">
+                        <span class="w-6 h-6 bg-blue-100 text-[#0c1d37] rounded-lg flex items-center justify-center font-bold text-[11px] shrink-0">${idx+1}</span>
+                        <input type="text" value="${escapeHtml(item.name)}" onchange="tempEmpTrackDetails[${idx}].name = this.value" class="w-32 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold flex-1">
+                        <span class="text-slate-500 font-medium text-[11px]">Panjang:</span>
+                        <input type="number" value="${escapeHtml(item.length)}" onchange="tempEmpTrackDetails[${idx}].length = parseInt(this.value) || 0" class="w-20 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-right">
+                        <span class="text-slate-500 font-bold text-xs">m</span>
+                        <button type="button" onclick="removeEmpTrackFromSubModal(${idx})" class="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                    </div>
+                `);
+            });
+        }
+
+        function addEmpTrackToSubModal() {
+            tempEmpTrackDetails.push({ name: `Jalur ${tempEmpTrackDetails.length + 1}`, length: 750 });
+            renderEmpSubModalTrackList();
+        }
+
+        function removeEmpTrackFromSubModal(idx) {
+            tempEmpTrackDetails.splice(idx, 1);
+            renderEmpSubModalTrackList();
+        }
+
+        function saveEmpTrackConfigSubModal() {
+            document.getElementById('emp-track-config-badge').innerHTML = `<i class="fa-solid fa-list-check text-amber-500"></i> ${tempEmpTrackDetails.length} Jalur Siap Diatur`;
+            closeEmpTrackConfigSubModal();
+            showToast('Rincian jalur berhasil disimpan!');
+        }
+
+        // ─── TRACK DETAIL MODAL (jalur milik stasiun yang SUDAH ada) ──────
+
+        function openEmpTrackDetailModal(id) {
+            const station = empStations.find(s => s.id === id);
+            if (!station) return;
+            activeEmpStation = station;
+            document.getElementById('emp-track-detail-title').innerHTML = `<i class="fa-solid fa-ruler-horizontal text-[#d4af37]"></i><span>Rincian Jalur - ${escapeHtml(station.nama)} (${escapeHtml(station.singkatan)})</span>`;
+            document.getElementById('emp-track-detail-subtitle').innerText = `${station.wilayah} • Total ${station.tracks} Jalur KA`;
+            renderEmpTrackDetailList();
+            document.getElementById('emp-track-detail-modal').classList.remove('hidden');
+        }
+
+        function closeEmpTrackDetailModal() { document.getElementById('emp-track-detail-modal').classList.add('hidden'); }
+
+        function renderEmpTrackDetailList() {
+            if (!activeEmpStation) return;
+            document.getElementById('emp-track-detail-total-badge').innerText = `${activeEmpStation.trackDetails.length} Jalur KA`;
+            const list = document.getElementById('emp-track-detail-list');
+            list.innerHTML = '';
+            activeEmpStation.trackDetails.forEach((td, idx) => {
+                list.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center justify-between p-3 bg-slate-50/80 border border-slate-200 rounded-xl text-xs" id="emp-track-row-${idx}">
+                        <div class="flex items-center space-x-3 flex-1" id="emp-track-view-${idx}">
+                            <span class="w-7 h-7 rounded-lg bg-blue-100 text-[#0c1d37] border border-blue-200 flex items-center justify-center"><i class="fa-solid fa-train-subway text-[10px]"></i></span>
+                            <span class="font-bold text-slate-800">${escapeHtml(td.name)}</span>
+                            <span class="font-mono font-bold text-[#0c1d37] bg-white px-2.5 py-1 rounded-md border border-slate-200">${escapeHtml(td.length)} <span class="text-[10px] text-slate-500 font-normal">meter</span></span>
+                        </div>
+                        <div class="hidden flex-1 flex items-center space-x-2" id="emp-track-edit-${idx}">
+                            <input type="text" id="emp-edit-track-name-${idx}" value="${escapeHtml(td.name)}" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold flex-1">
+                            <input type="number" id="emp-edit-track-len-${idx}" value="${escapeHtml(td.length)}" class="w-20 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold">
+                            <span class="text-slate-500 text-[11px] font-bold">m</span>
+                            <button onclick="saveEmpTrackEdit('${td.id}', ${idx})" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px]">Simpan</button>
+                            <button onclick="cancelEmpTrackEdit(${idx})" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[11px] font-bold">Batal</button>
+                        </div>
+                        <div class="flex items-center space-x-1.5 shrink-0 ml-2" id="emp-track-actions-${idx}">
+                            <button onclick="enableEmpTrackEdit(${idx})" class="p-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white rounded-lg"><i class="fa-solid fa-pen-to-square text-xs"></i></button>
+                            <button onclick="confirmDeleteEmpTrack('${td.id}', ${idx})" class="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        function enableEmpTrackEdit(idx) {
+            document.getElementById(`emp-track-view-${idx}`).classList.add('hidden');
+            document.getElementById(`emp-track-actions-${idx}`).classList.add('hidden');
+            document.getElementById(`emp-track-edit-${idx}`).classList.remove('hidden');
+        }
+
+        function cancelEmpTrackEdit(idx) {
+            document.getElementById(`emp-track-view-${idx}`).classList.remove('hidden');
+            document.getElementById(`emp-track-actions-${idx}`).classList.remove('hidden');
+            document.getElementById(`emp-track-edit-${idx}`).classList.add('hidden');
+        }
+
+        function saveEmpTrackEdit(trackId, idx) {
+            const newName = document.getElementById(`emp-edit-track-name-${idx}`).value;
+            const newLen = parseInt(document.getElementById(`emp-edit-track-len-${idx}`).value) || 0;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { showToast('Jalur diperbarui.'); reloadActiveEmpStationAndTrackModal(); }
+                    else { showToast('Gagal menyimpan: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan jalur.'); })
+                .sap_emplasemen_updateTrack(currentSessionToken, trackId, newName, newLen);
+        }
+
+        function addEmpTrackToActiveStation() {
+            if (!activeEmpStation) return;
+            const nextIdx = activeEmpStation.trackDetails.length + 1;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { showToast('Jalur baru ditambahkan.'); reloadActiveEmpStationAndTrackModal(); }
+                    else { showToast('Gagal menambah jalur: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menambah jalur.'); })
+                .sap_emplasemen_addTrack(currentSessionToken, activeEmpStation.id, 'Jalur ' + nextIdx, 750);
+        }
+
+        function confirmDeleteEmpTrack(trackId, idx) {
+            const track = activeEmpStation.trackDetails[idx];
+            pendingDeleteEmpTrackIdx = trackId;
+            document.getElementById('emp-delete-track-target-name').innerText = track ? track.name : 'Jalur KA';
+            document.getElementById('emp-delete-track-confirm-modal').classList.remove('hidden');
+        }
+
+        function closeEmpDeleteTrackConfirmModal() {
+            pendingDeleteEmpTrackIdx = -1;
+            document.getElementById('emp-delete-track-confirm-modal').classList.add('hidden');
+        }
+
+        function executeEmpDeleteTrack() {
+            const trackId = pendingDeleteEmpTrackIdx;
+            closeEmpDeleteTrackConfirmModal();
+            if (!trackId || trackId === -1) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { showToast('Jalur dihapus.'); reloadActiveEmpStationAndTrackModal(); }
+                    else { showToast('Gagal menghapus: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus jalur.'); })
+                .sap_emplasemen_deleteTrack(currentSessionToken, trackId);
+        }
+
+        function reloadActiveEmpStationAndTrackModal() {
+            const activeId = activeEmpStation ? activeEmpStation.id : null;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) return;
+                    empStations = res.data;
+                    renderEmplasemenTable();
+                    if (activeId) {
+                        const s = empStations.find(s => s.id === activeId);
+                        if (s) { activeEmpStation = s; renderEmpTrackDetailList(); }
+                    }
+                })
+                .withFailureHandler(function () {})
+                .sap_emplasemen_getAll(currentSessionToken);
+        }
+
+        // ─── RIWAYAT VERSI GAPEKA ─────────────────────────────────────────
+
+        function openEmpHistoryModal(id) {
+            const station = empStations.find(s => s.id === id);
+            if (!station) return;
+            activeEmpStation = station;
+            document.getElementById('emp-history-modal-title').innerText = `Riwayat Dokumen - ${station.nama}`;
+            closeEmpAddHistoryForm();
+            renderEmpHistoryTimeline();
+            document.getElementById('emp-history-modal').classList.remove('hidden');
+        }
+
+        function closeEmpHistoryModal() { document.getElementById('emp-history-modal').classList.add('hidden'); }
+
+        function renderEmpHistoryTimeline() {
+            if (!activeEmpStation) return;
+            const timeline = document.getElementById('emp-history-timeline');
+            timeline.innerHTML = '';
+
+            // ═══ DIURUTKAN & DISELARASKAN DENGAN DOKUMEN ═══
+            // Riwayat diurutkan menurut nomor versi, dan tiap catatan
+            // dicocokkan dengan dokumen versinya. Dengan begitu terlihat
+            // langsung mana catatan yang punya berkas, mana yang versinya
+            // sedang aktif, dan mana yang catatannya ada tapi berkasnya belum
+            // pernah diunggah.
+            // ═══ HANYA VERSI YANG MASIH ADA ═══
+            // Catatan bertanda "(dihapus)" disaring keluar. Dokumennya sudah
+            // tidak ada, jadi tombol Preview & Unduh di situ pasti gagal -
+            // menampilkannya hanya membuat daftar terlihat lebih panjang dari
+            // isi yang sebenarnya tersimpan.
+            const daftar = (activeEmpStation.history || [])
+                .filter(function (h) { return String(h.version || '').indexOf('(dihapus)') === -1; })
+                .slice().sort(function (a, b) {
+                const va = parseFloat(String(a.version || '').replace(/[^0-9.]/g, '')) || 0;
+                const vb = parseFloat(String(b.version || '').replace(/[^0-9.]/g, '')) || 0;
+                return va - vb;
+            });
+
+            daftar.forEach((hist, idx) => {
+                const pasangan = cariDokumenUntukRiwayat_(hist.id);
+                const doc = pasangan ? pasangan.doc : null;
+                const lencanaDoc = doc
+                    ? (doc.status === 'aktif'
+                        ? '<span class="text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200">DOKUMEN AKTIF</span>'
+                        : '<span class="text-[9px] font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">ARSIP</span>')
+                    : '<span class="text-[9px] font-black px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">TANPA BERKAS</span>';
+                const infoDoc = doc
+                    ? '<p class="text-[10px] text-slate-400 font-semibold mt-1"><i class="fa-solid fa-file-lines mr-1"></i>' +
+                      doc.jumlahHalaman + ' halaman &middot; ' + escapeHtml(doc.fileName || 'dokumen') + '</p>'
+                    : '';
+                timeline.insertAdjacentHTML('beforeend', `
+                    <li class="mb-6 ml-6 relative">
+                        <span class="absolute flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full -left-9 ring-8 ring-white text-[#0c1d37] font-bold text-xs">${idx+1}</span>
+                        <div class="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="text-xs font-bold px-2.5 py-0.5 bg-[#0c1d37] text-white rounded-md">${escapeHtml(hist.version)}</span>
+                                    ${lencanaDoc}
+                                </span>
+                                <span class="text-[11px] text-slate-400 font-medium"><i class="fa-regular fa-clock mr-1"></i>${formatEmpDate(hist.date)}</span>
+                            </div>
+                            <p class="text-xs font-semibold text-slate-800 mt-1.5">${escapeHtml(hist.desc)}</p>
+                            <p class="text-[11px] text-slate-500 mt-1 font-medium"><i class="fa-solid fa-train text-amber-500 text-[10px] mr-1"></i>Gapeka: <span class="font-bold text-slate-800">${escapeHtml(hist.gapeka || 'Gapeka 2025')}</span></p>
+                            ${infoDoc}
+                            <div class="mt-3 pt-2.5 border-t border-slate-200 flex items-center justify-end space-x-2">
+                                <!--
+                                  Tombol Delete SENGAJA tidak ada di sini (3 September 2026).
+                                  Riwayat adalah catatan perubahan - menghapusnya berarti
+                                  menghilangkan jejak, dan itu bertentangan dengan gunanya
+                                  sendiri. Penghapusan dipusatkan di modal Edit Dokumen,
+                                  tempat versinya memang dikelola.
+                                -->
+                                <button onclick="lihatDokumenRiwayat_('${hist.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700 rounded-lg text-[11px] font-bold transition"><i class="fa-regular fa-eye text-[10px] mr-1"></i>Preview</button>
+                                <button onclick="unduhDokumenRiwayat_('${hist.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700 rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-download text-[10px] mr-1"></i>Unduh</button>
+                                <button onclick="editEmpHistoryEntry('${hist.id}')" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-[11px] font-bold"><i class="fa-solid fa-pen-to-square text-[10px] mr-1"></i>Edit</button>
+                            </div>
+                        </div>
+                    </li>
+                `);
+            });
+        }
+
+        function openEmpAddHistoryForm() {
+            editingEmpHistoryId = null;
+            document.getElementById('emp-history-form-header').innerText = "Tambah Catatan Riwayat Baru";
+            document.getElementById('emp-hist-input-version').value = `v${((activeEmpStation.history || []).length + 1).toFixed(1)}`;
+            document.getElementById('emp-hist-input-gapeka').value = "Gapeka 2025";
+            document.getElementById('emp-hist-input-desc').value = "";
+            document.getElementById('emp-history-edit-form-container').classList.remove('hidden');
+        }
+
+        function closeEmpAddHistoryForm() {
+            document.getElementById('emp-history-edit-form-container').classList.add('hidden');
+            editingEmpHistoryId = null;
+        }
+
+        function editEmpHistoryEntry(historyId) {
+            editingEmpHistoryId = historyId;
+            const item = activeEmpStation.history.find(h => h.id === historyId);
+            if (!item) return;
+            document.getElementById('emp-history-form-header').innerText = `Sunting Catatan (${item.version})`;
+            document.getElementById('emp-hist-input-version').value = item.version;
+            document.getElementById('emp-hist-input-gapeka').value = item.gapeka || "Gapeka 2025";
+            document.getElementById('emp-hist-input-desc').value = item.desc;
+            document.getElementById('emp-history-edit-form-container').classList.remove('hidden');
+        }
+
+        function saveEmpHistoryEntry() {
+            if (!activeEmpStation) return;
+            const version = document.getElementById('emp-hist-input-version').value || "v1.0";
+            const gapeka = document.getElementById('emp-hist-input-gapeka').value || "Gapeka 2025";
+            const desc = document.getElementById('emp-hist-input-desc').value || "Pembaruan layout";
+
+            if (editingEmpHistoryId) {
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (res.success) { showToast('Catatan riwayat diperbarui.'); reloadActiveEmpStationAndHistoryModal(); }
+                        else { showToast('Gagal menyimpan: ' + (res.message || '')); }
+                    })
+                    .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan.'); })
+                    .sap_emplasemen_updateHistory(currentSessionToken, editingEmpHistoryId, version, gapeka, desc);
+            } else {
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (res.success) { showToast('Catatan riwayat baru ditambahkan.'); reloadActiveEmpStationAndHistoryModal(); }
+                        else { showToast('Gagal menyimpan: ' + (res.message || '')); }
+                    })
+                    .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan.'); })
+                    .sap_emplasemen_addHistory(currentSessionToken, activeEmpStation.id, version, gapeka, desc);
+            }
+            closeEmpAddHistoryForm();
+        }
+
+        async function deleteEmpHistoryEntry(historyId) {
+            // Tombolnya sudah dihapus dari daftar riwayat (3 September 2026),
+            // tapi fungsinya dipertahankan supaya penghapusan tetap mungkin
+            // dilakukan dari modal Edit Dokumen.
+            if (!await konfirmasi_({
+                judul: 'Hapus catatan riwayat ini?',
+                pesan: 'Catatan perubahan yang dihapus tidak bisa dikembalikan.',
+                ya: 'Ya, Hapus', ikonYa: 'fa-trash-can'
+            })) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { showToast('Catatan riwayat dihapus.'); reloadActiveEmpStationAndHistoryModal(); }
+                    else { showToast('Gagal menghapus: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus.'); })
+                .sap_emplasemen_deleteHistory(currentSessionToken, historyId);
+        }
+
+        function reloadActiveEmpStationAndHistoryModal() {
+            const activeId = activeEmpStation ? activeEmpStation.id : null;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) return;
+                    empStations = res.data;
+                    renderEmplasemenTable();
+                    if (activeId) {
+                        const s = empStations.find(s => s.id === activeId);
+                        if (s) { activeEmpStation = s; renderEmpHistoryTimeline(); }
+                    }
+                })
+                .withFailureHandler(function () {})
+                .sap_emplasemen_getAll(currentSessionToken);
+        }
+
+        // ─── HAPUS STASIUN ────────────────────────────────────────────────
+
+        function confirmDeleteEmplasemen(id) {
+            const station = empStations.find(s => s.id === id);
+            if (!station) return;
+            pendingDeleteEmpStationId = id;
+            document.getElementById('emp-delete-station-name').innerText = `${station.nama} (${station.singkatan})`;
+            document.getElementById('emp-delete-station-docinfo').innerText =
+                (station.jumlahDokumen || 0) > 0
+                    ? `${station.jumlahDokumen} versi dokumen beserta seluruh berkasnya di Google Drive ikut dihapus permanen.`
+                    : 'Stasiun ini belum punya dokumen tersimpan.';
+            document.getElementById('emp-delete-station-confirm-modal').classList.remove('hidden');
+        }
+
+        function closeEmpDeleteStationModal() {
+            pendingDeleteEmpStationId = null;
+            document.getElementById('emp-delete-station-confirm-modal').classList.add('hidden');
+        }
+
+        function confirmEmpDeleteStation() {
+            if (!pendingDeleteEmpStationId) return;
+            const id = pendingDeleteEmpStationId;
+            closeEmpDeleteStationModal();
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        showToast('Data emplasemen & seluruh berkasnya di Drive telah dihapus.');
+                        empPageCache = {};
+                        loadEmpStations();
+                    } else { showToast('Gagal menghapus: ' + (res.message || '')); }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus data.'); })
+                .sap_emplasemen_delete(currentSessionToken, id);
+        }
+
+        // ─── RIWAYAT AKTIVITAS ────────────────────────────────────────────
+
+        function openEmpActivityLogModal() {
+            document.getElementById('emp-activity-log-modal').classList.remove('hidden');
+            empActivityLogPage = 1;
+            loadEmpActivityLog();
+        }
+
+        function closeEmpActivityLogModal() { document.getElementById('emp-activity-log-modal').classList.add('hidden'); }
+
+        function loadEmpActivityLog() {
+            const tbody = document.getElementById('emp-activity-log-body');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-400 font-bold">Memuat riwayat...</td></tr>';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) { empActivityLogData = res.data; renderEmpActivityLogPage(); }
+                    else { showToast('Gagal memuat riwayat aktivitas: ' + (res.message || '')); tbody.innerHTML = ''; }
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memuat riwayat aktivitas.'); tbody.innerHTML = ''; })
+                .sap_emplasemen_getActivityLog(currentSessionToken);
+        }
+
+        function empActivityLogSetSort(sort) {
+            empActivityLogSort = sort;
+            empActivityLogPage = 1;
+            const activeCls = 'px-3 py-1.5 rounded-lg text-[11px] font-bold transition bg-[#0c1d37] text-white';
+            const inactiveCls = 'px-3 py-1.5 rounded-lg text-[11px] font-bold transition text-slate-500 hover:bg-slate-100';
+            document.getElementById('emp-log-sort-terbaru').className = sort === 'terbaru' ? activeCls : inactiveCls;
+            document.getElementById('emp-log-sort-abjad').className = sort === 'abjad' ? activeCls : inactiveCls;
+            renderEmpActivityLogPage();
+        }
+
+        function renderEmpActivityLogPage() {
+            const tbody = document.getElementById('emp-activity-log-body');
+            const emptyState = document.getElementById('emp-log-empty-state');
+            document.getElementById('emp-log-count-info').innerText = empActivityLogData.length + ' aktivitas';
+
+            if (empActivityLogData.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                document.getElementById('emp-log-page-info').innerText = 'Halaman 0 / 0';
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            const sorted = empActivityLogData.slice().sort(function (a, b) {
+                if (empActivityLogSort === 'abjad') return String(a.stationNama || '').localeCompare(String(b.stationNama || ''));
+                return String(b.timestamp).localeCompare(String(a.timestamp));
+            });
+
+            const totalPages = Math.max(1, Math.ceil(sorted.length / EMP_ACTIVITY_LOG_PAGE_SIZE));
+            empActivityLogPage = Math.min(Math.max(1, empActivityLogPage), totalPages);
+            const start = (empActivityLogPage - 1) * EMP_ACTIVITY_LOG_PAGE_SIZE;
+            const pageItems = sorted.slice(start, start + EMP_ACTIVITY_LOG_PAGE_SIZE);
+
+            tbody.innerHTML = '';
+            pageItems.forEach(function (log) {
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-blue-50/40 transition">
+                        <td class="py-2.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">${formatEmpDate(log.timestamp)}</td>
+                        <td class="py-2.5 px-4">${escapeHtml(log.nama || log.username || '-')}</td>
+                        <td class="py-2.5 px-4"><span class="px-2 py-0.5 bg-blue-50 text-[#0c1d37] border border-blue-200 rounded-lg text-[10px] font-extrabold whitespace-nowrap">${escapeHtml(log.aksi)}</span></td>
+                        <td class="py-2.5 px-4">${escapeHtml(log.stationNama || '-')}</td>
+                        <td class="py-2.5 px-4 text-slate-500">${escapeHtml(log.keterangan || '-')}</td>
+                    </tr>
+                `);
+            });
+            document.getElementById('emp-log-page-info').innerText = `Halaman ${empActivityLogPage} / ${totalPages}`;
+        }
+
+        function empActivityLogPrevPage() {
+            if (empActivityLogPage > 1) { empActivityLogPage--; renderEmpActivityLogPage(); }
+        }
+
+        function empActivityLogNextPage() {
+            const totalPages = Math.max(1, Math.ceil(empActivityLogData.length / EMP_ACTIVITY_LOG_PAGE_SIZE));
+            if (empActivityLogPage < totalPages) { empActivityLogPage++; renderEmpActivityLogPage(); }
+        }
+
+        // ─── KONFIRMASI BERGAYA APLIKASI ─────────────────────────────────
+        //
+        // Menggantikan confirm() bawaan browser, yang di dalam sandbox Apps
+        // Script muncul bertuliskan "An embedded page at ...googleusercontent
+        // .com says" - alamat acak yang terlihat mencurigakan & membuat user
+        // ragu menekannya, padahal itu sistem mereka sendiri.
+        //
+        // Dibuat dengan Promise supaya pemakaiannya tetap sederhana:
+        //   if (!await konfirmasi_({...})) return;
+
+        function konfirmasi_(opsi) {
+            return new Promise(function (selesai) {
+                let modal = document.getElementById('modal-konfirmasi-umum');
+                if (!modal) {
+                    modal = document.createElement('div');
+                    modal.id = 'modal-konfirmasi-umum';
+                    modal.className = 'hidden fixed inset-0 z-[95] flex items-center justify-center p-4 modal-backdrop animate-fade-in';
+                    document.body.appendChild(modal);
+                }
+
+                const bahaya = opsi.bahaya !== false;
+                const warnaIkon = bahaya ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600';
+                const warnaTombol = bahaya ? 'bg-red-600 hover:bg-red-700' : 'bg-[#0c1d37] hover:bg-slate-800';
+
+                modal.innerHTML =
+                    '<div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">' +
+                        '<div class="px-6 py-5 flex items-start gap-4">' +
+                            '<div class="w-12 h-12 rounded-2xl ' + warnaIkon + ' flex items-center justify-center text-xl shrink-0">' +
+                                '<i class="fa-solid ' + (opsi.ikon || 'fa-triangle-exclamation') + '"></i></div>' +
+                            '<div class="min-w-0">' +
+                                '<h3 class="text-sm font-black text-slate-900">' + escapeHtml(opsi.judul || 'Konfirmasi') + '</h3>' +
+                                '<p class="text-[11px] text-slate-500 font-semibold mt-1 leading-relaxed">' +
+                                    (opsi.pesan || '') + '</p>' +
+                                (opsi.rincian
+                                    ? '<div class="mt-2.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700">' +
+                                      opsi.rincian + '</div>'
+                                    : '') +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">' +
+                            '<button id="konf-batal" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">' +
+                                escapeHtml(opsi.batal || 'Batal') + '</button>' +
+                            '<button id="konf-ya" class="px-5 py-2.5 ' + warnaTombol + ' text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">' +
+                                '<i class="fa-solid ' + (opsi.ikonYa || 'fa-check') + '"></i><span>' + escapeHtml(opsi.ya || 'Ya, Lanjutkan') + '</span></button>' +
+                        '</div>' +
+                    '</div>';
+
+                modal.classList.remove('hidden');
+                const tutup = function (jawaban) {
+                    modal.classList.add('hidden');
+                    selesai(jawaban);
+                };
+                modal.querySelector('#konf-batal').onclick = function () { tutup(false); };
+                modal.querySelector('#konf-ya').onclick = function () { tutup(true); };
+            });
+        }
+
+
+        // ─── PREVIEW & UNDUH DOKUMEN DARI RIWAYAT ────────────────────────
+        //
+        // Catatan riwayat menunjuk ke versi dokumen lewat nomor versinya.
+        // Kalau dokumennya belum ada, dikatakan apa adanya - lebih baik
+        // daripada membuka viewer kosong yang membingungkan.
+
+        function cariDokumenUntukRiwayat_(historyId) {
+            const hist = (activeEmpStation.history || []).find(function (h) { return h.id === historyId; });
+            if (!hist) return null;
+
+            // Nomor versi catatan ("v1.0") dicocokkan dengan nomor versi
+            // dokumen (1). Dibandingkan sebagai angka supaya "v1.0" & "v1"
+            // sama-sama cocok.
+            const angka = parseFloat(String(hist.version || '').replace(/[^0-9.]/g, ''));
+            // Bidangnya bernama `docs` di balasan server - `documents` tidak
+            // pernah ada, itu sebabnya tombol Preview & Unduh diam saja.
+            const docs = activeEmpStation.docs || [];
+            if (!docs.length) return { hist: hist, doc: null };
+
+            const cocok = docs.find(function (d) { return Math.floor(Number(d.versi)) === Math.floor(angka); });
+            return { hist: hist, doc: cocok || null };
+        }
+
+        function lihatDokumenRiwayat_(historyId) {
+            const hasil = cariDokumenUntukRiwayat_(historyId);
+            if (!hasil) return;
+            if (!hasil.doc) {
+                showToast('Catatan ' + (hasil.hist.version || '') + ' belum punya dokumen terlampir. ' +
+                    'Unggah dokumennya lewat menu Edit Emplasemen.');
+                return;
+            }
+            // ═══ HARUS LEWAT empLihatVersiDokumen ═══
+            // empBukaViewer_ mengharapkan doc.pages sudah terisi, padahal
+            // sap_emplasemen_getAll sengaja TIDAK mengirim isi halaman (agar
+            // pemuatan daftar tetap ringan). Memanggil viewer langsung membuat
+            // halamannya kosong, dan viewer menyimpulkan dokumen ini "berkas
+            // asli saja" - persis yang terlihat di layar.
+            //
+            // empLihatVersiDokumen memuat halamannya dulu, baru membuka viewer.
+            if (typeof empLihatVersiDokumen === 'function') {
+                empLihatVersiDokumen(activeEmpStation.id, hasil.doc.id);
+            } else {
+                showToast('Pratinjau dokumen belum tersedia.');
+            }
+        }
+
+        function unduhDokumenRiwayat_(historyId) {
+            const hasil = cariDokumenUntukRiwayat_(historyId);
+            if (!hasil) return;
+            if (!hasil.doc) {
+                showToast('Catatan ' + (hasil.hist.version || '') + ' belum punya dokumen terlampir.');
+                return;
+            }
+            if (typeof empUnduhBerkasAsli === 'function') empUnduhBerkasAsli(hasil.doc.id);
+            else showToast('Unduhan dokumen belum tersedia.');
+        }
+
+
+        // ─── PENUNJANG SUNTING VERSI DOKUMEN ─────────────────────────────
+
+        /** Mengisi pilihan wilayah pada sebuah <select>, lalu memilih nilainya. */
+        function isiPilihanWilayah_(idSelect, terpilih) {
+            const sel = document.getElementById(idSelect);
+            if (!sel) return;
+            sel.innerHTML = EMP_WILAYAH_LIST.map(function (w) {
+                return '<option value="' + escapeHtml(w) + '">' + escapeHtml(w) + '</option>';
+            }).join('');
+            if (terpilih) sel.value = terpilih;
+        }
+
+        /**
+         * Mengubah tanggal tersimpan jadi nilai <input type="date">.
+         * Menerima ISO maupun "dd-MM-yyyy", karena data lama & baru bisa
+         * bercampur di sheet yang sama.
+         */
+        function empTanggalKeInput_(nilai) {
+            const t = String(nilai || '').trim();
+            if (!t) return '';
+            const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+            const dmy = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+            if (dmy) return dmy[3] + '-' + String(dmy[2]).padStart(2, '0') + '-' + String(dmy[1]).padStart(2, '0');
+            return '';
+        }
+
+
+        /**
+         * Menyimpan perubahan data stasiun & tanggal dokumen dari modal
+         * Perbaiki.
+         *
+         * Dipisah jadi fungsi sendiri karena dipakai di dua jalur - saat
+         * berkasnya diganti maupun tidak. Kegagalannya dilaporkan balik,
+         * bukan dilempar, supaya pemanggilnya bisa menutup tombol dengan rapi.
+         */
+        async function simpanDataStasiunDariPerbaikan_(docId) {
+            const station = empStations.find(function (s) { return s.id === empEditingStationId; });
+            if (!station) return { gagal: true, pesan: 'Data stasiun tidak ditemukan.' };
+
+            const nama = document.getElementById('emp-docedit-nama').value.trim();
+            const singkatan = document.getElementById('emp-docedit-singkatan').value.trim().toUpperCase();
+            const wilayah = document.getElementById('emp-docedit-wilayah').value;
+            const status = document.getElementById('emp-docedit-status-emp').value;
+            const tanggal = document.getElementById('emp-docedit-tanggal').value;
+
+            if (!nama || !singkatan) return { gagal: true, pesan: 'Nama stasiun & singkatan wajib diisi.' };
+
+            try {
+                // Data stasiun hanya dikirim bila memang berubah - menyimpan
+                // nilai yang sama hanya menambah baris riwayat tanpa guna.
+                const berubah = nama !== station.nama || singkatan !== station.singkatan ||
+                                wilayah !== station.wilayah || status !== station.status;
+                if (berubah) {
+                    const res = await empPanggil_('sap_emplasemen_update', [currentSessionToken, station.id, {
+                        nama: nama, singkatan: singkatan, wilayah: wilayah, status: status
+                    }]);
+                    if (!res.success) return { gagal: true, pesan: 'Gagal menyimpan data stasiun: ' + (res.message || '') };
+                }
+
+                // Tanggal dokumen disimpan terpisah karena melekat pada VERSI,
+                // bukan pada stasiunnya - dua versi bisa punya tanggal berbeda.
+                const tglLama = empTanggalKeInput_((station.docs || []).find(function (d) { return d.id === docId; })?.tanggalUpload);
+                if (tanggal && tanggal !== tglLama) {
+                    const res2 = await empPanggil_('sap_emplasemen_updateDocTanggal', [currentSessionToken, docId, tanggal]);
+                    if (!res2.success) return { gagal: true, pesan: 'Gagal menyimpan tanggal dokumen: ' + (res2.message || '') };
+                }
+                return { gagal: false };
+            } catch (err) {
+                return { gagal: true, pesan: 'Terjadi kesalahan: ' + (err.message || err) };
+            }
+        }
+
+</script>

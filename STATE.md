@@ -193,15 +193,15 @@ KA generator yang sengaja dihapus dicatat pada `jadwal.pengecualianGenerator` ag
 
 ## Sesi 26 Oktober 2026 — Menu Database KCI (perintah eksplisit Pemilik Proyek)
 
-**Perintah Pemilik Proyek (26 Okt 2026):** "build ulang ke aplikasi saya ke github, dia terhubung ke web saya https://traintrafficcontrol.site". Pilihan yang dikonfirmasi: (1) menu baru di TTC, (2) data live dari Google Sheet lewat Apps Script, (3) repo `TRAIN-TRAFFIC`.
+**Perintah Pemilik Proyek (26 Okt 2026):** "build ulang ke aplikasi saya ke github, dia terhubung ke web saya https://traintrafficcontrol.site". Pilihan yang dikonfirmasi: (1) menu baru di TTC, (2) data live dari Google Sheet lewat Apps Script, (3) repo `TRAIN-TRAFFIC`; kemudian Pemilik Proyek mengoreksi: **yang diubah adalah repo `TrainTrafficSimulator`**.
 
 **Catatan lingkup:** PROJECT.md §2 menyatakan integrasi data dan database server di luar lingkup. Pemilik Proyek memerintahkan secara eksplisit integrasi ini **khusus untuk menu Database KCI**. Data proyek TTC tetap lokal di browser. Keputusan TERKUNCI K1–K7 tidak berubah.
 
 | Butir | Keterangan |
 |---|---|
-| Yang dibuat | Menu **Database KCI** di sidebar TTC dan tombol pintas di Proyek Saya. Isinya aplikasi Apps Script "Database KCI - COTP" (dashboard, gangguan, sarana & prasarana, train control, arsip, user) yang tayang di `/database/`. |
-| Cara kerja | Tampilan asli Apps Script dipindahkan apa adanya. `database/gas-shim.js` meniru `google.script.run` dan mengirim POST ke `Api.gs` (doPost) di Apps Script. Fungsi server, login, dan izin tidak diubah. |
-| Berkas (repo TRAIN-TRAFFIC, cabang `database-kci`) | `database/`, `database-kci/src/`, `apps-script/Api.gs`, `tools/build-database-kci.mjs`, `js/ttc-database-kci.js`, `index.html` (menu + bagian view), `DATABASE-KCI.md`, `README.md`. |
-| Hasil uji AI | Diuji di browser otomatis dengan API tiruan: login, masuk dashboard, 18 fungsi server terpanggil lewat jembatan, dan pindah menu berjalan. Menu TTC lama (GAPEKA dll.) dan 3 uji otomatis repo tetap lulus. **Belum diuji ke Apps Script sungguhan**, karena Api.gs belum dipasang. |
+| Yang dibuat | Menu **Database KCI** di sidebar `app/index.html`. Isinya aplikasi Apps Script "Database KCI - COTP" (dashboard, gangguan, sarana & prasarana, train control, arsip, user) yang tayang di `app/database/`. |
+| Cara kerja | Tampilan asli Apps Script dipindahkan apa adanya. `app/database/gas-shim.js` meniru `google.script.run` dan mengirim POST ke `Api.gs` (doPost) di Apps Script. Fungsi server, login, dan izin tidak diubah. |
+| Berkas (repo TrainTrafficSimulator) | `app/database/` (index.html hasil build, gas-shim.js, config.js), `app/database-kci-menu.js`, `app/index.html` (menu + skrip), `database-kci/src/`, `apps-script/Api.gs`, `tools/build-database-kci.mjs`, `DATABASE-KCI.md`. Salinan versi untuk repo TRAIN-TRAFFIC juga sudah disiapkan di cabang `database-kci` repo itu. |
+| Hasil uji AI | Diuji di browser otomatis dengan API tiruan: login, masuk dashboard, 18 fungsi server terpanggil lewat jembatan, dan pindah menu berjalan. Di `app/`, menu Database KCI tampil, dan berpindah ke menu lain mengembalikan area kerja TTC tanpa galat. **Belum diuji ke Apps Script sungguhan**, karena Api.gs belum dipasang. |
 | Sisa pekerjaan Pemilik Proyek | (1) Pasang `Api.gs` di Apps Script dan terapkan versi baru. (2) Isi URL /exec di `database/config.js` atau di layar pengaturan. (3) Push cabang ke GitHub: sesi AI belum punya izin tulis karena Claude GitHub App belum terpasang. (4) Verifikasi langsung di traintrafficcontrol.site. |
 

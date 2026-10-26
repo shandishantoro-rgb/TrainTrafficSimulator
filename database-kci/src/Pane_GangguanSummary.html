@@ -1,0 +1,174 @@
+<!--
+  Pane_GangguanSummary.html
+  Pane/menu: Rekapitulasi Gangguan - Summary
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+
+  Perbaikan lanjutan:
+    - Filter Wilayah ditambahkan (default "Semua Wilayah" - grafik & kartu
+      merangkum SELURUH wilayah kerja; pilih satu wilayah untuk fokus ke
+      wilayah itu saja).
+    - Panel "Keseluruhan Detail Gangguan" dibatasi Top 5 (dulu Top 8), dan
+      ditambah panel baru di sebelahnya: Top 5 penyebab berdasarkan TOTAL
+      ANDIL (menit keterlambatan), bukan cuma jumlah kejadian - dua sudut
+      pandang berbeda, sama-sama penting.
+    - Export PPT sekarang membuat file .pptx SUNGGUHAN (lihat
+      exportSummaryToPPT() di Script_Gangguan.html + PptxGenJS di Index.html).
+-->
+            <section id="pane-gangguan-summary" class="hidden space-y-6 animate-fade-in">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div class="flex flex-col space-y-1">
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <div class="relative w-max">
+                                <select id="summary-category-filter" onchange="updateSummaryStats()" class="appearance-none bg-[#0c1d37] text-white font-extrabold pl-6 pr-12 py-2.5 rounded-xl text-xs tracking-wider border border-slate-900 focus:outline-none cursor-pointer uppercase shadow-md">
+                                    <option value="GANGGUAN_KESELURUHAN" selected>GANGGUAN KESELURUHAN</option>
+                                    <option value="GANGGUAN_INTERNAL">GANGGUAN INTERNAL</option>
+                                    <option value="GANGGUAN_EKSTERNAL">GANGGUAN EKSTERNAL</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-white">
+                                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                </div>
+                            </div>
+                            <div class="relative w-max">
+                                <select id="filter-summary-wilayah" onchange="updateSummaryStats()" class="appearance-none bg-white text-[#0c1d37] font-extrabold pl-4 pr-10 py-2.5 rounded-xl text-xs tracking-wider border border-slate-200 focus:outline-none cursor-pointer shadow-sm"></select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                </div>
+                            </div>
+                            <div class="relative w-max">
+                                <!--
+                                  Filter Unit Terkait (koreksi user). Diterapkan di
+                                  updateSummaryStats() bersama filter lain, jadi SELURUH
+                                  panel di halaman ini - kartu, tren, penyebab, pie, & Export
+                                  PPT - otomatis ikut tersaring dari kumpulan data yang sama.
+                                -->
+                                <select id="filter-summary-unit" onchange="updateSummaryStats()" class="appearance-none bg-white text-[#0c1d37] font-extrabold pl-4 pr-10 py-2.5 rounded-xl text-xs tracking-wider border border-slate-200 focus:outline-none cursor-pointer shadow-sm"></select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                </div>
+                            </div>
+                            <div class="relative w-max">
+                                <select id="filter-summary-tahun" onchange="updateSummaryStats()" class="appearance-none bg-white text-[#0c1d37] font-extrabold pl-4 pr-10 py-2.5 rounded-xl text-xs tracking-wider border border-slate-200 focus:outline-none cursor-pointer shadow-sm"></select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-xs font-bold text-slate-500 italic">Data diagram di bawah otomatis bersinergi dengan rincian gangguan</p>
+                    </div>
+                    <!--
+                      Dua tombol export (PPT & PDF) disatukan jadi SATU tombol
+                      berdropdown di pojok kanan - mengikuti pola yang sudah
+                      dipakai Rincian Gangguan & Rekap Gangguan Sarana, supaya
+                      ketiga submenu terasa satu bahasa. Sebelumnya keduanya
+                      berdiri sendiri & memakan lebar baris kepala halaman.
+                    -->
+                    <div class="relative shrink-0" id="summary-export-container">
+                        <button onclick="toggleSummaryExportDropdown()" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                            <span class="w-5 h-5 rounded-md bg-[#d4af37]/15 text-[#b8952b] flex items-center justify-center text-[10px] group-hover:bg-[#d4af37] group-hover:text-white transition"><i class="fa-solid fa-file-export"></i></span>
+                            <span>Export</span><i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
+                        </button>
+                        <div id="summary-export-menu" class="hidden absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 py-1.5 font-bold text-xs text-slate-700 animate-fade-in">
+                            <button onclick="exportSummaryToPPT()" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center space-x-2.5 text-[#0c1d37]">
+                                <i class="fa-solid fa-file-powerpoint text-orange-600 text-sm"></i><span>Export ke PowerPoint (.pptx)</span>
+                            </button>
+                            <button onclick="exportSummaryToPDF()" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center space-x-2.5 text-[#0c1d37]">
+                                <i class="fa-solid fa-file-pdf text-red-600 text-sm"></i><span>Cetak / Simpan PDF</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div onclick="goToRincianTotal_()" title="Klik untuk lihat semua di Rincian Gangguan" class="bg-[#107573] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card cursor-pointer hover:brightness-110 hover:-translate-y-0.5 transition">
+                        <h3 id="stat-total" class="text-4xl font-black tracking-tight">0</h3>
+                        <p id="stat-total-label" class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">TOTAL GANGGUAN</p>
+                        <p id="summary-stat-scope" class="text-[8px] font-bold text-teal-100 mt-0.5">(Semua Tahun)</p>
+                    </div>
+                    <div onclick="goToRincianByCardUnit_('stat-top1-lbl')" title="Klik untuk lihat di Rincian Gangguan" class="bg-[#0c1d37] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card cursor-pointer hover:brightness-125 hover:-translate-y-0.5 transition">
+                        <p class="text-[9px] font-bold uppercase tracking-widest text-slate-300 mb-1">Unit Tertinggi #1</p>
+                        <h3 id="stat-top1-val" class="text-4xl font-black tracking-tight">0</h3>
+                        <p id="stat-top1-lbl" class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">-</p>
+                    </div>
+                    <div onclick="goToRincianByCardUnit_('stat-top2-lbl')" title="Klik untuk lihat di Rincian Gangguan" class="bg-[#7030a0] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card cursor-pointer hover:brightness-110 hover:-translate-y-0.5 transition">
+                        <p class="text-[9px] font-bold uppercase tracking-widest text-purple-200 mb-1">Unit Tertinggi #2</p>
+                        <h3 id="stat-top2-val" class="text-4xl font-black tracking-tight">0</h3>
+                        <p id="stat-top2-lbl" class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">-</p>
+                    </div>
+                    <div onclick="goToRincianByCardUnit_('stat-top3-lbl')" title="Klik untuk lihat di Rincian Gangguan" class="bg-[#b91535] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card cursor-pointer hover:brightness-110 hover:-translate-y-0.5 transition">
+                        <p class="text-[9px] font-bold uppercase tracking-widest text-rose-200 mb-1">Unit Tertinggi #3</p>
+                        <h3 id="stat-top3-val" class="text-4xl font-black tracking-tight">0</h3>
+                        <p id="stat-top3-lbl" class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">-</p>
+                    </div>
+                    <div title="Gabungan sisa unit di luar Top 3 - lihat detail per unit lewat kartu Top 1-3 di atas" class="bg-gradient-to-br from-[#475569] to-[#64748b] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card">
+                        <p class="text-[9px] font-bold uppercase tracking-widest text-slate-300 mb-1">Unit Lainnya</p>
+                        <h3 id="stat-lainnya-val" class="text-4xl font-black tracking-tight">0</h3>
+                        <p id="stat-lainnya-lbl" class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">-</p>
+                    </div>
+                    <div onclick="goToRincianByCardDominan_()" title="Klik untuk lihat di Rincian Gangguan" class="bg-[#d4af37] p-5 rounded-2xl text-white shadow-sm flex flex-col items-center justify-center min-h-[120px] stat-card cursor-pointer hover:brightness-110 hover:-translate-y-0.5 transition">
+                        <h3 id="stat-dominan" class="text-xl font-black tracking-tight text-center leading-tight truncate w-full font-mono">-</h3>
+                        <p class="text-[9px] font-black uppercase tracking-wider mt-2 text-center">PENYEBAB DOMINAN</p>
+                    </div>
+                </div>
+
+                <!--
+                  Tren Bulanan & Proporsi diletakkan BERDAMPINGAN (permintaan
+                  user): keduanya membaca kumpulan data yang sama, jadi lebih
+                  mudah dibaca kalau bersebelahan - tren menjawab "kapan",
+                  donut menjawab "siapa/apa". Di layar sempit otomatis menumpuk.
+                  Lebar 2:1 supaya grafik batang bulanan tetap lapang.
+                -->
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+                <div class="xl:col-span-2 bg-white p-7 rounded-2xl border border-slate-200 shadow-sm">
+                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider mb-8">Tren Bulanan (Kategori &amp; Wilayah Terpilih)</h4>
+                    <div class="relative h-80 border-b border-slate-200 pb-2">
+                        <div class="absolute inset-x-0 top-0 border-t border-dashed border-slate-100 h-0"></div>
+                        <div class="absolute inset-x-0 top-1/4 border-t border-dashed border-slate-100 h-0"></div>
+                        <div class="absolute inset-x-0 top-2/4 border-t border-dashed border-slate-100 h-0"></div>
+                        <div class="absolute inset-x-0 top-3/4 border-t border-dashed border-slate-100 h-0"></div>
+                        <div id="trend-chart-container" class="absolute inset-0 flex items-end justify-between px-6 z-10"></div>
+                    </div>
+                    <div class="mt-5 flex flex-col space-y-4">
+                        <div class="flex justify-center items-center flex-wrap gap-x-6 gap-y-2 text-[11px] font-black text-slate-500">
+                            <span class="flex items-center"><span class="w-3.5 h-3.5 bg-[#107573] rounded-sm mr-2 block"></span><span id="trend-legend-a">-</span></span>
+                            <span class="flex items-center"><span class="w-3.5 h-3.5 bg-[#7030a0] rounded-sm mr-2 block"></span><span id="trend-legend-b">-</span></span>
+                            <span class="flex items-center"><span class="w-3.5 h-3.5 bg-[#9bbb59] rounded-sm mr-2 block"></span>Lainnya</span>
+                        </div>
+                        <div id="area-summary-banner" class="w-full bg-[#e5f3f2] border border-[#bcdad6] p-3.5 rounded-xl text-center text-xs font-black text-[#0e5a59] tracking-wide uppercase">
+                            Per Wilayah: -
+                        </div>
+                    </div>
+                </div>
+
+                <!--
+                  Donut persentase. Sumbunya berpindah sendiri mengikuti filter
+                  Unit Terkait: "Semua" -> proporsi antar unit; satu unit dipilih
+                  -> proporsi penyebab DI DALAM unit itu. Hitungannya sama dengan
+                  kartu & panel lain, jadi angkanya tidak mungkin berbeda.
+                -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="mb-4">
+                        <h4 id="summary-pie-title" class="font-extrabold text-slate-800 text-sm tracking-tight uppercase leading-snug">Proporsi Kejadian per Unit Terkait</h4>
+                        <p id="summary-pie-subtitle" class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Persentase jumlah kejadian per unit terkait</p>
+                    </div>
+                    <div id="summary-pie-container"></div>
+                </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                        <div class="mb-5">
+                            <h4 id="breakdown-chart-title" class="font-extrabold text-slate-800 text-sm tracking-tight uppercase">Penyebab Paling Berdampak</h4>
+                            <p id="breakdown-chart-subtitle" class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Top 5 penyebab - berdasarkan jumlah kejadian</p>
+                        </div>
+                        <div id="sarana-bars-container" class="space-y-5 flex-1 flex flex-col justify-center py-2"></div>
+                    </div>
+                    <div class="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                        <div class="mb-5">
+                            <h4 class="font-extrabold text-slate-800 text-sm tracking-tight uppercase">Penyebab dengan Andil Tertinggi</h4>
+                            <p class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Top 5 penyebab - berdasarkan total andil (menit)</p>
+                        </div>
+                        <div id="andil-bars-container" class="space-y-5 flex-1 flex flex-col justify-center py-2"></div>
+                    </div>
+                </div>
+            </section>

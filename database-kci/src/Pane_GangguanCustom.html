@@ -1,0 +1,240 @@
+<!--
+  Pane_GangguanCustom.html
+  Pane/menu: Rekapitulasi Gangguan - REKAP GANGGUAN SARANA
+  (menggantikan "Custom Parameter", 25 Agustus 2026)
+
+  CATATAN PENTING soal nama berkas & id:
+  nama berkas, id section (pane-gangguan-custom), dan id menu
+  ('gangguan-custom') SENGAJA TIDAK diubah walau isinya sudah berganti
+  total. Alasannya: id menu itu dipakai sebagai kunci di sheet
+  Role_Menu_Access. Kalau id-nya diganti, seluruh baris izin yang sudah
+  tersimpan untuk menu ini jadi tidak dikenali & semua role kehilangan
+  aksesnya sampai diseed ulang. Yang berubah hanya label yang dilihat
+  user (di Sidebar.html & judul halaman di SharedScripts.html).
+
+  Pengelola Custom Parameter yang dulu ada di sini TIDAK hilang - dipindah
+  jadi modal "Kelola Parameter" yang dibuka dari menu Rincian Gangguan
+  (lihat Modals_Gangguan.html).
+
+  SUMBER DATA: menu ini tidak menyimpan ulang data gangguan. Barisnya
+  diambil dari Rincian Gangguan yang sama, disaring yang terkait SARANA,
+  lalu ditambahi lima kolom khusus (Jenis Sarana, Stamformasi, Komponen,
+  ID Gangguan, ID Sarana) yang disimpan terpisah di sheet GangguanSarana.
+
+  CATATAN: kolom "ID Sarana" tersimpan di sheet dengan nama field
+  "ketSarana" - nama lamanya sebelum diganti label. Nama field sengaja
+  TIDAK ikut diubah supaya data yang sudah terlanjur diisi tidak perlu
+  dipindahkan; yang berganti hanya label yang dilihat user.
+
+  File ini BERDIRI SENDIRI: perubahan tampilan di sini tidak memengaruhi
+  pane/menu lain.
+-->
+            <section id="pane-gangguan-custom" class="hidden space-y-6 animate-fade-in">
+
+                <!-- KARTU RINGKASAN - selalu mengikuti filter yang aktif -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
+                    <div class="relative overflow-hidden bg-gradient-to-br from-[#0c1d37] to-[#173a68] p-5 rounded-2xl shadow-lg shadow-slate-900/10 flex items-center gap-4">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-7xl text-white"><i class="fa-solid fa-train"></i></div>
+                        <div class="w-12 h-12 rounded-xl bg-white/10 text-white flex items-center justify-center text-lg shrink-0 border border-white/10">
+                            <i class="fa-solid fa-train"></i>
+                        </div>
+                        <div class="relative">
+                            <div class="text-[10px] font-extrabold text-slate-300 uppercase tracking-wider">Gangguan Sarana</div>
+                            <div class="text-2xl font-black text-white leading-tight" id="sarana-stat-total">0</div>
+                            <div class="text-[9px] font-bold text-slate-400 mt-0.5" id="sarana-stat-scope">(Semua Tahun)</div>
+                        </div>
+                    </div>
+                    <div class="relative overflow-hidden bg-gradient-to-br from-[#8a6d1f] to-[#d4af37] p-5 rounded-2xl shadow-lg shadow-amber-900/10 flex items-center gap-4">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-7xl text-white"><i class="fa-solid fa-stopwatch"></i></div>
+                        <div class="w-12 h-12 rounded-xl bg-white/15 text-white flex items-center justify-center text-lg shrink-0 border border-white/10">
+                            <i class="fa-solid fa-stopwatch"></i>
+                        </div>
+                        <div class="relative">
+                            <div class="text-[10px] font-extrabold text-amber-50 uppercase tracking-wider">Total Andil</div>
+                            <div class="text-2xl font-black text-white leading-tight"><span id="sarana-stat-andil">0</span> <span class="text-xs font-bold text-amber-100">mnt</span></div>
+                        </div>
+                    </div>
+                    <div class="relative overflow-hidden bg-gradient-to-br from-[#0f3d3a] to-[#107573] p-5 rounded-2xl shadow-lg shadow-teal-900/10 flex items-center gap-4">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-7xl text-white"><i class="fa-solid fa-ban"></i></div>
+                        <div class="w-12 h-12 rounded-xl bg-white/15 text-white flex items-center justify-center text-lg shrink-0 border border-white/10">
+                            <i class="fa-solid fa-ban"></i>
+                        </div>
+                        <div class="relative">
+                            <div class="text-[10px] font-extrabold text-teal-100 uppercase tracking-wider">Total KA Batal</div>
+                            <div class="text-2xl font-black text-white leading-tight" id="sarana-stat-kabatal">0</div>
+                            <div class="text-[9px] font-bold text-teal-100 mt-0.5">Sesuai Rincian Gangguan</div>
+                        </div>
+                    </div>
+                    <div class="relative overflow-hidden bg-gradient-to-br from-[#9f1239] to-[#e11d48] p-5 rounded-2xl shadow-lg shadow-rose-900/10 flex items-center gap-4">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-7xl text-white"><i class="fa-solid fa-fingerprint"></i></div>
+                        <div class="w-12 h-12 rounded-xl bg-white/15 text-white flex items-center justify-center text-lg shrink-0 border border-white/10">
+                            <i class="fa-solid fa-fingerprint"></i>
+                        </div>
+                        <div class="relative">
+                            <div class="text-[10px] font-extrabold text-rose-100 uppercase tracking-wider">ID Gangguan Dominan</div>
+                            <div class="text-2xl font-black text-white leading-tight font-mono" id="sarana-stat-iddominan">-</div>
+                            <div class="text-[9px] font-bold text-rose-100 mt-0.5" id="sarana-stat-iddominan-sub">Belum ada data</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-md shadow-slate-200/50">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div>
+                            <div class="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-[#107573] uppercase tracking-wider bg-[#e5f3f2] px-2.5 py-1 rounded-md mb-2">
+                                <i class="fa-solid fa-train-subway"></i><span>Rekapitulasi Gangguan</span>
+                            </div>
+                            <h3 class="text-base font-black text-[#0c1d37] tracking-tight">Rekap Gangguan Sarana</h3>
+                            <p class="text-xs text-slate-400 font-semibold mt-1">Diambil dari Rincian Gangguan yang terkait Sarana, dilengkapi data teknis sarana</p>
+                        </div>
+                        <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
+                            <div class="relative" id="sarana-export-container">
+                                <button onclick="toggleSaranaExportDropdown()" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                    <span class="w-5 h-5 rounded-md bg-[#d4af37]/15 text-[#b8952b] flex items-center justify-center text-[10px] group-hover:bg-[#d4af37] group-hover:text-white transition"><i class="fa-solid fa-file-export"></i></span>
+                                    <span>Export</span><i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
+                                </button>
+                                <div id="sarana-export-menu" class="hidden absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 py-1.5 font-bold text-xs text-slate-700 animate-fade-in">
+                                    <button onclick="exportSaranaToExcel()" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center space-x-2.5 text-[#0c1d37]">
+                                        <i class="fa-solid fa-file-excel text-emerald-600 text-sm"></i><span>Export ke Excel (.xlsx)</span>
+                                    </button>
+                                    <button onclick="exportSaranaToPPT()" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center space-x-2.5 text-[#0c1d37]">
+                                        <i class="fa-solid fa-file-powerpoint text-orange-600 text-sm"></i><span>Export ke PowerPoint (.pptx)</span>
+                                    </button>
+                                    <button onclick="exportSaranaToPDF()" class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center space-x-2.5 text-[#0c1d37]">
+                                        <i class="fa-solid fa-file-pdf text-red-600 text-sm"></i><span>Cetak / Simpan PDF</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button onclick="loadRekapSarana(true)" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                <span class="w-5 h-5 rounded-md bg-[#107573]/10 text-[#107573] flex items-center justify-center text-[10px] group-hover:bg-[#107573] group-hover:text-white transition"><i class="fa-solid fa-rotate"></i></span>
+                                <span>Muat Ulang</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- filters -->
+                    <div class="mb-6 p-5 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <i class="fa-solid fa-filter text-amber-500"></i><span>Filter Data</span>
+                            </h4>
+                            <div class="flex items-center gap-3">
+                                <!--
+                                  Kelola Parameter khusus menu ini: Jenis Sarana,
+                                  ID Gangguan, & Stamformasi. Ditaruh di sebelah
+                                  Reset Filter karena itulah yang diatur - isi
+                                  dropdown yang dipakai filter & form di menu ini.
+                                -->
+                                <button id="btn-kelola-param-sarana" onclick="openSaranaParamModal()" class="text-[10px] font-bold text-slate-400 hover:text-[#0c1d37] transition flex items-center gap-1">
+                                    <i class="fa-solid fa-sliders"></i><span>Kelola Parameter</span>
+                                </button>
+                                <span class="text-slate-200">|</span>
+                                <button onclick="resetSaranaFilters()" class="text-[10px] font-bold text-slate-400 hover:text-red-600 transition flex items-center gap-1">
+                                    <i class="fa-solid fa-rotate-left"></i><span>Reset Filter</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                            <div class="col-span-2">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Periode</label>
+                                <div class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-2 shadow-sm">
+                                    <i class="fa-regular fa-calendar-days text-slate-400 text-xs shrink-0"></i>
+                                    <input type="date" id="filter-sarana-tgl-mulai" onchange="applySaranaFilters()" class="w-full bg-transparent text-[11px] font-bold text-slate-700 outline-none cursor-pointer" />
+                                    <span class="text-slate-300 text-[10px] shrink-0">s/d</span>
+                                    <input type="date" id="filter-sarana-tgl-akhir" onchange="applySaranaFilters()" class="w-full bg-transparent text-[11px] font-bold text-slate-700 outline-none cursor-pointer" />
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Tahun</label>
+                                <select id="filter-sarana-tahun" onchange="applySaranaFilters()" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-amber-500 shadow-sm"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Jenis Sarana</label>
+                                <select id="filter-sarana-jenis" onchange="applySaranaFilters()" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-amber-500 shadow-sm"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Komponen</label>
+                                <select id="filter-sarana-komponen" onchange="applySaranaFilters()" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-amber-500 shadow-sm"></select>
+                            </div>
+                            <div>
+                                <!--
+                                  Filter ID Gangguan (menggantikan filter "Kelengkapan").
+                                  Pilihannya dari daftar tetap SARANA_ID_GANGGUAN_OPTIONS di
+                                  Script_Gangguan.html - bukan dari data - supaya seluruh kode
+                                  selalu tersedia walau salah satunya belum pernah dipakai.
+                                -->
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">ID Gangguan</label>
+                                <select id="filter-sarana-idgangguan" onchange="applySaranaFilters()" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none cursor-pointer focus:ring-1 focus:ring-amber-500 shadow-sm"></select>
+                            </div>
+                        </div>
+                        <div class="relative mt-3">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="search-sarana-input" oninput="debounceApplySaranaFilters_()" placeholder="Cari judul, lokasi, no KA, stamformasi, komponen, ID gangguan, atau ID sarana..." class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500 shadow-sm" />
+                        </div>
+                    </div>
+
+                    <!--
+                      DIAGRAM PARETO - batang jumlah kejadian + garis kumulatif.
+                      Menjawab pertanyaan yang tidak terjawab tabel: sedikit
+                      kategori mana yang menyumbang sebagian besar gangguan.
+                      Keduanya mengikuti filter yang sedang aktif.
+                    -->
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
+                        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                            <div class="flex items-center gap-2 mb-4">
+                                <span class="w-8 h-8 rounded-lg bg-[#107573]/10 text-[#107573] flex items-center justify-center text-xs shrink-0">
+                                    <i class="fa-solid fa-chart-column"></i>
+                                </span>
+                                <div>
+                                    <h4 class="text-xs font-black text-[#0c1d37] tracking-tight uppercase">Pareto Gangguan per Jenis Sarana</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold">Armada mana yang paling sering bermasalah</p>
+                                </div>
+                            </div>
+                            <div id="pareto-jenis-sarana"></div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                            <div class="flex items-center gap-2 mb-4">
+                                <span class="w-8 h-8 rounded-lg bg-[#d4af37]/15 text-[#b8952b] flex items-center justify-center text-xs shrink-0">
+                                    <i class="fa-solid fa-screwdriver-wrench"></i>
+                                </span>
+                                <div>
+                                    <h4 class="text-xs font-black text-[#0c1d37] tracking-tight uppercase">Pareto Komponen Dominan</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold">Komponen mana yang paling sering jadi penyebab</p>
+                                </div>
+                            </div>
+                            <div id="pareto-komponen"></div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto border border-slate-300 rounded-2xl custom-scrollbar shadow-inner">
+                        <!-- min-width WAJIB >= jumlah seluruh lebar kolom di bawah (1640px).
+                             Sebelumnya tertulis 1500px padahal jumlah kolomnya 1604px, sehingga
+                             table-fixed menyusutkan SEMUA kolom 6,5% - kolom TANGGAL tinggal 88px
+                             & "Jum, 12 Sep 2026" terpotong jadi "Jum," saja. -->
+                        <table class="w-full text-[11px] font-bold text-slate-700 border-collapse table-fixed" style="min-width:1640px">
+                            <thead class="bg-gradient-to-r from-[#132d1f] via-[#1b4332] to-[#132d1f] text-white text-center font-extrabold uppercase tracking-wider divide-x divide-emerald-800">
+                                <tr>
+                                    <th class="px-2 py-3.5 w-9">NO</th>
+                                    <th class="px-2 py-3.5 w-32">TANGGAL</th>
+                                    <th class="px-3 py-3.5 w-52">JUDUL</th>
+                                    <th class="px-2 py-3.5 w-20">NO KA</th>
+                                    <th class="px-3 py-3.5 w-44">LOKASI</th>
+                                    <!-- 6 kolom tambahan khusus menu ini -->
+                                    <th class="px-2 py-3.5 w-28 bg-[#0c1d37]">JENIS SARANA</th>
+                                    <th class="px-2 py-3.5 w-28 bg-[#0c1d37]">STAMFORMASI</th>
+                                    <th class="px-2 py-3.5 w-28 bg-[#0c1d37]">KOMPONEN</th>
+                                    <th class="px-2 py-3.5 w-28 bg-[#0c1d37]">ID GANGGUAN</th>
+                                    <th class="px-3 py-3.5 w-40 bg-[#0c1d37]">ID SARANA</th>
+                                    <th class="px-3 py-3.5 w-48 bg-[#0c1d37]">KOMENTAR</th>
+                                    <!-- KODE: nilainya dari Rincian Gangguan, bisa diubah lewat tombol Edit -->
+                                    <th class="px-1 py-3.5 w-14 bg-[#0c1d37]">KODE</th>
+                                    <th class="px-1 py-3.5 w-14">ANDIL</th>
+                                    <th class="px-1 py-3.5 w-20">AKSI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sarana-table-body" class="divide-y divide-slate-200 bg-white"></tbody>
+                        </table>
+                    </div>
+                    <div id="sarana-pagination"></div>
+                </div>
+            </section>

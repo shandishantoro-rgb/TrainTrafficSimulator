@@ -1,0 +1,34 @@
+<!--
+  Pane_KinopDb.html
+  Pane/menu: Kinerja Operasi - Database KA
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-kinop-db" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div>
+                            <h3 class="text-sm font-black text-[#0c1d37] tracking-tight">Database Armada &amp; Jadwal Rencana</h3>
+                            <p class="text-xs text-slate-400 font-semibold mt-1">Daftar sarana KRL aktif penopang grafik GAPEKA</p>
+                        </div>
+                        <button id="btn-add-kinop-db" onclick="openKinopDbAddModal()" class="bg-[#0c1d37] hover:bg-slate-800 text-white font-black text-xs px-6 py-2.5 rounded-xl flex items-center space-x-1.5 shadow uppercase tracking-wider transition">
+                            <i class="fa-solid fa-plus-circle"></i><span>Tambah Registrasi KA</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-200 rounded-2xl">
+                        <table class="w-full text-[11px] font-bold text-slate-700 border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 border-b border-slate-200 text-slate-500 uppercase tracking-wider">
+                                    <th class="px-4 py-3 w-12 text-center">NO</th>
+                                    <th class="px-5 py-3 text-left">KODE JADWAL (NO KA)</th>
+                                    <th class="px-5 py-3 text-left">SERI ARMADA</th>
+                                    <th class="px-5 py-3 text-center">FORMASI (SF)</th>
+                                    <th class="px-6 py-3 text-left">RUTE PERJALANAN (RELASI)</th>
+                                    <th class="px-5 py-3 text-center">STATUS LAYANAN</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kinop-db-table-body" class="divide-y divide-slate-200 bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>

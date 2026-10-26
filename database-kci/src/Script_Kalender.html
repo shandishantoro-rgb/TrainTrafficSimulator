@@ -1,0 +1,782 @@
+<script>
+        // ================================================================
+        // KALENDER KEGIATAN + PENGINGAT H-14 / H-7 / H-3
+        // (11 Oktober 2026)
+        // ================================================================
+        //
+        // Dipakai di Dashboard Utama. Tiga bagian:
+        //   1. Kalender bulanan dengan penanda kegiatan
+        //   2. Daftar agenda terdekat beserta hitung mundurnya
+        //   3. Pengingat yang muncul saat aplikasi dibuka
+        //
+        // Seluruh nama fungsi & variabel di berkas ini berawalan "kal"
+        // karena semua Script_*.html berbagi satu lingkup global - tanpa
+        // awalan, nama seperti "render" atau "buka" cepat bertabrakan
+        // dengan modul lain & gejalanya sangat sulit dilacak.
+
+        let kalData_ = null;            // seluruh kegiatan dari server
+        let kalKategori_ = [];          // daftar kategori dari server
+        let kalHariIni_ = '';           // yyyy-MM-dd menurut zona waktu skrip
+        let kalPetaTanggal_ = {};       // 'yyyy-MM-dd' -> [kegiatan]
+        let kalBulan_ = null;           // {t: tahun, b: bulan 0-11}
+        let kalPilih_ = '';             // tanggal yang sedang disorot
+        let kalIngatTampil_ = [];       // yang sedang ditampilkan di modal pengingat
+
+        const KAL_NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const KAL_BULAN_PENDEK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+            'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        const KAL_HARI_PENDEK = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+        /**
+         * Warna per kategori. Dipakai untuk titik di kalender & pita di
+         * kartu agenda, sehingga satu warna berarti hal yang sama di kedua
+         * tempat - itulah gunanya dikumpulkan di satu peta, bukan ditulis
+         * berulang di tiap penggambar.
+         */
+        const KAL_WARNA = {
+            'Konser':          { titik: 'bg-violet-500',  pita: 'bg-violet-500',  lencana: 'bg-violet-50 text-violet-700 border-violet-200' },
+            'Olahraga':        { titik: 'bg-emerald-500', pita: 'bg-emerald-500', lencana: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+            'Libur Nasional':  { titik: 'bg-rose-500',    pita: 'bg-rose-500',    lencana: 'bg-rose-50 text-rose-700 border-rose-200' },
+            'Pekerjaan Jalur': { titik: 'bg-amber-500',   pita: 'bg-amber-500',   lencana: 'bg-amber-50 text-amber-700 border-amber-200' },
+            'Kunjungan':       { titik: 'bg-sky-500',     pita: 'bg-sky-500',     lencana: 'bg-sky-50 text-sky-700 border-sky-200' },
+            'Lainnya':         { titik: 'bg-slate-400',   pita: 'bg-slate-400',   lencana: 'bg-slate-100 text-slate-600 border-slate-200' }
+        };
+        function kalWarna_(kategori) { return KAL_WARNA[kategori] || KAL_WARNA['Lainnya']; }
+
+
+        // ─── PEMBANTU TANGGAL ───────────────────────────────────────────
+        // Semua memakai Date.UTC & teks ISO, tidak pernah new Date(teks).
+        // new Date('2026-10-11') ditafsirkan sebagai tengah malam UTC, yang
+        // di WIB sudah jadi pukul 07.00 - dan di zona barat justru mundur
+        // satu hari. Selisih itu cukup membuat hitung mundur meleset.
+
+        function kalIso_(t, b, h) {
+            return t + '-' + String(b + 1).padStart(2, '0') + '-' + String(h).padStart(2, '0');
+        }
+        function kalUrai_(iso) {
+            const p = String(iso || '').split('-');
+            if (p.length < 3) return null;
+            return { t: Number(p[0]), b: Number(p[1]) - 1, h: Number(p[2]) };
+        }
+        function kalSelisih_(dari, sampai) {
+            const a = kalUrai_(dari), b = kalUrai_(sampai);
+            if (!a || !b) return NaN;
+            return Math.round((Date.UTC(b.t, b.b, b.h) - Date.UTC(a.t, a.b, a.h)) / 86400000);
+        }
+        function kalTambahHari_(iso, n) {
+            const a = kalUrai_(iso);
+            if (!a) return '';
+            const d = new Date(Date.UTC(a.t, a.b, a.h + n));
+            return kalIso_(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+        }
+        /** Nama hari dari tanggal ISO - lewat UTC supaya tidak bergeser. */
+        function kalNamaHari_(iso) {
+            const a = kalUrai_(iso);
+            if (!a) return '';
+            return KAL_HARI_PENDEK[new Date(Date.UTC(a.t, a.b, a.h)).getUTCDay()];
+        }
+        /** "11 Okt 2026" */
+        function kalTeksTanggal_(iso) {
+            const a = kalUrai_(iso);
+            if (!a) return '-';
+            return a.h + ' ' + KAL_BULAN_PENDEK[a.b] + ' ' + a.t;
+        }
+        /** "Sab, 11 Okt 2026" */
+        function kalTeksLengkap_(iso) {
+            const nh = kalNamaHari_(iso);
+            return (nh ? nh + ', ' : '') + kalTeksTanggal_(iso);
+        }
+        /** Rentang tanggal yang ringkas: "11-13 Okt 2026" bila sebulan. */
+        function kalTeksRentang_(mulai, selesai) {
+            if (!selesai || selesai === mulai) return kalTeksLengkap_(mulai);
+            const a = kalUrai_(mulai), b = kalUrai_(selesai);
+            if (!a || !b) return kalTeksLengkap_(mulai);
+            if (a.t === b.t && a.b === b.b) {
+                return a.h + '–' + b.h + ' ' + KAL_BULAN_PENDEK[a.b] + ' ' + a.t;
+            }
+            return kalTeksTanggal_(mulai) + ' – ' + kalTeksTanggal_(selesai);
+        }
+
+        /**
+         * Lencana hitung mundur. Satu fungsi untuk kalender, agenda, &
+         * pengingat - kalau dipisah, ketiganya pasti lambat laun berbeda
+         * istilah untuk keadaan yang sama.
+         * @return {{teks:string, kelas:string}}
+         */
+        function kalHitungMundur_(ev) {
+            if (ev.status === 'selesai') return { teks: 'Selesai', kelas: 'bg-slate-100 text-slate-400 border-slate-200' };
+            if (ev.status === 'berlangsung') {
+                return (ev.sisaHari === 0)
+                    ? { teks: 'HARI INI', kelas: 'bg-rose-600 text-white border-rose-600' }
+                    : { teks: 'Berlangsung', kelas: 'bg-rose-500 text-white border-rose-500' };
+            }
+            const s = ev.sisaHari;
+            if (s === 1) return { teks: 'BESOK', kelas: 'bg-rose-50 text-rose-700 border-rose-200' };
+            if (s <= 3) return { teks: 'H-' + s, kelas: 'bg-rose-50 text-rose-700 border-rose-200' };
+            if (s <= 7) return { teks: 'H-' + s, kelas: 'bg-amber-50 text-amber-700 border-amber-200' };
+            if (s <= 14) return { teks: 'H-' + s, kelas: 'bg-sky-50 text-sky-700 border-sky-200' };
+            return { teks: 'H-' + s, kelas: 'bg-slate-100 text-slate-500 border-slate-200' };
+        }
+
+        function kalBolehIsi_() { return (typeof canDo === 'function') ? canDo('dashboard', 'tambah') : false; }
+        function kalBolehUbah_() { return (typeof canDo === 'function') ? canDo('dashboard', 'edit') : false; }
+        function kalBolehHapus_() { return (typeof canDo === 'function') ? canDo('dashboard', 'hapus') : false; }
+
+
+        // ─── MEMUAT DATA ────────────────────────────────────────────────
+
+        function kalenderMuat_(paksa) {
+            const grid = document.getElementById('kal-grid');
+            if (!grid) return;                                   // pane belum ada
+            if (typeof canDo === 'function' && !canDo('dashboard', 'lihat')) return;
+            if (kalData_ && !paksa) { kalGambarSemua_(); return; }
+
+            grid.innerHTML = '<div class="col-span-7 py-8 text-center text-slate-400 font-bold text-[11px]">' +
+                '<i class="fa-solid fa-circle-notch fa-spin mr-2 text-[#d4af37]"></i>Memuat kalender...</div>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) {
+                        grid.innerHTML = '<div class="col-span-7 py-8 text-center text-rose-500 font-bold text-[11px]">Gagal memuat kalender.</div>';
+                        return;
+                    }
+                    kalData_ = res.data || [];
+                    kalHariIni_ = res.hariIni || '';
+                    kalKategori_ = res.kategori || ['Lainnya'];
+                    kalSusunPeta_();
+                    if (!kalBulan_) {
+                        const h = kalUrai_(kalHariIni_);
+                        kalBulan_ = h ? { t: h.t, b: h.b } : { t: new Date().getFullYear(), b: new Date().getMonth() };
+                    }
+                    kalGambarSemua_();
+                })
+                .withFailureHandler(function () {
+                    grid.innerHTML = '<div class="col-span-7 py-8 text-center text-rose-500 font-bold text-[11px]">Terjadi kesalahan saat memuat kalender.</div>';
+                })
+                .kalender_getAll(currentSessionToken);
+        }
+
+        /**
+         * Memetakan tiap TANGGAL ke kegiatan yang menyentuhnya.
+         *
+         * Kegiatan dua hari harus muncul di dua kotak kalender, bukan satu -
+         * jadi rentangnya dibentangkan. Dibatasi 400 hari sebagai pengaman:
+         * satu salah ketik tahun ("2026" jadi "2206") tanpa batas ini akan
+         * membuat perulangan berjalan puluhan ribu kali & layar membeku.
+         */
+        function kalSusunPeta_() {
+            kalPetaTanggal_ = {};
+            (kalData_ || []).forEach(function (ev) {
+                if (!ev.tanggal) return;
+                const rentang = kalSelisih_(ev.tanggal, ev.tanggalSelesai || ev.tanggal);
+                const n = (isNaN(rentang) || rentang < 0) ? 0 : Math.min(rentang, 400);
+                for (let i = 0; i <= n; i++) {
+                    const t = kalTambahHari_(ev.tanggal, i);
+                    if (!t) break;
+                    if (!kalPetaTanggal_[t]) kalPetaTanggal_[t] = [];
+                    kalPetaTanggal_[t].push(ev);
+                }
+            });
+        }
+
+        function kalGambarSemua_() {
+            // Tombol Tambah disembunyikan untuk role yang tidak boleh
+            // mengisi. Dikerjakan di sini, bukan di applyPermissionsToUI,
+            // karena tombol ini hidup bersama kalender - kalau suatu saat
+            // kalendernya dipindah, izinnya ikut pindah tanpa perlu ingat
+            // menyunting berkas lain.
+            const btn = document.getElementById('kal-btn-tambah');
+            if (btn) btn.classList.toggle('hidden', !kalBolehIsi_());
+
+            kalGambarKalender_();
+            kalGambarAgenda_();
+            kalGambarLonceng_();
+        }
+
+
+        // ─── KALENDER BULANAN ───────────────────────────────────────────
+
+        function kalGeserBulan_(arah) {
+            if (!kalBulan_) return;
+            let t = kalBulan_.t, b = kalBulan_.b + arah;
+            if (b < 0) { b = 11; t--; }
+            if (b > 11) { b = 0; t++; }
+            kalBulan_ = { t: t, b: b };
+            kalPilih_ = '';
+            kalGambarKalender_();
+            kalGambarAgenda_();
+        }
+
+        function kalKeBulanIni_() {
+            const h = kalUrai_(kalHariIni_);
+            if (!h) return;
+            kalBulan_ = { t: h.t, b: h.b };
+            kalPilih_ = '';
+            kalGambarKalender_();
+            kalGambarAgenda_();
+        }
+
+        function kalGambarKalender_() {
+            const grid = document.getElementById('kal-grid');
+            const judul = document.getElementById('kal-bulan-judul');
+            if (!grid || !kalBulan_) return;
+
+            if (judul) judul.textContent = KAL_NAMA_BULAN[kalBulan_.b] + ' ' + kalBulan_.t;
+
+            const t = kalBulan_.t, b = kalBulan_.b;
+            // Hari ke-0 bulan berikutnya = hari terakhir bulan ini. Cara ini
+            // benar sendiri untuk Februari kabisat tanpa perlu aturan khusus.
+            const jmlHari = new Date(Date.UTC(t, b + 1, 0)).getUTCDate();
+            const awal = new Date(Date.UTC(t, b, 1)).getUTCDay();   // 0 = Minggu
+            const jmlHariLalu = new Date(Date.UTC(t, b, 0)).getUTCDate();
+
+            let html = '';
+
+            // Sisa bulan lalu - diredupkan, tidak bisa diklik.
+            for (let i = awal - 1; i >= 0; i--) {
+                html += '<div class="h-8 flex items-center justify-center text-[11px] font-bold text-slate-300">' +
+                    (jmlHariLalu - i) + '</div>';
+            }
+
+            for (let h = 1; h <= jmlHari; h++) {
+                const iso = kalIso_(t, b, h);
+                const acara = kalPetaTanggal_[iso] || [];
+                const iniHariIni = (iso === kalHariIni_);
+                const terpilih = (iso === kalPilih_);
+
+                let kelas = 'relative h-8 flex items-center justify-center text-[11px] font-bold rounded-lg transition ';
+                if (terpilih) kelas += 'bg-[#d4af37] text-[#0c1d37] ring-2 ring-[#d4af37] ring-offset-1';
+                else if (iniHariIni) kelas += 'bg-[#0c1d37] text-white';
+                else if (acara.length) kelas += 'bg-slate-100 text-slate-800 hover:bg-slate-200 cursor-pointer';
+                else kelas += 'text-slate-600 hover:bg-slate-100 cursor-pointer';
+
+                // Maksimal tiga titik - lebih dari itu tidak terbaca pada
+                // kotak selebar 32px, jadi sisanya diwakili lebar titik ketiga.
+                let titik = '';
+                if (acara.length) {
+                    const warna = [];
+                    acara.slice(0, 3).forEach(function (ev) {
+                        if (warna.indexOf(kalWarna_(ev.kategori).titik) === -1) warna.push(kalWarna_(ev.kategori).titik);
+                    });
+                    titik = '<span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">' +
+                        warna.map(function (w) { return '<span class="w-1 h-1 rounded-full ' + w + '"></span>'; }).join('') +
+                        '</span>';
+                }
+
+                const judulSel = acara.length
+                    ? acara.map(function (e) { return e.judul; }).join(' · ')
+                    : kalTeksLengkap_(iso);
+
+                html += '<div onclick="kalPilihTanggal_(\'' + iso + '\')" title="' + escapeHtml(judulSel) + '" class="' + kelas + '">' +
+                    h + titik + '</div>';
+            }
+
+            // Awal bulan depan - genapkan sampai kelipatan 7 supaya barisnya
+            // tidak terpotong di tengah.
+            const terpakai = awal + jmlHari;
+            const sisa = (7 - (terpakai % 7)) % 7;
+            for (let i = 1; i <= sisa; i++) {
+                html += '<div class="h-8 flex items-center justify-center text-[11px] font-bold text-slate-300">' + i + '</div>';
+            }
+
+            grid.innerHTML = html;
+        }
+
+        function kalPilihTanggal_(iso) {
+            kalPilih_ = (kalPilih_ === iso) ? '' : iso;
+            kalGambarKalender_();
+            kalGambarAgenda_();
+        }
+
+
+        // ─── DAFTAR AGENDA ──────────────────────────────────────────────
+
+        /** Posisi kartu agenda yang sedang tampil. */
+        let kalAgendaIdx_ = 0;
+
+        /** Daftar yang sedang ditampilkan - dipakai tombol geser & sentuhan. */
+        let kalAgendaDaftar_ = [];
+
+        function kalGeserAgenda_(arah) {
+            if (!kalAgendaDaftar_.length) return;
+            // Berputar: dari yang terakhir, geser kanan kembali ke yang
+            // pertama. Tombol yang mati di ujung daftar terasa seperti rusak.
+            kalAgendaIdx_ = (kalAgendaIdx_ + arah + kalAgendaDaftar_.length) % kalAgendaDaftar_.length;
+            kalGambarKartuAgenda_();
+        }
+
+        function kalKeAgenda_(i) {
+            if (i < 0 || i >= kalAgendaDaftar_.length) return;
+            kalAgendaIdx_ = i;
+            kalGambarKartuAgenda_();
+        }
+
+        /**
+         * Geser jari pada layar sentuh. Dipasang sekali saja - pemasangan
+         * berulang menumpuk pendengar & satu geseran akan melompat beberapa
+         * kartu sekaligus.
+         */
+        function kalPasangSentuhAgenda_() {
+            const w = document.getElementById('kal-agenda');
+            if (!w || w.dataset.sentuhSiap === '1') return;
+            w.dataset.sentuhSiap = '1';
+            let x0 = null, y0 = null;
+            w.addEventListener('touchstart', function (e) {
+                if (!e.touches || !e.touches.length) return;
+                x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+            }, { passive: true });
+            w.addEventListener('touchend', function (e) {
+                if (x0 === null || !e.changedTouches || !e.changedTouches.length) return;
+                const dx = e.changedTouches[0].clientX - x0;
+                const dy = e.changedTouches[0].clientY - y0;
+                x0 = null;
+                // Gerakan tegak diabaikan - kalau tidak, menggulir halaman
+                // dengan jari di atas kartu ikut memindahkan kegiatan.
+                if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy)) return;
+                kalGeserAgenda_(dx < 0 ? 1 : -1);
+            }, { passive: true });
+        }
+
+        function kalGambarAgenda_() {
+            const wadah = document.getElementById('kal-agenda');
+            const tajuk = document.getElementById('kal-agenda-tajuk');
+            if (!wadah) return;
+
+            let daftar, judulBagian;
+
+            if (kalPilih_) {
+                // Satu tanggal disorot - tampilkan isinya saja.
+                daftar = (kalPetaTanggal_[kalPilih_] || []).slice();
+                judulBagian = kalTeksLengkap_(kalPilih_);
+            } else {
+                // Bawaan: yang belum lewat, terdekat lebih dulu. Kegiatan
+                // yang sudah selesai sengaja tidak ditampilkan di sini -
+                // kalender di atas tetap menyimpannya untuk ditelusuri.
+                daftar = (kalData_ || []).filter(function (e) { return e.status !== 'selesai'; });
+                judulBagian = 'Agenda Terdekat';
+            }
+
+            if (tajuk) {
+                tajuk.innerHTML = escapeHtml(judulBagian) +
+                    (kalPilih_ ? ' <button onclick="kalPilihTanggal_(\'' + kalPilih_ + '\')" class="ml-1.5 text-[9px] font-black text-[#e11d48] hover:underline">tampilkan semua</button>' : '');
+            }
+
+            kalAgendaDaftar_ = daftar;
+            // Posisi dikembalikan ke kartu pertama setiap daftarnya berganti
+            // isi - kalau tidak, memilih tanggal yang hanya berisi satu
+            // kegiatan bisa menampilkan layar kosong karena posisinya masih
+            // menunjuk kartu ke-5 dari daftar sebelumnya.
+            if (kalAgendaIdx_ >= daftar.length) kalAgendaIdx_ = 0;
+            kalPasangSentuhAgenda_();
+            kalGambarKartuAgenda_();
+        }
+
+        /** Menggambar SATU kartu agenda beserta penanda posisinya. */
+        function kalGambarKartuAgenda_() {
+            const wadah = document.getElementById('kal-agenda');
+            const nav = document.getElementById('kal-agenda-nav');
+            const posisi = document.getElementById('kal-agenda-posisi');
+            const titik = document.getElementById('kal-agenda-titik');
+            if (!wadah) return;
+
+            const daftar = kalAgendaDaftar_ || [];
+
+            if (!daftar.length) {
+                if (nav) nav.classList.add('hidden');
+                if (nav) nav.classList.remove('flex');
+                if (titik) titik.innerHTML = '';
+                wadah.innerHTML = '<div class="py-8 text-center">' +
+                    '<div class="w-10 h-10 rounded-full bg-slate-100 text-slate-300 flex items-center justify-center mx-auto mb-2"><i class="fa-regular fa-calendar text-sm"></i></div>' +
+                    '<p class="text-[11px] font-bold text-slate-400">' +
+                    (kalPilih_ ? 'Tidak ada kegiatan pada tanggal ini.' : 'Belum ada kegiatan terjadwal.') + '</p>' +
+                    (kalBolehIsi_() && !kalPilih_ ? '<button onclick="kalBukaForm_()" class="mt-2.5 text-[10px] font-black text-[#e11d48] hover:underline">Tambah kegiatan pertama</button>' : '') +
+                    '</div>';
+                return;
+            }
+
+            // Tombol geser & titik hanya muncul bila memang ada yang bisa
+            // digeser. Navigasi untuk satu kartu hanya menambah hiasan mati.
+            const banyak = daftar.length > 1;
+            if (nav) {
+                nav.classList.toggle('hidden', !banyak);
+                nav.classList.toggle('flex', banyak);
+            }
+            if (posisi) posisi.textContent = (kalAgendaIdx_ + 1) + '/' + daftar.length;
+
+            if (titik) {
+                titik.innerHTML = !banyak ? '' : daftar.map(function (ev, i) {
+                    const aktif = i === kalAgendaIdx_;
+                    return '<button onclick="kalKeAgenda_(' + i + ')" title="' + escapeHtml(ev.judul) + '" ' +
+                        'class="rounded-full transition ' +
+                        (aktif ? 'w-4 h-1.5 bg-[#0c1d37]' : 'w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400') + '"></button>';
+                }).join('');
+            }
+
+            const bolehUbah = kalBolehUbah_(), bolehHapus = kalBolehHapus_();
+
+            wadah.innerHTML = [daftar[kalAgendaIdx_]].map(function (ev) {
+                const w = kalWarna_(ev.kategori);
+                const hm = kalHitungMundur_(ev);
+                const a = kalUrai_(ev.tanggal) || { h: '-', b: 0 };
+
+                // KOLOM AKSI - selalu terlihat, tidak lagi muncul hanya saat
+                // kursor lewat. Tombol yang bersembunyi di balik hover tidak
+                // pernah ditemukan pengguna yang memakai layar sentuh, &
+                // bahkan di komputer orang harus menebak dulu bahwa ada
+                // sesuatu di sana.
+                const tombol =
+                    (bolehUbah ? '<button onclick="event.stopPropagation();kalBukaForm_(\'' + ev.id + '\')" title="Ubah kegiatan" aria-label="Ubah kegiatan" class="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-[#d4af37] hover:border-[#d4af37] hover:text-[#0c1d37] text-slate-500 flex items-center justify-center transition"><i class="fa-regular fa-pen-to-square text-[11px]"></i></button>' : '') +
+                    (bolehHapus ? '<button onclick="event.stopPropagation();kalHapus_(\'' + ev.id + '\')" title="Hapus kegiatan" aria-label="Hapus kegiatan" class="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-rose-600 hover:border-rose-600 hover:text-white text-slate-500 flex items-center justify-center transition"><i class="fa-regular fa-trash-can text-[11px]"></i></button>' : '');
+
+                return '<div class="relative flex gap-3 items-start p-3 pl-4 bg-white rounded-xl border border-slate-200 hover:border-[#0c1d37]/30 hover:shadow-sm transition">' +
+                    '<span class="absolute left-0 top-3 bottom-3 w-1 rounded-r ' + w.pita + '"></span>' +
+
+                    '<div class="flex flex-col items-center justify-center w-11 h-11 rounded-lg bg-slate-50 border border-slate-100 shrink-0">' +
+                        '<span class="text-[9px] uppercase font-black text-slate-400 leading-none">' + KAL_BULAN_PENDEK[a.b] + '</span>' +
+                        '<span class="text-base font-black text-[#0c1d37] leading-none mt-0.5">' + a.h + '</span>' +
+                    '</div>' +
+
+                    '<div class="flex-1 min-w-0">' +
+                        '<div class="flex items-start justify-between gap-2">' +
+                            '<p class="text-[12px] font-black text-slate-800 leading-tight break-words">' + escapeHtml(ev.judul) + '</p>' +
+                            '<span class="shrink-0 px-1.5 py-0.5 rounded border text-[9px] font-black ' + hm.kelas + '">' + hm.teks + '</span>' +
+                        '</div>' +
+                        (ev.lokasi ? '<p class="text-[10px] text-slate-500 font-bold mt-0.5 break-words"><i class="fa-solid fa-location-dot text-[8px] mr-1 opacity-50"></i>' + escapeHtml(ev.lokasi) + '</p>' : '') +
+                        '<p class="text-[10px] text-slate-400 font-bold mt-0.5">' + escapeHtml(kalTeksRentang_(ev.tanggal, ev.tanggalSelesai)) + '</p>' +
+                        (ev.catatan ? '<p class="text-[10px] text-slate-500 font-medium mt-1.5 leading-relaxed break-words">' + escapeHtml(ev.catatan) + '</p>' : '') +
+                        // Baris kaki: kategori di kiri, kolom aksi di kanan.
+                        // Diberi garis pemisah tipis hanya bila ada tombol,
+                        // supaya kartu tanpa hak ubah tidak punya garis yang
+                        // tidak memisahkan apa-apa.
+                        '<div class="flex items-center justify-between gap-2 mt-2' + (tombol ? ' pt-2 border-t border-slate-100' : ' ') + '">' +
+                            '<span class="px-1.5 py-0.5 rounded border text-[9px] font-black ' + w.lencana + '">' + escapeHtml(ev.kategori) + '</span>' +
+                            (tombol ? '<div class="flex items-center gap-1.5 shrink-0">' + tombol + '</div>' : '') +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        /** Angka kecil di lonceng - berapa kegiatan dalam 14 hari ke depan. */
+        function kalGambarLonceng_() {
+            const el = document.getElementById('kal-lonceng');
+            if (!el) return;
+            const n = (kalData_ || []).filter(function (e) {
+                return e.status === 'berlangsung' || (e.status === 'mendatang' && e.tahap);
+            }).length;
+            if (!n) { el.classList.add('hidden'); return; }
+            el.classList.remove('hidden');
+            el.textContent = n;
+        }
+
+
+        // ─── FORM TAMBAH / UBAH ─────────────────────────────────────────
+
+        function kalBukaForm_(id) {
+            if (!kalBolehIsi_() && !id) { showToast('Anda tidak punya izin menambah kegiatan.'); return; }
+            if (id && !kalBolehUbah_()) { showToast('Anda tidak punya izin mengubah kegiatan.'); return; }
+
+            const ev = id ? (kalData_ || []).find(function (x) { return x.id === id; }) : null;
+            if (id && !ev) { showToast('Kegiatan tidak ditemukan - coba muat ulang.'); return; }
+
+            // Daftar kategori diisi ulang tiap kali dibuka: kalau nilai
+            // tersimpan tidak ada di daftar baku (mis. data lama), ia
+            // ditambahkan di depan supaya TIDAK diam-diam berganti ke
+            // pilihan pertama saat disimpan ulang.
+            const sel = document.getElementById('kal-f-kategori');
+            if (sel) {
+                let pilihan = (kalKategori_ || []).slice();
+                if (ev && ev.kategori && pilihan.indexOf(ev.kategori) === -1) pilihan.unshift(ev.kategori);
+                sel.innerHTML = pilihan.map(function (k) {
+                    return '<option value="' + escapeHtml(k) + '"' + ((ev && ev.kategori === k) ? ' selected' : '') + '>' + escapeHtml(k) + '</option>';
+                }).join('');
+            }
+
+            const isi = function (elId, nilai) { const e = document.getElementById(elId); if (e) e.value = nilai || ''; };
+            isi('kal-f-id', ev ? ev.id : '');
+            isi('kal-f-judul', ev ? ev.judul : '');
+            isi('kal-f-lokasi', ev ? ev.lokasi : '');
+            // Tanggal bawaan mengikuti kotak yang sedang disorot - menambah
+            // kegiatan setelah mengklik sebuah tanggal hampir selalu berarti
+            // kegiatan pada tanggal itu.
+            isi('kal-f-mulai', ev ? ev.tanggal : (kalPilih_ || kalHariIni_));
+            isi('kal-f-selesai', (ev && ev.tanggalSelesai && ev.tanggalSelesai !== ev.tanggal) ? ev.tanggalSelesai : '');
+            isi('kal-f-catatan', ev ? ev.catatan : '');
+
+            const judul = document.getElementById('kal-form-judul');
+            if (judul) judul.textContent = ev ? 'Ubah Kegiatan' : 'Tambah Kegiatan';
+            const galat = document.getElementById('kal-f-galat');
+            if (galat) galat.classList.add('hidden');
+
+            kalSelarasTanggal_();
+            document.getElementById('modal-kalender-form').classList.remove('hidden');
+            const fj = document.getElementById('kal-f-judul');
+            if (fj) setTimeout(function () { fj.focus(); }, 60);
+        }
+
+        function kalTutupForm_() {
+            const m = document.getElementById('modal-kalender-form');
+            if (m) m.classList.add('hidden');
+        }
+
+        /**
+         * Menjaga tanggal selesai tidak mendahului tanggal mulai, sekaligus
+         * memperlihatkan kapan pengingatnya nanti muncul.
+         *
+         * Pratinjau ini bukan hiasan: tanpa itu, orang baru tahu pengingatnya
+         * meleset setelah hari H lewat - saat sudah tidak ada gunanya.
+         */
+        function kalSelarasTanggal_() {
+            const mulai = (document.getElementById('kal-f-mulai') || {}).value || '';
+            const elSelesai = document.getElementById('kal-f-selesai');
+            if (elSelesai) {
+                elSelesai.min = mulai || '';
+                if (elSelesai.value && mulai && elSelesai.value < mulai) elSelesai.value = mulai;
+            }
+
+            const kotak = document.getElementById('kal-f-pratinjau');
+            const teks = document.getElementById('kal-f-pratinjau-isi');
+            if (!kotak || !teks) return;
+
+            if (!mulai || !kalHariIni_) { kotak.classList.add('hidden'); return; }
+            const sisa = kalSelisih_(kalHariIni_, mulai);
+            if (isNaN(sisa)) { kotak.classList.add('hidden'); return; }
+
+            kotak.classList.remove('hidden');
+            if (sisa < 0) {
+                teks.innerHTML = '<span class="text-slate-400">Tanggal sudah lewat — tidak ada pengingat yang akan muncul.</span>';
+                return;
+            }
+
+            const baris = [14, 7, 3].filter(function (n) { return sisa >= n; }).map(function (n) {
+                return '<span class="inline-block mr-3">H-' + n + ' · <b>' + escapeHtml(kalTeksTanggal_(kalTambahHari_(mulai, -n))) + '</b></span>';
+            });
+
+            if (!baris.length) {
+                teks.innerHTML = 'Tinggal <b>' + sisa + ' hari</b> lagi — pengingat langsung muncul begitu disimpan.';
+            } else {
+                teks.innerHTML = baris.join('');
+                // Tahap yang sudah terlewati perlu disebut, bukan didiamkan.
+                const lewat = [14, 7, 3].filter(function (n) { return sisa < n; });
+                if (lewat.length) {
+                    teks.innerHTML += '<br><span class="text-slate-400">Tahap ' +
+                        lewat.map(function (n) { return 'H-' + n; }).join(' & ') +
+                        ' sudah terlewat, jadi pengingatnya langsung dimulai dari tahap di atas.</span>';
+                }
+            }
+        }
+
+        function kalSimpan_(e) {
+            e.preventDefault();
+            const galat = document.getElementById('kal-f-galat');
+            const tombol = document.getElementById('kal-f-simpan');
+            const tampilGalat = function (pesan) {
+                if (!galat) { showToast(pesan); return; }
+                galat.textContent = pesan;
+                galat.classList.remove('hidden');
+            };
+            if (galat) galat.classList.add('hidden');
+
+            const ambil = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+            const data = {
+                id: ambil('kal-f-id'),
+                judul: ambil('kal-f-judul'),
+                lokasi: ambil('kal-f-lokasi'),
+                tanggal: ambil('kal-f-mulai'),
+                tanggalSelesai: ambil('kal-f-selesai'),
+                kategori: ambil('kal-f-kategori'),
+                catatan: ambil('kal-f-catatan')
+            };
+
+            if (!data.judul) { tampilGalat('Nama kegiatan wajib diisi.'); return; }
+            if (!data.tanggal) { tampilGalat('Tanggal mulai wajib diisi.'); return; }
+            if (data.tanggalSelesai && kalSelisih_(data.tanggal, data.tanggalSelesai) < 0) {
+                tampilGalat('Tanggal selesai tidak boleh lebih awal dari tanggal mulai.');
+                return;
+            }
+
+            // Tombol dikunci selama permintaan berjalan. Tanpa ini, klik
+            // ganda pada jaringan lambat membuat dua kegiatan kembar - & yang
+            // kedua baru ketahuan setelah muncul dua kali di kalender.
+            if (tombol) { tombol.disabled = true; tombol.classList.add('opacity-60', 'cursor-not-allowed'); }
+            const pulihkan = function () {
+                if (tombol) { tombol.disabled = false; tombol.classList.remove('opacity-60', 'cursor-not-allowed'); }
+            };
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    pulihkan();
+                    if (!res || !res.success) { tampilGalat((res && res.message) || 'Gagal menyimpan kegiatan.'); return; }
+                    kalTutupForm_();
+                    showToast(data.id ? 'Kegiatan berhasil diperbarui.' : 'Kegiatan berhasil ditambahkan.');
+                    kalenderMuat_(true);
+                })
+                .withFailureHandler(function (err) {
+                    pulihkan();
+                    tampilGalat('Terjadi kesalahan: ' + ((err && err.message) || 'tidak diketahui'));
+                })
+                .kalender_save(currentSessionToken, data);
+        }
+
+        function kalHapus_(id) {
+            if (!kalBolehHapus_()) { showToast('Anda tidak punya izin menghapus kegiatan.'); return; }
+            const ev = (kalData_ || []).find(function (x) { return x.id === id; });
+            if (!ev) { showToast('Kegiatan tidak ditemukan.'); return; }
+            if (!confirm('Hapus kegiatan "' + ev.judul + '" (' + kalTeksTanggal_(ev.tanggal) + ')?\n\nKegiatan dihapus permanen, tetapi judul & tanggalnya tetap tercatat di Riwayat Aktivitas.')) return;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) { showToast('Gagal menghapus: ' + ((res && res.message) || '')); return; }
+                    showToast('Kegiatan dihapus.');
+                    kalenderMuat_(true);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menghapus.'); })
+                .kalender_delete(currentSessionToken, id);
+        }
+
+
+        // ─── PENGINGAT SAAT MEMBUKA APLIKASI ────────────────────────────
+        //
+        // Yang sudah ditutup pengguna diingat di localStorage, per akun &
+        // per TAHAP. Jadi satu kegiatan tetap mengingatkan tiga kali (H-14,
+        // H-7, H-3) tanpa mengganggu setiap kali halaman dibuka.
+        //
+        // localStorage, bukan sheet: ini keputusan pribadi per orang per
+        // perangkat, bukan data operasi. Menyimpannya di sheet berarti satu
+        // baris tulis setiap kali ada yang menutup pengingat - ramai sekali
+        // untuk sesuatu yang tidak pernah dilaporkan ke siapa pun.
+        //
+        // Seluruh akses dibungkus try/catch: di jendela penyamaran atau saat
+        // data situs diblokir, localStorage melempar galat, & pengingat yang
+        // menggagalkan proses masuk jelas lebih buruk daripada pengingat yang
+        // muncul dua kali.
+
+        function kalKunciIngat_() {
+            const u = (typeof currentUser !== 'undefined' && currentUser && currentUser.username) ? currentUser.username : 'anon';
+            return 'kalIngat_' + u;
+        }
+        function kalBacaDitutup_() {
+            try { return JSON.parse(localStorage.getItem(kalKunciIngat_()) || '{}') || {}; }
+            catch (e) { return {}; }
+        }
+        function kalTulisDitutup_(obj) {
+            try { localStorage.setItem(kalKunciIngat_(), JSON.stringify(obj)); } catch (e) { /* diabaikan */ }
+        }
+
+        /** Dipanggil sekali setelah login - lihat Script_Login.html. */
+        function kalCekPengingat_() {
+            if (typeof canDo === 'function' && !canDo('dashboard', 'lihat')) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) return;
+                    const ditutup = kalBacaDitutup_();
+                    const tampil = (res.data || []).filter(function (ev) {
+                        const tanda = ev.id + '|' + (ev.status === 'berlangsung' ? 'LIVE' : ev.tahap);
+                        return !ditutup[tanda];
+                    });
+                    if (!tampil.length) return;
+                    kalTampilkanPengingat_(tampil);
+                })
+                .withFailureHandler(function () { /* pengingat tidak boleh menghalangi apa pun */ })
+                .kalender_getPengingat(currentSessionToken);
+        }
+
+        function kalTampilkanPengingat_(daftar) {
+            const modal = document.getElementById('modal-kalender-ingat');
+            const isi = document.getElementById('kal-ingat-isi');
+            const sub = document.getElementById('kal-ingat-sub');
+            if (!modal || !isi) return;
+
+            kalIngatTampil_ = daftar;
+
+            if (sub) {
+                sub.textContent = daftar.length + ' kegiatan perlu perhatian · ' + kalTeksLengkap_(kalHariIni_ || '');
+            }
+
+            isi.innerHTML = daftar.map(function (ev) {
+                const w = kalWarna_(ev.kategori);
+                const hm = kalHitungMundur_(ev);
+                const mendesak = (ev.status === 'berlangsung' || ev.sisaHari <= 3);
+
+                return '<div class="relative flex gap-3 items-start p-3.5 pl-4 rounded-xl border ' +
+                        (mendesak ? 'bg-rose-50/50 border-rose-200' : 'bg-white border-slate-200') + '">' +
+                    '<span class="absolute left-0 top-3 bottom-3 w-1 rounded-r ' + w.pita + '"></span>' +
+                    '<div class="flex-1 min-w-0">' +
+                        '<div class="flex items-start justify-between gap-2 mb-1">' +
+                            '<p class="text-[13px] font-black text-slate-800 leading-tight break-words">' + escapeHtml(ev.judul) + '</p>' +
+                            '<span class="shrink-0 px-2 py-0.5 rounded border text-[10px] font-black ' + hm.kelas + '">' + hm.teks + '</span>' +
+                        '</div>' +
+                        '<p class="text-[11px] font-bold text-slate-500">' + escapeHtml(kalTeksRentang_(ev.tanggal, ev.tanggalSelesai)) +
+                            (ev.lokasi ? ' · ' + escapeHtml(ev.lokasi) : '') + '</p>' +
+                        (ev.catatan ? '<p class="text-[11px] text-slate-500 font-medium mt-1.5 leading-relaxed break-words">' + escapeHtml(ev.catatan) + '</p>' : '') +
+                        '<span class="inline-block mt-2 px-1.5 py-0.5 rounded border text-[9px] font-black ' + w.lencana + '">' + escapeHtml(ev.kategori) + '</span>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * @param {boolean} janganTampilkanLagi true = tandai tahap ini sudah
+         *        dibaca. false = tutup saja, muncul lagi saat masuk berikutnya.
+         */
+        function kalIngatTutup_(janganTampilkanLagi) {
+            if (janganTampilkanLagi) {
+                const ditutup = kalBacaDitutup_();
+                (kalIngatTampil_ || []).forEach(function (ev) {
+                    ditutup[ev.id + '|' + (ev.status === 'berlangsung' ? 'LIVE' : ev.tahap)] = 1;
+                });
+
+                // Catatan untuk kegiatan yang sudah lewat dibuang, supaya
+                // simpanan ini tidak tumbuh selamanya di peramban. Yang masih
+                // dikenal server dipertahankan apa adanya.
+                const idAktif = {};
+                (kalData_ || []).forEach(function (e) { idAktif[e.id] = 1; });
+                if (Object.keys(idAktif).length) {
+                    Object.keys(ditutup).forEach(function (k) {
+                        if (!idAktif[String(k).split('|')[0]]) delete ditutup[k];
+                    });
+                }
+                kalTulisDitutup_(ditutup);
+            }
+            const m = document.getElementById('modal-kalender-ingat');
+            if (m) m.classList.add('hidden');
+            kalIngatTampil_ = [];
+        }
+
+        /** Membuka kembali pengingat dari tombol lonceng, tanpa menyaring. */
+        function kalBukaPengingat_() {
+            const daftar = (kalData_ || []).filter(function (e) {
+                return e.status === 'berlangsung' || (e.status === 'mendatang' && e.tahap);
+            });
+            if (!daftar.length) { showToast('Tidak ada kegiatan dalam 14 hari ke depan.'); return; }
+            kalTampilkanPengingat_(daftar);
+        }
+
+
+        // ─── PANEL GESER: AKTIVITAS TERAKHIR ────────────────────────────
+        // Isinya tetap diisi kode dashboard lama lewat id "dash-aktivitas";
+        // yang pindah hanya wadahnya.
+
+        function toggleActivityPanel() {
+            const panel = document.getElementById('kal-aktivitas-panel');
+            const tirai = document.getElementById('kal-aktivitas-tirai');
+            if (!panel || !tirai) return;
+
+            const sedangTertutup = panel.classList.contains('translate-x-full');
+            if (sedangTertutup) {
+                tirai.classList.remove('hidden');
+                // Satu bingkai jeda supaya peralihan opacity benar-benar
+                // teranimasi; tanpa itu browser menggabungkan kedua perubahan
+                // & panelnya muncul mendadak.
+                setTimeout(function () { tirai.classList.remove('opacity-0'); }, 10);
+                panel.classList.remove('translate-x-full');
+            } else {
+                tirai.classList.add('opacity-0');
+                setTimeout(function () { tirai.classList.add('hidden'); }, 300);
+                panel.classList.add('translate-x-full');
+            }
+        }
+</script>

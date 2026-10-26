@@ -1,0 +1,81 @@
+<!--
+  Pane_Anggaran.html
+  Pane/menu: Serapan Anggaran
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-anggaran" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                    <div class="text-center bg-[#eaeaea] p-4 rounded-xl border border-slate-300">
+                        <h4 class="text-xs font-black text-slate-800 uppercase tracking-widest">RENCANA KERJA ANGGARAN PERUSAHAAN TH. 2026</h4>
+                        <p class="text-2xl font-black text-slate-900 mt-2">Rp. 3,673,632,910</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center py-6">
+                        <div class="md:col-span-4 flex flex-col items-center justify-center bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-2">
+                            <span class="px-4 py-1 text-[10px] font-black text-white bg-red-600 rounded-md uppercase tracking-wider">BELUM TERSERAP</span>
+                            <h5 class="text-lg font-black text-slate-800 mt-2">Rp. 2,424,338,860</h5>
+                        </div>
+                        <div class="md:col-span-4 flex justify-center relative">
+                            <svg class="w-48 h-48 transform -rotate-90">
+                                <circle cx="96" cy="96" r="70" stroke="#f1f5f9" stroke-width="20" fill="transparent" />
+                                <circle cx="96" cy="96" r="70" stroke="#e11d48" stroke-width="20" fill="transparent" stroke-dasharray="440" stroke-dashoffset="334.4" stroke-linecap="round" />
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <span class="text-3xl font-black text-slate-800">24%</span>
+                                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">TERSERAP</span>
+                            </div>
+                        </div>
+                        <div class="md:col-span-4 space-y-3">
+                            <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center text-xs font-bold">
+                                <div>
+                                    <p class="text-[9px] text-[#e11d48] uppercase">ATK &amp; BARANG CETAKAN KANTOR</p>
+                                    <p class="text-slate-800 font-extrabold mt-1">Rp. 36,482,699</p>
+                                </div>
+                                <span class="bg-red-50 text-red-600 px-2 py-0.5 rounded text-[9px] font-black">47%</span>
+                            </div>
+                            <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center text-xs font-bold">
+                                <div>
+                                    <p class="text-[9px] text-amber-600 uppercase">ADMINISTRASI UMUM LAINNYA</p>
+                                    <p class="text-slate-800 font-extrabold mt-1">Rp. 179,070,081</p>
+                                </div>
+                                <span class="bg-amber-50 text-amber-600 px-2 py-0.5 rounded text-[9px] font-black">18%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-300 rounded-2xl">
+                        <table class="w-full text-xs text-left border-collapse">
+                            <thead class="bg-[#e11d48] text-white uppercase text-[10px] font-extrabold tracking-wider border-b border-red-700">
+                                <tr class="divide-x divide-red-500">
+                                    <th rowspan="2" class="px-4 py-3.5 w-12 text-center">NO</th>
+                                    <th rowspan="2" class="px-6 py-3.5">URAIAN PROGRAM ANGGARAN</th>
+                                    <th colspan="2" class="px-6 py-2 text-center border-b border-red-700">ALOKASI KERJA</th>
+                                    <th rowspan="2" class="px-6 py-3.5 text-right w-44">SISA SALDO</th>
+                                    <th rowspan="2" class="px-6 py-3.5 text-center w-24">PERSENTASE</th>
+                                </tr>
+                                <tr class="bg-[#b91535] divide-x divide-red-600 text-[9px]">
+                                    <th class="px-6 py-2 text-right">RKAP</th>
+                                    <th class="px-6 py-2 text-right">SERAPAN</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200 bg-white font-bold text-slate-700">
+                                <tr>
+                                    <td class="px-4 py-3.5 text-center text-slate-400 font-black">1</td>
+                                    <td class="px-6 py-3.5">Barang-barang Cetakan dan Alat Tulis Kantor (ATK)</td>
+                                    <td class="px-6 py-3.5 text-right font-mono">78,183,543</td>
+                                    <td class="px-6 py-3.5 text-right font-mono text-[#e11d48]">36,482,699</td>
+                                    <td class="px-6 py-3.5 text-right font-mono text-slate-500">41,700,844</td>
+                                    <td class="px-6 py-3.5 text-center"><span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] font-black">47%</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3.5 text-center text-slate-400 font-black">2</td>
+                                    <td class="px-6 py-3.5">Beban Administrasi dan Umum Lainnya</td>
+                                    <td class="px-6 py-3.5 text-right font-mono">997,016,025</td>
+                                    <td class="px-6 py-3.5 text-right font-mono text-[#e11d48]">179,070,081</td>
+                                    <td class="px-6 py-3.5 text-right font-mono text-slate-500">817,945,944</td>
+                                    <td class="px-6 py-3.5 text-center"><span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] font-black">18%</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>

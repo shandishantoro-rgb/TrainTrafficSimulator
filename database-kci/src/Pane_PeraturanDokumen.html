@@ -1,0 +1,104 @@
+<!--
+  Pane_PeraturanDokumen.html
+  Menu: Peraturan Perusahaan - PUSAT DOKUMEN & ARSIP (v3)
+
+  Disusun mengikuti rancangan HTML yang dikirim user, dengan susunan:
+    1. Kartu toolbar  : pencarian + filter kategori + filter status di kiri,
+                        tombol Kelola Parameter (kecil, abu) & Upload
+                        Dokumen (merah) di kanan - satu kartu.
+    2. Spanduk Gapeka : gradasi gelap + 4 kartu metrik ringkas. Hanya muncul
+                        saat arsip Gapeka dibuka.
+    3. Kartu tabel    : kop gelap, kolom BERBEDA-BEDA per arsip, dengan
+                        kaki halaman berisi jumlah dokumen.
+
+  Pemilihan arsip TIDAK memakai tab di dalam halaman - lima arsipnya ada di
+  SIDEBAR, persis seperti rancangan. Lihat Sidebar.html bagian
+  "Peraturan Perusahaan".
+
+  Aksen merah (#DC2626) dipakai khusus di menu ini mengikuti rancangan;
+  menu lain tetap memakai navy-emas seperti sebelumnya.
+-->
+            <section id="pane-peraturan-dokumen" class="hidden space-y-5 animate-fade-in">
+
+                <!-- ══ 1. TOOLBAR & FILTER ══ -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+
+                        <div class="flex flex-wrap items-center gap-3 flex-1">
+                            <div class="relative min-w-[240px] flex-1">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                <input type="text" id="arsip-search" onkeyup="renderArsipTable()" placeholder="Cari dokumen, perihal, atau deskripsi..."
+                                    class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition">
+                            </div>
+
+                            <div class="min-w-[180px]">
+                                <select id="arsip-filter-kategori" onchange="renderArsipTable()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"></select>
+                            </div>
+
+                            <!-- Filter status disembunyikan pada arsip yang memang tidak memakai status -->
+                            <div id="arsip-filter-status-wrap" class="min-w-[160px]">
+                                <select id="arsip-filter-status" onchange="renderArsipTable()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition">
+                                    <option value="Semua">Semua Status</option>
+                                    <option value="Berlaku">Berlaku / Aktif</option>
+                                    <option value="Perlu Review">Perlu Review</option>
+                                    <option value="Dicabut">Tidak Berlaku / Expired</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2.5">
+                            <!-- Muat ulang: ikon saja (permintaan user) - lebih ringkas
+                                 & maksudnya sudah jelas dari bentuk panah berputar. -->
+                            <button onclick="loadArsipDokumen(true)" title="Muat ulang data" class="w-8 h-8 bg-slate-100/90 hover:bg-slate-800 hover:text-white text-slate-600 border border-slate-300 rounded-lg flex items-center justify-center transition active:scale-95">
+                                <i class="fa-solid fa-rotate text-xs"></i>
+                            </button>
+                            <button onclick="openArsipRiwayatModal()" title="Riwayat perubahan seluruh dokumen di arsip ini" class="px-3 py-1.5 bg-slate-100/90 hover:bg-slate-200/90 text-slate-700 border border-slate-300 font-medium text-[11px] rounded-lg flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-clock-rotate-left text-slate-500"></i><span>Riwayat</span>
+                            </button>
+                            <!--
+                              Audit Berbagi: memeriksa berkas arsip mana yang
+                              masih TERBUKA UNTUK UMUM di Google Drive. Versi
+                              lama aplikasi pernah membuka akses publik untuk
+                              membuat tautan pratinjau, dan akses itu tidak
+                              ikut tertutup dengan sendirinya. Dokumen internal
+                              yang bisa dibuka siapa pun dengan tautannya bukan
+                              sesuatu yang terlihat dari dalam aplikasi - hanya
+                              pemeriksaan ke Drive yang bisa menemukannya.
+                            -->
+                            <button id="btn-arsip-audit" onclick="bukaAuditBerbagi()" title="Periksa dokumen yang masih terbuka untuk umum di Google Drive" class="px-3 py-1.5 bg-slate-100/90 hover:bg-slate-200/90 text-slate-700 border border-slate-300 font-medium text-[11px] rounded-lg flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-shield-halved text-slate-500"></i><span>Audit Berbagi</span>
+                            </button>
+                            <button id="btn-arsip-param" onclick="openArsipParamModal()" class="px-3 py-1.5 bg-slate-100/90 hover:bg-slate-200/90 text-slate-700 border border-slate-300 font-medium text-[11px] rounded-lg flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-sliders text-slate-500"></i><span>Kelola Parameter</span>
+                            </button>
+                            <button id="btn-add-peraturan-dokumen" onclick="openArsipFormModal()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-xs rounded-lg flex items-center gap-2 shadow-sm transition active:scale-95">
+                                <i class="fa-solid fa-cloud-arrow-up text-sm"></i>
+                                <span id="btn-arsip-upload-text">Upload Dokumen</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ 3. TABEL DOKUMEN ══ -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left border-collapse">
+                            <thead id="arsip-table-head"></thead>
+                            <tbody id="arsip-table-body" class="divide-y divide-slate-100 text-xs text-slate-700"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="arsip-empty-state" class="hidden py-16 text-center">
+                        <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-solid fa-folder-open text-2xl"></i>
+                        </div>
+                        <p class="font-medium text-slate-600 text-sm">Belum ada dokumen dalam kategori ini.</p>
+                        <p class="text-xs text-slate-400 mt-1">Klik tombol "Upload Dokumen" atau kelola parameter terlebih dahulu.</p>
+                    </div>
+
+                    <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                        <div>Menampilkan <span id="arsip-showing-count" class="font-bold text-slate-800">0</span> dari <span id="arsip-total-count" class="font-bold text-slate-800">0</span> dokumen</div>
+                        <div id="arsip-kategori-info" class="text-[11px] text-slate-400"></div>
+                    </div>
+                </div>
+            </section>

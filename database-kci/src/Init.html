@@ -1,0 +1,20 @@
+<!--
+  Init.html
+  Dijalankan sekali saat halaman selesai dimuat (DOMContentLoaded).
+  Sejak ada sistem login, langkah pertama SELALU checkExistingSession()
+  (Script_Login.html) - baru kalau sesi valid, dashboard beserta data
+  awalnya dimuat (lihat enterDashboard() di Script_Login.html). File ini
+  disertakan PALING TERAKHIR di Index.html, setelah semua Script_*.html
+  lain.
+-->
+<script>
+        window.addEventListener('DOMContentLoaded', () => {
+            // Pengamat tabel dipasang LEBIH DULU daripada pemeriksaan sesi.
+            // Kalau dipasang sesudah, tabel yang tergambar pada layar pertama
+            // (dashboard langsung terbuka bila sesinya masih hidup) sudah
+            // terlanjur muncul tanpa label & baru berlabel setelah digambar
+            // ulang - terlihat sebagai kartu tanpa judul kolom sesaat.
+            pasangPengamatTabelPonsel_();
+            checkExistingSession();
+        });
+</script>

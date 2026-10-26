@@ -1,0 +1,831 @@
+<!--
+  Script_Login.html
+  Logic sistem login & penerapan hak akses di sisi tampilan. File ini
+  dimuat SEBELUM SharedScripts.html supaya variabel sesi (currentUser,
+  dst) sudah ada saat file lain butuh.
+
+  Alur:
+    1. checkExistingSession() dipanggil sekali di awal (dari Init.html).
+       Kalau ada token tersimpan di sessionStorage (yaitu: tab ini memang
+       belum pernah ditutup sejak login) & masih valid, langsung ke
+       dashboard. Kalau tidak, tampilkan layar login.
+    2. Setelah login sukses (atau sesi lama valid), applyPermissionsToUI()
+       menyembunyikan tombol "+ Tambah ..." di menu yang tidak diizinkan
+       untuk role tsb.
+
+  CATATAN KEAMANAN: penyembunyian tombol di sini murni kenyamanan
+  tampilan. Penegakan hak akses yang SESUNGGUHNYA ada di server (lihat
+  requireLogin_/requirePermission_ di Service_Session.gs) - setiap
+  fungsi backend menolak aksi yang tidak diizinkan meskipun tombolnya
+  entah bagaimana tetap terlihat/dipaksa diklik.
+-->
+<script>
+        const SESSION_STORAGE_KEY = 'kci_cotp_session_token';
+
+        /**
+         * PENYIMPANAN TOKEN: sessionStorage, BUKAN localStorage.
+         *
+         * localStorage bertahan selamanya sampai dihapus - itulah sebabnya
+         * membuka kembali alamat aplikasi selalu langsung masuk tanpa diminta
+         * username & password, bahkan berhari-hari kemudian. sessionStorage
+         * hidup hanya selama tab itu terbuka: begitu tab/jendela ditutup,
+         * tokennya ikut hilang & kunjungan berikutnya wajib login lagi.
+         *
+         * Token sisa dari localStorage versi lama ikut dibersihkan sekali di
+         * bawah, supaya user yang sudah terlanjur "menempel" tidak terus
+         * masuk otomatis setelah pembaruan ini dipasang.
+         */
+        try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch (e) { /* diabaikan */ }
+
+        /** Berapa lama tanpa aktivitas sebelum sesi diakhiri (harus sama dengan IDLE_TIMEOUT_MINUTES di Service_Session.gs). */
+        const IDLE_TIMEOUT_MENIT = 30;
+
+        /** Waktu terakhir user benar-benar melakukan sesuatu (klik/ketik/sentuh). */
+        let waktuAktivitasTerakhir = Date.now();
+
+        /**
+         * Kunci penyimpanan profil singkat (user + izin) di sessionStorage.
+         *
+         * KENAPA ADA: saat halaman di-refresh, memeriksa token ke server butuh
+         * 2-5 detik. Selama menunggu, layar login sempat terlihat lalu berganti
+         * sendiri ke dashboard - kedipan yang membingungkan & terasa seperti
+         * aplikasi lambat.
+         *
+         * Dengan profil ini, dashboard bisa langsung digambar dari ingatan tab
+         * yang sama, sementara token tetap diperiksa ke server di latar
+         * belakang. Kalau ternyata tokennya sudah tidak sah, tampilan
+         * dikembalikan ke layar login saat itu juga.
+         *
+         * AMAN: isinya hanya untuk mengatur tampilan. Setiap permintaan data
+         * tetap membawa token & diperiksa ulang di server, jadi profil yang
+         * diutak-atik di browser tidak memberi akses apa pun.
+         */
+        const PROFIL_STORAGE_KEY = 'kci_cotp_profil_singkat';
+
+        let currentSessionToken = null;
+        let currentUser = null;
+        let currentPermissions = []; // [{menuId, lihat, tambah, edit, hapus}, ...]
+
+        /**
+         * Dipanggil sekali saat halaman dimuat. Cek apakah ada sesi
+         * tersimpan yang masih valid; kalau ada, langsung masuk ke
+         * dashboard tanpa perlu login ulang.
+         */
+        function checkExistingSession() {
+            const savedToken = sessionStorage.getItem(SESSION_STORAGE_KEY);
+            if (!savedToken) { showLoginScreen(); return; }
+
+            // ── Masuk seketika dari profil tersimpan ────────────────────
+            // Kalau tab ini memang sudah login sebelum di-refresh, dashboard
+            // langsung digambar tanpa menunggu server - tidak ada lagi
+            // kedipan layar login selama 3-5 detik.
+            const profil = bacaProfilSingkat_();
+            if (profil) {
+                currentSessionToken = savedToken;
+                currentUser = profil.user;
+                currentPermissions = profil.permissions || [];
+                enterDashboard();
+
+                // Token tetap diperiksa ke server di latar belakang. Kalau
+                // ternyata sudah kedaluwarsa, tampilan dikembalikan ke login.
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (!res.success) { forceReturnToLogin(res.message); return; }
+                        currentUser = res.user;
+                        updateSidebarUserInfo();
+                        // IZIN IKUT DISEGARKAN - lihat segarkanIzinDiLatar_().
+                        segarkanIzinDiLatar_(savedToken, res.user);
+                    })
+                    .withFailureHandler(function () { /* gangguan jaringan sesaat - biarkan, pemantau sesi akan memeriksa lagi */ })
+                    .auth_validateSession(savedToken);
+                return;
+            }
+
+            // Tidak ada profil (mis. tab dibuka manual dengan token dari tempat
+            // lain): tunggu jawaban server sambil menampilkan layar login.
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        loadPermissionsAndEnter(savedToken, res.user);
+                    } else {
+                        bersihkanSesiLokal_();
+                        showLoginScreen();
+                    }
+                })
+                .withFailureHandler(function () {
+                    bersihkanSesiLokal_();
+                    showLoginScreen();
+                })
+                .auth_validateSession(savedToken);
+        }
+
+        /**
+         * Mengambil ulang matriks izin dari server & menerapkannya kalau
+         * ternyata sudah berubah.
+         *
+         * ═══ PERBAIKAN AKAR MASALAH ═══
+         * Profil singkat di sessionStorage menyimpan izin agar dashboard bisa
+         * tampil seketika saat halaman di-refresh. Tapi sebelumnya yang
+         * disegarkan di latar belakang HANYA nama & role - izinnya tidak
+         * pernah diambil ulang. Akibatnya, izin yang sudah diperbaiki di
+         * server (misalnya View 1 yang barisnya dibetulkan) TIDAK PERNAH
+         * sampai ke tab yang sedang terbuka: menu tetap salah walau
+         * perbaikannya sudah berjalan. Satu-satunya cara memperbaruinya
+         * adalah menutup tab & login ulang - dan itu tidak pernah terpikir
+         * oleh siapa pun.
+         *
+         * Sekarang izin ikut diambil ulang. Kalau berbeda dari yang tersimpan,
+         * sidebar & tombol langsung ditata ulang, dan kalau menu yang sedang
+         * dibuka ternyata sudah tidak boleh dilihat, tampilan dipindahkan ke
+         * menu yang sah.
+         * @param {string} token
+         * @param {Object} user
+         */
+        function segarkanIzinDiLatar_(token, user) {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) { simpanProfilSingkat_(user, currentPermissions); return; }
+
+                    const lama = JSON.stringify(currentPermissions || []);
+                    const baru = JSON.stringify(res.permissions || []);
+                    currentPermissions = res.permissions || [];
+                    simpanProfilSingkat_(user, currentPermissions);
+
+                    if (lama === baru) return; // tidak ada yang berubah
+
+                    console.log('[izin] Matriks izin berubah sejak halaman ini dimuat - tampilan ditata ulang.');
+                    applyPermissionsToUI();
+
+                    // Menu yang sedang dibuka bisa saja kini tidak boleh dilihat.
+                    const tabSekarang = (typeof activeTabId !== 'undefined') ? activeTabId : null;
+                    if (tabSekarang && !canDo(tabSekarang, 'lihat') && tabSekarang !== 'dashboard') {
+                        switchTab(tentukanTabAwal_());
+                    } else if (tabSekarang === 'dashboard' && !canDo('dashboard', 'lihat')) {
+                        switchTab(tentukanTabAwal_());
+                    }
+                })
+                .withFailureHandler(function () { simpanProfilSingkat_(user, currentPermissions); })
+                .auth_getMyPermissions(token);
+        }
+
+        /** Simpan profil singkat (untuk masuk seketika saat refresh). */
+        function simpanProfilSingkat_(user, permissions) {
+            try {
+                sessionStorage.setItem(PROFIL_STORAGE_KEY, JSON.stringify({ user: user, permissions: permissions || [] }));
+            } catch (err) { /* diabaikan - tanpa profil, aplikasi tetap jalan (hanya kembali berkedip) */ }
+        }
+
+        /** Baca profil singkat; null kalau tidak ada atau isinya tidak wajar. */
+        function bacaProfilSingkat_() {
+            try {
+                const isi = sessionStorage.getItem(PROFIL_STORAGE_KEY);
+                if (!isi) return null;
+                const profil = JSON.parse(isi);
+                return (profil && profil.user && profil.user.roleId) ? profil : null;
+            } catch (err) { return null; }
+        }
+
+        /** Hapus token & profil dari tab ini. */
+        function bersihkanSesiLokal_() {
+            try {
+                sessionStorage.removeItem(SESSION_STORAGE_KEY);
+                sessionStorage.removeItem(PROFIL_STORAGE_KEY);
+            } catch (err) { /* diabaikan */ }
+        }
+
+        function handleLoginSubmit(e) {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            const btn = document.getElementById('login-submit-btn');
+            errorEl.classList.add('hidden');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Loading...</span>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i><span>Masuk</span>';
+                    if (res.success) {
+                        sessionStorage.setItem(SESSION_STORAGE_KEY, res.token);
+                        currentSessionToken = res.token;
+
+                        // Izin sudah ikut terbawa di respons login (satu perjalanan
+                        // saja ke server), jadi halaman utama langsung digambar
+                        // begitu loading selesai - tidak ada lagi jeda menunggu
+                        // permintaan kedua. Kalau karena suatu hal izinnya tidak
+                        // ikut terkirim, barulah diminta terpisah sebagai cadangan.
+                        if (res.permissions && res.permissions.length) {
+                            currentUser = res.user;
+                            currentPermissions = res.permissions;
+                            simpanProfilSingkat_(res.user, currentPermissions);
+                            enterDashboard();
+                        } else {
+                            loadPermissionsAndEnter(res.token, res.user);
+                        }
+                    } else {
+                        errorEl.textContent = res.message || 'Username atau password salah.';
+                        errorEl.classList.remove('hidden');
+                    }
+                })
+                .withFailureHandler(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i><span>Masuk</span>';
+                    errorEl.textContent = 'Terjadi kesalahan saat menghubungi server.';
+                    errorEl.classList.remove('hidden');
+                })
+                .auth_login(username, password);
+        }
+
+        /**
+         * Mengambil matriks izin role ini dari server, lalu masuk ke
+         * dashboard (dipanggil setelah login sukses ATAU sesi lama valid).
+         */
+        function loadPermissionsAndEnter(token, user) {
+            currentSessionToken = token;
+            currentUser = user;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    currentPermissions = res.success ? res.permissions : [];
+                    simpanProfilSingkat_(user, currentPermissions);
+                    enterDashboard();
+                })
+                .withFailureHandler(function () {
+                    currentPermissions = [];
+                    enterDashboard();
+                })
+                .auth_getMyPermissions(token);
+        }
+
+        function showLoginScreen() {
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('app-shell').classList.add('hidden');
+        }
+
+        function enterDashboard() {
+            // Keadaan "boleh logout" disiapkan sejak awal - lihat
+            // siapkanPenjagaLogoutDinasan_ di Script_TrainControl.html.
+            if (typeof siapkanPenjagaLogoutDinasan_ === 'function') {
+                setTimeout(siapkanPenjagaLogoutDinasan_, 400);
+            }
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-shell').classList.remove('hidden');
+            updateSidebarUserInfo();
+            applyPermissionsToUI();
+
+            // Load data awal (dipindah dari Init.html - baru bisa jalan
+            // setelah currentSessionToken terisi, karena semua fungsi
+            // backend sekarang mewajibkan token sesi yang valid).
+            // Pemuatan awal dibatasi sesuai izin role. Tanpa penyaringan ini,
+            // role terbatas seperti ADMIN GANGSAR tetap menembakkan permintaan
+            // ke modul yang tidak boleh ia lihat - hasilnya ditolak server,
+            // tapi tetap memakan waktu muat & memenuhi log dengan penolakan.
+            //
+            // ═══ SETIAP LANGKAH BERDIRI SENDIRI ═══
+            // Dulu satu langkah yang melempar galat (generateDinasanCalendarGrid
+            // membaca elemen yang sudah tidak ada) menghentikan SELURUH sisa
+            // fungsi ini: tab awal tidak dibuka, pemantau sesi tidak berjalan,
+            // label versi tidak terpasang. Kini tiap langkah dibungkus sendiri -
+            // satu kegagalan hanya dicatat & tidak menyeret yang lain.
+            const langkah = function (nama, fn) {
+                try { fn(); } catch (err) { console.log('[masuk] langkah "' + nama + '" gagal:', err); }
+            };
+            if (canDo('gangguan-rincian', 'lihat') || canDo('gangguan-custom', 'lihat')) {
+                langkah('opsi gangguan', loadGangguanOptions);
+            }
+            if (canDo('peraturan-dokumen', 'lihat')) langkah('kategori peraturan', loadPeraturanKategori);
+            if (canDo('gangguan-rincian', 'lihat')) langkah('rincian gangguan', function () { loadRincianGangguan('rincian'); });
+            if (canDo('tc-dinasan', 'lihat')) langkah('kalender dinasan lama', generateDinasanCalendarGrid);
+            langkah('tab awal', function () { switchTab(tentukanTabAwal_()); });
+
+            // Pengingat kalender - dijalankan setelah tab awal terbuka,
+            // supaya modalnya muncul di atas halaman yang sudah jadi & bukan
+            // di atas layar yang masih kosong.
+            if (typeof kalCekPengingat_ === 'function') langkah('pengingat kalender', kalCekPengingat_);
+
+            langkah('pemantau sesi', startSessionWatcher);
+            if (typeof pasangLabelVersi_ === 'function') langkah('label versi', pasangLabelVersi_);
+        }
+
+        /**
+         * Mengecek validitas sesi setiap 5 menit di latar belakang -
+         * supaya kalau sesi berakhir karena idle 1 jam (mis. user
+         * meninggalkan tab terbuka tanpa berinteraksi), tampilan otomatis
+         * kembali ke layar login dalam waktu wajar, bukan menunggu sampai
+         * user mengklik sesuatu dan baru dapat pesan error.
+         */
+        let sessionWatcherInterval = null;
+
+        function startSessionWatcher() {
+            if (sessionWatcherInterval) clearInterval(sessionWatcherInterval);
+            waktuAktivitasTerakhir = Date.now();
+            pasangPencatatAktivitas_();
+
+            sessionWatcherInterval = setInterval(function () {
+                if (!currentSessionToken) return;
+
+                // 1. Penilaian di browser lebih dulu - tahu persis kapan user
+                //    terakhir menyentuh layar, jadi bisa langsung menutup sesi
+                //    begitu batasnya lewat tanpa menunggu jawaban server.
+                const menitDiam = (Date.now() - waktuAktivitasTerakhir) / 60000;
+                if (menitDiam >= IDLE_TIMEOUT_MENIT) {
+                    forceReturnToLogin('Sesi berakhir karena tidak ada aktivitas selama ' + IDLE_TIMEOUT_MENIT + ' menit. Silakan login ulang.');
+                    return;
+                }
+
+                // Peringatan 2 menit sebelum sesi berakhir. Tanpa ini, layar
+                // bisa tiba-tiba kembali ke login di tengah pekerjaan yang
+                // belum tersimpan - peringatan memberi kesempatan menyentuh
+                // layar untuk melanjutkan.
+                const sisaMenit = IDLE_TIMEOUT_MENIT - menitDiam;
+                if (sisaMenit <= 2) tampilkanPeringatanSesi_(Math.ceil(sisaMenit));
+                else sembunyikanPeringatanSesi_();
+
+                // 2. Lalu pastikan ke server - memakai auth_pingSession, BUKAN
+                //    auth_validateSession. Bedanya penting: validateSession ikut
+                //    MEMPERPANJANG sesi, sehingga pemeriksa ini dulu justru
+                //    membuat sesi tidak pernah kedaluwarsa selama tab dibiarkan
+                //    terbuka. pingSession hanya memeriksa, tidak memperpanjang.
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (!res.success) forceReturnToLogin(res.message);
+                    })
+                    .withFailureHandler(function () { /* abaikan gangguan jaringan sesaat */ })
+                    .auth_pingSession(currentSessionToken);
+            }, 30 * 1000); // diperiksa tiap 30 detik supaya penutupan terasa tepat waktu
+
+            pasangPemeriksaSegera_();
+        }
+
+        /**
+         * Memeriksa sesi SEGERA saat tab kembali dibuka atau jendela mendapat
+         * fokus lagi.
+         *
+         * ═══ CELAH YANG DITUTUP ═══
+         * setInterval BERHENTI TOTAL saat komputer di-sleep, dan diperlambat
+         * browser saat tab berada di latar belakang. Jadi kalau layar
+         * ditinggalkan lalu komputer tidur, saat dibangunkan pemeriksaan
+         * berikutnya baru berjalan beberapa saat kemudian - dan di jeda itulah
+         * user melihat halaman yang terlihat normal tapi tidak bisa dipakai.
+         *
+         * Dengan memeriksa tepat saat tab kembali aktif, jeda itu hilang.
+         */
+        let pemeriksaSegeraTerpasang_ = false;
+        function pasangPemeriksaSegera_() {
+            if (pemeriksaSegeraTerpasang_) return;
+            pemeriksaSegeraTerpasang_ = true;
+
+            const periksa = function () {
+                if (!currentSessionToken) return;
+                const menitDiam = (Date.now() - waktuAktivitasTerakhir) / 60000;
+                if (menitDiam >= IDLE_TIMEOUT_MENIT) {
+                    forceReturnToLogin('Sesi berakhir karena tidak ada aktivitas selama ' +
+                        IDLE_TIMEOUT_MENIT + ' menit. Silakan login ulang.');
+                    return;
+                }
+                google.script.run
+                    .withSuccessHandler(function (res) { if (!res.success) forceReturnToLogin(res.message); })
+                    .withFailureHandler(function () { /* gangguan jaringan sesaat - biarkan */ })
+                    .auth_pingSession(currentSessionToken);
+            };
+
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) periksa();
+            });
+            window.addEventListener('focus', periksa);
+        }
+
+        /**
+         * Mencatat kapan user terakhir benar-benar berinteraksi. Hanya
+         * peristiwa yang menandakan kehadiran orang yang dihitung - gerakan
+         * mouse sengaja TIDAK termasuk, karena mouse bisa tersenggol atau
+         * bergeser sendiri dan itu akan membuat sesi seolah-olah masih aktif
+         * padahal mejanya sudah ditinggalkan.
+         */
+        let pencatatAktivitasTerpasang_ = false;
+        function pasangPencatatAktivitas_() {
+            if (pencatatAktivitasTerpasang_) return;
+            pencatatAktivitasTerpasang_ = true;
+            ['mousedown', 'keydown', 'touchstart', 'wheel'].forEach(function (namaEvent) {
+                document.addEventListener(namaEvent, function () {
+                    waktuAktivitasTerakhir = Date.now();
+                    sembunyikanPeringatanSesi_();
+                }, { passive: true });
+            });
+        }
+
+        function forceReturnToLogin(message) {
+            clearInterval(sessionWatcherInterval);
+            sembunyikanPeringatanSesi_();
+            bersihkanSesiLokal_();
+            currentSessionToken = null;
+            currentUser = null;
+            currentPermissions = [];
+            showLoginScreen();
+            document.getElementById('form-login').reset();
+            const errorEl = document.getElementById('login-error');
+            if (errorEl && message) {
+                errorEl.textContent = message;
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function updateSidebarUserInfo() {
+            const nameEl = document.getElementById('sidebar-user-name');
+            const roleEl = document.getElementById('sidebar-user-role');
+            if (nameEl) nameEl.textContent = currentUser.nama || currentUser.username;
+            if (roleEl) roleEl.textContent = currentUser.roleNama || currentUser.roleId;
+            muatFotoSidebar_();
+        }
+
+        /**
+         * Mengambil foto petugas dari Struktur Organisasi untuk avatar sidebar.
+         *
+         * Dicocokkan lewat NIPP lebih dulu, baru nama - NIPP unik sedangkan
+         * nama bisa sama. Kalau tidak ketemu atau belum berfoto, ikon perisai
+         * dibiarkan apa adanya; avatar bolong lebih buruk daripada ikon baku.
+         *
+         * Hasilnya disimpan sepanjang sesi supaya tidak menembak server tiap
+         * kali sidebar disegarkan.
+         */
+        let fotoSidebarDicoba_ = false;
+        function muatFotoSidebar_() {
+            const kotak = document.getElementById('sidebar-user-avatar');
+            if (!kotak || !currentUser || fotoSidebarDicoba_) return;
+            fotoSidebarDicoba_ = true;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success) return;
+                    const nipp = String(currentUser.nip || currentUser.username || '').trim();
+                    const nama = String(currentUser.nama || '').trim().toUpperCase();
+
+                    const orang = (res.personil || []).find(function (p) {
+                        return (nipp && String(p.nik || '').trim() === nipp) ||
+                               (nama && String(p.nama || '').trim().toUpperCase() === nama);
+                    });
+                    if (!orang || !orang.foto) return;
+
+                    kotak.innerHTML = '<img src="' + orang.foto + '" alt="" class="w-full h-full object-cover">';
+                })
+                .withFailureHandler(function () { /* ikon baku tetap dipakai */ })
+                .struktur_getAll(currentSessionToken);
+        }
+
+        /**
+         * Cek apakah role user saat ini punya izin "action" di "menuId".
+         * @param {string} menuId
+         * @param {string} action "lihat" | "tambah" | "edit" | "hapus"
+         * @return {boolean}
+         */
+        function canDo(menuId, action) {
+            if (!currentUser) return false;
+            if (currentUser.roleId === 'SUPERADMIN') return true;
+            const rule = currentPermissions.find(function (p) { return p.menuId === menuId; });
+            if (!rule) return false;
+            return rule[action] === true || rule[action] === 'true';
+        }
+
+        /**
+         * Menyembunyikan tombol "+ Tambah ..." di menu-menu yang tidak
+         * diizinkan menambah data untuk role user saat ini. Dipanggil
+         * sekali setelah login (tombol-tombol ini statis, bukan hasil
+         * render ulang, jadi cukup sekali jalan).
+         */
+        function applyPermissionsToUI() {
+            const addButtonsByMenu = {
+                'gangguan-rincian': ['btn-add-gangguan-rincian', 'btn-kelola-param-rincian'],
+                // Tombol '+' di modal Kelola Parameter (5 kartu). Menu id-nya tetap
+                // 'gangguan-custom' walau label menunya sekarang Rekap Gangguan
+                // Sarana - lihat catatan di Pane_GangguanCustom.html.
+                'gangguan-custom': ['btn-add-gangguan-custom-1', 'btn-add-gangguan-custom-2', 'btn-add-gangguan-custom-3',
+                    'btn-add-gangguan-custom-4', 'btn-add-gangguan-custom-5', 'btn-kelola-param-sarana'],
+                'kinop-db': ['btn-add-kinop-db'],
+                'kinop-rincian': ['btn-add-kinop-rincian'],
+                'peraturan-dokumen': ['btn-add-peraturan-dokumen'],
+                'peraturan-custom': ['btn-add-peraturan-custom'],
+                'sap-emplasemen': ['btn-add-sap-emplasemen'],
+                'sap-perlintasan': ['btn-add-sap-perlintasan'],
+                'sap-spesifikasi': ['btn-add-sap-spesifikasi'],
+                'tc-dinasan': ['btn-add-tc-dinasan'],
+                'tc-raport': ['btn-add-tc-raport'],
+                'tc-serah': ['btn-add-tc-serah'],
+                'user-mgmt': ['btn-add-user-mgmt']
+            };
+            Object.keys(addButtonsByMenu).forEach(function (menuId) {
+                const allowed = canDo(menuId, 'tambah');
+                addButtonsByMenu[menuId].forEach(function (btnId) {
+                    const el = document.getElementById(btnId);
+                    if (el) el.style.display = allowed ? '' : 'none';
+                });
+            });
+
+            sembunyikanMenuTanpaIzin_();
+        }
+
+        /**
+         * Menyembunyikan tombol menu di sidebar untuk menu yang tidak boleh
+         * dilihat role ini, lalu menyembunyikan grup (accordion) yang seluruh
+         * isinya ikut tersembunyi.
+         *
+         * DASHBOARD IKUT DIATUR IZINNYA. Sebelumnya Dashboard selalu
+         * ditampilkan apa pun rolenya - itulah sebabnya ADMIN GANGSAR, yang
+         * seharusnya hanya melihat Rekap Gangguan Sarana, tetap kebagian
+         * halaman Dashboard. Sekarang Dashboard mengikuti aturan yang sama
+         * seperti menu lain (lihat aturanIzinUntuk_ di Service_Session.gs),
+         * sehingga role terbatas benar-benar hanya melihat menu tugasnya.
+         *
+         * CATATAN: ini penataan tampilan, bukan penjagaan data. Yang
+         * benar-benar menahan aksi tetap requirePermission_ di server.
+         */
+        function sembunyikanMenuTanpaIzin_() {
+            // Peta grup accordion -> daftar menu di dalamnya.
+            const grupMenu = {
+                'kinerja': ['kinop-summary', 'kinop-rincian', 'kinop-db'],
+                'gangguan': ['gangguan-summary', 'gangguan-rincian', 'gangguan-custom'],
+                'tc': ['tc-serah', 'tc-dinasan', 'tc-resume', 'tc-roster', 'tc-raport', 'tc-struktur'],
+                'sap': ['sap-emplasemen', 'sap-spesifikasi', 'sap-perlintasan'],
+                'peraturan': ['peraturan-dokumen', 'peraturan-custom'],
+                // (lihat tombolArsip_ di bawah untuk 5 tombol arsip)
+                'izin': ['izin-linpel', 'izin-iops']
+            };
+            const menuMandiri = ['dashboard', 'anggaran', 'user-mgmt'];
+
+            const setTampil = function (el, tampil) {
+                if (el) el.style.display = tampil ? '' : 'none';
+            };
+
+            let jumlahGrupTampil = 0;
+            let grupTerakhirTampil = null;
+            let jumlahMandiriTampil = 0;
+
+            Object.keys(grupMenu).forEach(function (grup) {
+                let adaYangBoleh = false;
+                grupMenu[grup].forEach(function (menuId) {
+                    const boleh = canDo(menuId, 'lihat');
+                    if (boleh) adaYangBoleh = true;
+                    setTampil(document.getElementById('btn-' + menuId), boleh);
+                });
+
+                // ═══ PERBAIKAN BUG SIDEBAR KOSONG ═══
+                // Sebelumnya baris ini menyembunyikan isi.parentElement -
+                // dikira pembungkus milik grup itu sendiri. Ternyata BUKAN:
+                // tombol judul grup & div isinya adalah SAUDARA di dalam satu
+                // wadah besar yang menampung BEBERAPA grup sekaligus beserta
+                // label bagiannya. Akibatnya, menyembunyikan satu grup ikut
+                // menyembunyikan seluruh bagian - dan karena grup diproses
+                // berurutan, grup terakhir yang tidak diizinkan menutup semua
+                // yang sudah terlanjur ditampilkan. Hasilnya sidebar kosong
+                // total untuk role terbatas.
+                //
+                // Yang benar: sembunyikan DUA elemen milik grup itu saja -
+                // tombol judulnya (saudara tepat sebelum div isi) & div isinya.
+                const isi = document.getElementById('acc-' + grup);
+                setTampil(isi, adaYangBoleh);
+                if (isi) setTampil(isi.previousElementSibling, adaYangBoleh);
+
+                if (adaYangBoleh) { jumlahGrupTampil++; grupTerakhirTampil = grup; }
+            });
+
+            menuMandiri.forEach(function (menuId) {
+                const boleh = canDo(menuId, 'lihat');
+                if (boleh) jumlahMandiriTampil++;
+                setTampil(document.getElementById('btn-' + menuId), boleh);
+            });
+
+            // Lima tombol arsip di grup Peraturan Perusahaan membuka pane yang
+            // SAMA (peraturan-dokumen), jadi izinnya mengikuti menu itu.
+            // Dipisah begini supaya matriks izin tidak perlu ditambahi lima
+            // baris menu baru hanya untuk perbedaan tampilan.
+            const bolehArsip = canDo('peraturan-dokumen', 'lihat');
+            ['peraturan', 'notulen', 'surat', 'kajian', 'gapeka'].forEach(function (key) {
+                setTampil(document.getElementById('btn-arsip-' + key), bolehArsip);
+            });
+
+            sembunyikanBagianKosong_(grupMenu, menuMandiri);
+
+            // Kalau SELURUH akses role ini ada di dalam SATU grup accordion,
+            // grupnya dibuka otomatis - kalau tidak, satu-satunya grup yang
+            // boleh dibuka justru tersembunyi di balik judul yang tertutup.
+            if (jumlahGrupTampil === 1 && jumlahMandiriTampil === 0 && grupTerakhirTampil) {
+                bukaAccordion_(grupTerakhirTampil);
+            }
+        }
+
+        /**
+         * Menyembunyikan wadah bagian sidebar (beserta labelnya, mis.
+         * "Kinerja & Operasional") yang seluruh isinya sudah tersembunyi.
+         *
+         * Wadahnya ditemukan dari elemen menunya sendiri - bukan ditebak dari
+         * struktur - supaya tetap benar walau susunan sidebar diubah nanti.
+         */
+        function sembunyikanBagianKosong_(grupMenu, menuMandiri) {
+            const wadah = [];
+            const catat = function (el) {
+                if (el && el.parentElement && wadah.indexOf(el.parentElement) === -1) wadah.push(el.parentElement);
+            };
+            Object.keys(grupMenu).forEach(function (grup) { catat(document.getElementById('acc-' + grup)); });
+            menuMandiri.forEach(function (menuId) { catat(document.getElementById('btn-' + menuId)); });
+
+            wadah.forEach(function (w) {
+                // Sebuah bagian masih berguna kalau ada SATU saja anak langsung
+                // yang belum disembunyikan (tombol judul grup atau tombol menu).
+                let adaIsi = false;
+                for (let i = 0; i < w.children.length; i++) {
+                    const anak = w.children[i];
+                    if (anak.tagName !== 'BUTTON' && anak.id.indexOf('acc-') !== 0) continue;
+                    if (anak.style.display !== 'none') { adaIsi = true; break; }
+                }
+                w.style.display = adaIsi ? '' : 'none';
+            });
+        }
+
+        /** Membuka satu grup accordion di sidebar (kalau masih tertutup). */
+        function bukaAccordion_(grup) {
+            const isi = document.getElementById('acc-' + grup);
+            const panah = document.getElementById('arrow-' + grup);
+            if (!isi) return;
+            if (isi.classList.contains('hidden')) {
+                isi.classList.remove('hidden');
+                isi.classList.add('block');
+                if (panah) panah.classList.add('rotate-90');
+            }
+        }
+
+        /**
+         * Menentukan menu mana yang dibuka pertama kali setelah login.
+         *
+         * Role dengan akses terbatas (mis. ADMIN GANGSAR) langsung diarahkan
+         * ke menu tugasnya - bukan ke Dashboard yang memang tidak boleh ia
+         * lihat. Kalau rolenya punya banyak menu, Dashboard tetap jadi
+         * halaman pembuka seperti biasa.
+         * @return {string} tabId
+         */
+        function tentukanTabAwal_() {
+            if (canDo('dashboard', 'lihat')) return 'dashboard';
+
+            // Ambil menu pertama yang boleh dilihat, mengikuti urutan tampilan
+            // di sidebar supaya terasa wajar.
+            const urutanSidebar = [
+                'kinop-summary', 'kinop-rincian', 'kinop-db',
+                'gangguan-summary', 'gangguan-rincian', 'gangguan-custom',
+                'tc-serah', 'tc-dinasan', 'tc-resume', 'tc-roster', 'tc-raport',
+                'sap-emplasemen', 'sap-spesifikasi', 'sap-perlintasan',
+                'peraturan-dokumen', 'peraturan-custom',
+                'izin-linpel', 'izin-iops', 'anggaran', 'user-mgmt'
+            ];
+            for (let i = 0; i < urutanSidebar.length; i++) {
+                if (canDo(urutanSidebar[i], 'lihat')) return urutanSidebar[i];
+            }
+
+            // Tidak ada satu pun menu yang boleh dilihat - biasanya berarti
+            // baris izin rolenya belum terbentuk. Jatuh ke dashboard supaya
+            // layar tidak kosong sama sekali, & catat petunjuknya di console.
+            console.log('[izin] Role "' + (currentUser ? currentUser.roleId : '?') +
+                '" tidak punya izin lihat di menu mana pun. Jalankan usermgmtDiagnosaSistem_() dari editor Apps Script.');
+            return 'dashboard';
+        }
+
+        /**
+         * Logout kini lewat modal konfirmasi milik aplikasi, bukan confirm()
+         * bawaan browser. Alasannya bukan sekadar tampilan: di dalam sandbox
+         * Apps Script, confirm() muncul sebagai kotak sistem bertuliskan
+         * "An embedded page at ...googleusercontent.com says" - alamat acak
+         * yang terlihat mencurigakan & membuat user ragu menekannya.
+         */
+        function handleLogout() {
+            // ═══ TIDAK BOLEH PULANG SEBELUM DITERIMA ═══
+            // Laporan yang sudah diserahkan tapi belum diterima dinas
+            // berikutnya menggantung: penerimanya mungkin sedang menunggu
+            // penjelasan, & tidak ada lagi yang bisa memberikannya kalau
+            // pengirimnya sudah keluar.
+            //
+            // Yang ditahan hanya LOGOUT-nya, bukan pekerjaannya - laporan
+            // tetap bisa dilihat & dicetak selama menunggu.
+            if (typeof bolehLogoutDinasan_ !== 'undefined' && bolehLogoutDinasan_ === false) {
+                tampilkanTahanLogout_();
+                return;
+            }
+
+            const modal = document.getElementById('modal-konfirmasi-logout');
+            if (!modal) { jalankanLogout_(); return; } // jaga-jaga bila modalnya belum dipasang
+            document.getElementById('logout-nama').textContent =
+                (currentUser ? (currentUser.nama || currentUser.username) : '-');
+            document.getElementById('logout-role').textContent =
+                (currentUser ? (currentUser.roleNama || currentUser.roleId || '') : '');
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * Menjelaskan kenapa logout ditahan, & jalan keluarnya.
+         *
+         * Jalan keluar itu penting: kalau petugas penerima berhalangan datang,
+         * pengirim bisa terkurung tanpa batas. Administrator & Super Admin
+         * boleh menekan Terima mewakili penerimanya - itu tercatat di Riwayat
+         * Aktivitas - & sesudah itu logout terbuka dengan sendirinya.
+         */
+        function tampilkanTahanLogout_() {
+            let modal = document.getElementById('modal-tahan-logout');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'modal-tahan-logout';
+                modal.className = 'fixed inset-0 z-[115] flex items-center justify-center p-4 modal-backdrop animate-fade-in';
+                document.body.appendChild(modal);
+            }
+            modal.innerHTML =
+                '<div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">' +
+                    '<div class="px-6 py-5 flex items-start gap-4">' +
+                        '<div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl shrink-0">' +
+                            '<i class="fa-solid fa-hourglass-half"></i></div>' +
+                        '<div class="min-w-0">' +
+                            '<h3 class="text-sm font-black text-slate-900">Belum bisa logout</h3>' +
+                            '<p class="text-[11px] text-slate-500 font-semibold mt-1 leading-relaxed">' +
+                                'Laporan yang Anda serahkan belum diterima dinas berikutnya. ' +
+                                'Selama menunggu, Anda tetap bisa melihat &amp; mencetak laporannya.</p>' +
+                            '<p class="text-[11px] text-slate-500 font-semibold mt-2 leading-relaxed">' +
+                                'Daftarnya ada di kotak <strong>Menunggu Tindakan Anda</strong> pada menu Serah Terima Dinasan. ' +
+                                'Kalau petugas penerima berhalangan, <strong>Administrator</strong> dapat menekan Terima mewakili dia.</p>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">' +
+                        '<button onclick="tutupTahanLogout_()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Mengerti</button>' +
+                        '<button onclick="tutupTahanLogout_(); switchTab(\'tc-serah\');" class="px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">Buka Serah Terima</button>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        function tutupTahanLogout_() {
+            const m = document.getElementById('modal-tahan-logout');
+            if (m) m.remove();
+        }
+
+        function batalLogout() {
+            const modal = document.getElementById('modal-konfirmasi-logout');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function jalankanLogout_() {
+            fotoSidebarDicoba_ = false;   // supaya user berikutnya dimuat ulang
+            const modal = document.getElementById('modal-konfirmasi-logout');
+            if (modal) modal.classList.add('hidden');
+            const token = currentSessionToken;
+            if (sessionWatcherInterval) clearInterval(sessionWatcherInterval);
+            bersihkanSesiLokal_();
+            currentSessionToken = null;
+            currentUser = null;
+            currentPermissions = [];
+            showLoginScreen();
+            document.getElementById('form-login').reset();
+            if (token) {
+                google.script.run.withFailureHandler(function () {}).auth_logout(token);
+            }
+        }
+
+        // ─── PERINGATAN SEBELUM SESI BERAKHIR ────────────────────────────
+        //
+        // Ditampilkan 2 menit terakhir. Menyentuh layar apa pun langsung
+        // memperpanjang - jadi peringatan ini tidak menghalangi pekerjaan,
+        // hanya memberi tahu bahwa waktunya hampir habis.
+
+        function tampilkanPeringatanSesi_(sisaMenit) {
+            let kotak = document.getElementById('peringatan-sesi');
+            if (!kotak) {
+                kotak = document.createElement('div');
+                kotak.id = 'peringatan-sesi';
+                kotak.className = 'fixed bottom-5 right-5 z-[95] max-w-xs bg-amber-50 border-2 border-amber-400 ' +
+                    'rounded-2xl shadow-2xl p-4 animate-fade-in';
+                document.body.appendChild(kotak);
+            }
+            kotak.innerHTML =
+                '<div class="flex items-start gap-3">' +
+                    '<div class="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">' +
+                        '<i class="fa-solid fa-hourglass-half"></i></div>' +
+                    '<div class="min-w-0">' +
+                        '<p class="text-xs font-black text-amber-900">Sesi akan berakhir</p>' +
+                        '<p class="text-[11px] font-semibold text-amber-800 mt-0.5 leading-relaxed">' +
+                            'Anda akan keluar otomatis dalam <strong>' + Math.max(sisaMenit, 1) + ' menit</strong> ' +
+                            'karena tidak ada aktivitas. Klik di mana saja untuk melanjutkan.</p>' +
+                        '<button onclick="lanjutkanSesi_()" class="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 ' +
+                            'text-white text-[11px] font-bold rounded-lg transition">Lanjutkan Bekerja</button>' +
+                    '</div></div>';
+            kotak.classList.remove('hidden');
+        }
+
+        function sembunyikanPeringatanSesi_() {
+            const kotak = document.getElementById('peringatan-sesi');
+            if (kotak) kotak.classList.add('hidden');
+        }
+
+        /** Memperpanjang sesi & menutup peringatan. */
+        function lanjutkanSesi_() {
+            waktuAktivitasTerakhir = Date.now();
+            sembunyikanPeringatanSesi_();
+            // Diperpanjang juga di server, supaya batas di kedua sisi sejalan.
+            google.script.run
+                .withSuccessHandler(function () { /* cukup - sesi sudah diperpanjang */ })
+                .withFailureHandler(function () { /* gangguan sesaat - pemantau akan memeriksa lagi */ })
+                .auth_validateSession(currentSessionToken);
+        }
+
+</script>

@@ -1,0 +1,815 @@
+<!--
+  Modals_Gangguan.html
+  Modal untuk modul Rekapitulasi Gangguan.
+
+  Form input manual dipakai bersama untuk TAMBAH & EDIT (dibedakan lewat
+  hidden input #m-edit-id). Field mengikuti skema Book1.xlsx: Judul &
+  Uraian terpisah, No KA, Penyebab jadi SATU dropdown (dari Custom
+  Parameter), Tindak Lanjut & Nomor KA Batal pakai textarea (isinya biasa
+  multi-baris di praktik nyata).
+
+  Modal Preview & Konfirmasi Hapus SENGAJA khusus untuk Gangguan (bukan
+  pakai modal generik modul lain) supaya modul ini tetap berdiri sendiri
+  sesuai prinsip modular proyek ini.
+-->
+    <div id="modal-input-rincian" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col">
+            <div class="bg-gradient-to-r from-[#0c1d37] to-[#173a68] text-white p-6 flex justify-between items-center shrink-0">
+                <h3 id="modal-input-rincian-title" class="font-extrabold text-sm tracking-tight flex items-center space-x-2">
+                    <i class="fa-solid fa-file-invoice text-[#d4af37]"></i>
+                    <span>INPUT DATA REKAPITULASI GANGGUAN</span>
+                </h3>
+                <button onclick="closeInputMenuModal()" class="text-slate-300 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-6 overflow-y-auto">
+                <div id="input-tab-switcher" class="flex border-b border-slate-200 text-xs">
+                    <button onclick="switchInputTab('excel')" id="tab-btn-excel" class="flex-1 py-2 font-bold border-b-2 border-amber-500 text-slate-900 transition-all">Cara 1: Upload Excel</button>
+                    <button onclick="switchInputTab('manual')" id="tab-btn-manual" class="flex-1 py-2 font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-700 transition-all">Cara 2: Input Manual</button>
+                </div>
+                <div id="input-zone-excel" class="space-y-4">
+                    <div class="flex items-center justify-between bg-blue-50/70 border border-blue-100 rounded-2xl px-4 py-3">
+                        <div class="flex items-center gap-2.5 text-[11px] text-slate-600 font-semibold">
+                            <i class="fa-solid fa-circle-info text-blue-500"></i>
+                            <span>Unduh template dulu (formatnya sama seperti berkas Excel rekapitulasi yang biasa Anda pakai), atau langsung upload berkas Excel Anda yang sudah ada.</span>
+                        </div>
+                        <button type="button" onclick="downloadGangguanTemplate()" class="shrink-0 px-3.5 py-1.5 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-download"></i><span>Download Template</span>
+                        </button>
+                    </div>
+                    <!--
+                      Keterangan kolom wajib. Ditaruh SEBELUM area unggah,
+                      supaya terbaca saat menyiapkan berkas - bukan setelah
+                      berkasnya terlanjur ditolak.
+                    -->
+                    <div class="p-3.5 bg-amber-50 border border-amber-300 rounded-xl">
+                        <p class="text-[11px] font-black text-amber-900 flex items-center gap-1.5 mb-2">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            Enam kolom ini WAJIB terisi - baris yang mengosongkannya akan ditolak
+                        </p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-2">
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">TANGGAL</span>
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">WAKTU MULAI</span>
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">WAKTU SELESAI</span>
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">JUDUL</span>
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">LOKASI</span>
+                            <span class="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-900 text-center">PENYEBAB</span>
+                        </div>
+                        <p class="text-[10px] font-semibold text-amber-800 leading-relaxed">
+                            Kalau memang tidak ada isinya, tulis tanda <strong class="font-mono">-</strong> atau angka
+                            <strong class="font-mono">0</strong> &mdash; jangan dibiarkan kosong.
+                            Kolom lain (No KA, Uraian, Tindak Lanjut, KA Batal, KA Terganggu, Kategori, Unit,
+                            Wilayah, Andil, Kodefikasi, Keterangan) boleh dikosongkan.
+                        </p>
+                    </div>
+
+                    <div class="relative group">
+                        <input type="file" id="rincian-excel-file" accept=".xls,.xlsx" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleExcelFileSelect(event)" />
+                        <div class="w-full px-6 py-8 bg-emerald-50/50 border-2 border-dashed border-emerald-300 rounded-2xl text-center flex flex-col items-center justify-center">
+                            <i class="fa-regular fa-file-excel text-emerald-600 text-4xl mb-3"></i>
+                            <p id="label-excel-import" class="text-xs font-bold text-slate-700">Seret File Excel (.xlsx) Rekapitulasi ke Sini</p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end pt-2">
+                        <button type="button" id="btn-submit-excel-import" onclick="submitExcelImport()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-2">
+                            <i class="fa-solid fa-file-excel"></i><span>Input by Excel</span>
+                        </button>
+                    </div>
+                </div>
+                <form id="form-rincian-manual" class="hidden space-y-4 text-xs" onsubmit="handleManualRincianSubmit(event)">
+                    <input type="hidden" id="m-edit-id" value="" />
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Tanggal Mulai</label>
+                            <input type="date" id="m-tanggal" required onchange="perbaruiRentangGangguan_()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Waktu Mulai</label>
+                            <input type="time" id="m-mulai" required onchange="perbaruiRentangGangguan_()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <!--
+                              TANGGAL SELESAI (1 September 2026)
+                              Ada gangguan yang penanganannya melewati tengah malam,
+                              bahkan berhari-hari. Tanpa kolom ini, waktu selesai
+                              yang lebih kecil dari waktu mulai terbaca sebagai
+                              "mundur" & andilnya jadi keliru.
+                              Dikosongkan = selesai di hari yang sama.
+                            -->
+                            <label class="font-bold text-slate-700">Tanggal Selesai
+                                <span class="text-[10px] font-semibold text-slate-400">(bila beda hari)</span>
+                            </label>
+                            <input type="date" id="m-tanggal-selesai" onchange="perbaruiRentangGangguan_()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Waktu Selesai</label>
+                            <input type="time" id="m-selesai" required onchange="perbaruiRentangGangguan_()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">No KA</label>
+                            <input type="text" id="m-noka" placeholder="cth: KA 1171 (CL Boo-Jakk)" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                    </div>
+                    <p id="m-info-rentang" class="hidden text-[11px] font-bold px-3 py-2 rounded-lg"></p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Judul</label>
+                            <input type="text" id="m-judul" required placeholder="cth: Pelemparan Batu" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Lokasi</label>
+                            <input type="text" id="m-tempat" required placeholder="cth: Jalur Hilir Cilebut (Clt) - Bojonggede (Bjd)" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between gap-2">
+                            <label class="font-bold text-slate-700">Uraian Kejadian</label>
+                            <span id="m-uraian-hitung" class="text-[10px] font-bold text-slate-400"></span>
+                        </div>
+                        <textarea id="m-uraian" rows="4" required oninput="tumbuhkanIsian_(this)" placeholder="Kronologi lengkap kejadian..." class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg resize-y leading-relaxed min-h-[5.5rem]"></textarea>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Penyebab</label>
+                            <select id="m-pdetail" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"></select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Kategori</label>
+                            <select id="m-kategori" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"></select>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="font-bold text-slate-700">Tindak Lanjut</label>
+                        <textarea id="m-tindakan" rows="3" required oninput="tumbuhkanIsian_(this)" placeholder="cth: * Jam 05.28 WIB, koordinasi dengan pihak terkait...&#10;* Jam 06.05 WIB, dilakukan perbaikan..." class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono text-[11px]"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1 md:col-span-2">
+                            <label class="font-bold text-slate-700">Nomor KA Batal</label>
+                            <textarea id="m-batalno" rows="2" placeholder="cth: KA 1269&#10;KA 1270" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono text-[11px]"></textarea>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Jumlah KA Batal</label>
+                            <input type="number" id="m-bataljumlah" value="0" min="0" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Andil (Menit)</label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" id="m-andil" value="5" min="0" class="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                                <button type="button" onclick="hitungAndilDariRentang_()" title="Hitung dari selisih waktu mulai & selesai" class="px-2.5 py-2 bg-slate-100 hover:bg-[#0c1d37] hover:text-white text-slate-600 border border-slate-200 rounded-lg text-[10px] font-bold transition shrink-0">
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="font-bold text-slate-700">KA Terganggu</label>
+                        <input type="text" id="m-katerganggu" required placeholder="cth: 2 KA andil 29 menit" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg" />
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Unit Terkait</label>
+                            <select id="m-unit" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"></select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-bold text-slate-700">Wilayah</label>
+                            <select id="m-area" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"></select>
+                        </div>
+                    </div>
+
+                    <!-- KODEFIKASI GANGGUAN -->
+                    <div class="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200/80 space-y-2">
+                        <label class="block font-extrabold text-[#8a6d1f] text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-barcode text-[#d4af37]"></i> Kodefikasi
+                        </label>
+                        <select id="m-kode-tipe" class="w-full border border-amber-300 rounded-lg p-2 font-bold text-slate-800 focus:ring-2 focus:ring-amber-400 focus:outline-none bg-white"></select>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="font-bold text-slate-700">Keterangan Tambahan <span class="font-normal text-slate-400 normal-case">(opsional)</span></label>
+                        <textarea id="m-keterangan" rows="2" oninput="tumbuhkanIsian_(this)" placeholder="cth: Tiada Korban" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg resize-y"></textarea>
+                    </div>
+
+                    <div class="flex justify-end pt-3 border-t border-slate-100">
+                        <button type="submit" id="btn-submit-manual-rincian" class="px-5 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-lg flex items-center space-x-1.5 transition">
+                            <i class="fa-solid fa-check"></i><span>Simpan Manual</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PREVIEW DETAIL (arsip lengkap: Uraian, Tindak Lanjut, KA Terganggu, dst) -->
+    <div id="modal-preview-gangguan" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col">
+            <div class="bg-gradient-to-r from-[#1b4332] via-[#0c1d37] to-[#1b4332] text-white px-6 py-4 flex items-center justify-between shrink-0">
+                <div class="flex items-center space-x-2.5">
+                    <div class="bg-[#d4af37] text-[#0c1d37] font-extrabold px-2.5 py-0.5 rounded text-[10px] tracking-wider uppercase">Preview</div>
+                    <h3 class="font-bold text-sm text-slate-100">Detail Rekapitulasi Gangguan</h3>
+                </div>
+                <button onclick="closePreviewModal()" class="text-slate-400 hover:text-white transition text-xl font-bold leading-none">&times;</button>
+            </div>
+            <div class="p-6 flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 text-xs text-slate-800">
+                <p id="prev-catatan-terpotong" hidden class="text-[11px] font-semibold leading-relaxed text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3"></p>
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Wilayah</div>
+                        <div class="text-base font-extrabold text-[#0c1d37] mt-0.5" id="prev-area">-</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="prev-kategori-badge" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border">-</span>
+                        <span id="prev-unit-badge" class="px-3 py-1 rounded text-[10px] font-bold uppercase border">-</span>
+                        <span id="prev-kode-badge" class="px-3 py-1 rounded-md bg-amber-100 text-[#8a6d1f] font-extrabold text-xs tracking-wide border border-amber-300">-</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border border-slate-200 rounded-xl p-4">
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Tanggal</span>
+                        <p class="font-semibold text-slate-800 text-sm mt-0.5" id="prev-tanggal">-</p>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Waktu</span>
+                        <p class="font-mono font-bold text-[#107573] text-sm mt-0.5" id="prev-waktu">-</p>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Andil</span>
+                        <p class="font-mono font-bold text-[#b8952b] text-sm mt-0.5" id="prev-andil">-</p>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">No KA</span>
+                        <p class="font-mono font-bold text-slate-800 text-sm mt-0.5" id="prev-noka">-</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Judul</span>
+                    <p class="font-bold text-slate-900 text-sm mt-1 leading-snug break-words" id="prev-judul">-</p>
+                </div>
+                <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Lokasi</span>
+                    <p class="font-semibold text-slate-800 text-xs mt-1 break-words" id="prev-tempat">-</p>
+                </div>
+                <!-- Uraian ditampilkan UTUH: pre-wrap menjaga baris & spasi aslinya,
+                     break-words membungkus kata/URL yang sangat panjang supaya tidak
+                     terpotong di tepi kanan modal. -->
+                <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Uraian Kejadian</span>
+                        <span id="prev-uraian-hitung" class="text-[9px] font-bold text-slate-400"></span>
+                    </div>
+                    <p class="text-slate-800 font-medium mt-1 leading-relaxed whitespace-pre-wrap break-words" id="prev-uraian">-</p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Penyebab</span>
+                        <p class="font-bold text-slate-800 mt-1 break-words" id="prev-penyebab">-</p>
+                    </div>
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">KA Batal</span>
+                        <p class="font-bold text-[#e11d48] mt-1 whitespace-pre-line break-words" id="prev-kabatal">-</p>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-200 pt-3 space-y-3">
+                    <span class="text-[10px] font-bold text-[#107573] uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-box-archive"></i> Data Arsip Penanganan
+                    </span>
+                    <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2.5">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Tindak Lanjut</span>
+                            <p class="text-slate-800 font-medium mt-0.5 leading-relaxed whitespace-pre-wrap break-words" id="prev-tindaklanjut">-</p>
+                        </div>
+                        <div class="pt-2 border-t border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">KA Terganggu</span>
+                            <p class="text-slate-800 font-medium mt-0.5 break-words" id="prev-katerganggu">-</p>
+                        </div>
+                        <div class="pt-2 border-t border-slate-200" id="prev-keterangan-wrap">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Keterangan Tambahan</span>
+                            <p class="text-slate-800 font-medium mt-0.5 whitespace-pre-wrap break-words" id="prev-keterangan">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <button onclick="printPreviewRecord()" class="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-print text-xs"></i> Cetak
+                    </button>
+                    <button onclick="openHistoryModal()" class="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-xs"></i> History
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-preview-edit" onclick="editFromPreview()" class="px-4 py-1.5 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen"></i> Edit Data Ini
+                    </button>
+                    <button onclick="closePreviewModal()" class="px-5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL HISTORY EDIT (siapa mengedit apa - lihat gangguan_getHistory di Module_Gangguan.gs) -->
+    <div id="modal-history-gangguan" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col">
+            <div class="bg-[#0c1d37] text-white px-6 py-4 flex items-center justify-between shrink-0">
+                <h3 class="font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i>
+                    <span>Riwayat Perubahan Data</span>
+                </h3>
+                <button onclick="closeHistoryModal()" class="text-slate-400 hover:text-white transition text-xl font-bold leading-none">&times;</button>
+            </div>
+            <div id="history-list-container" class="p-5 space-y-3 overflow-y-auto text-xs">
+                <p class="text-center text-slate-400 italic py-6">Memuat riwayat...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KONFIRMASI HAPUS (khusus Rincian Gangguan) -->
+    <div id="modal-confirm-delete-gangguan" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4 border border-slate-100">
+            <div class="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-trash-alt"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-slate-900 text-sm">Hapus Data Gangguan?</h4>
+                <p class="text-xs text-slate-500 mt-1">Data yang dihapus tidak dapat dikembalikan lagi.</p>
+            </div>
+            <div class="flex items-center justify-center space-x-3 pt-2 text-xs">
+                <button onclick="closeDeleteGangguanModal()" class="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-lg transition">Batal</button>
+                <button onclick="executeDeleteGangguan()" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition">Ya, Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Kelola Custom Parameter.
+      Dulu ini satu menu sendiri di sidebar ("Custom Parameter"). Menu itu
+      sekarang dipakai untuk Rekap Gangguan Sarana, jadi pengelolanya
+      dipindah ke sini - dibuka dari tombol "Kelola Parameter" di menu
+      Rincian Gangguan. Tidak ada fungsi yang hilang: daftar tetap tumbuh
+      otomatis dari data yang masuk, dan di sini nilai yang salah ketik atau
+      sudah tidak terpakai masih bisa dihapus manual.
+    -->
+    <div id="modal-custom-parameter" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div>
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-[#d4af37]"></i><span>Kelola Parameter &amp; Item Gangguan</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">Perubahan di sini langsung mensinkronkan pilihan filter &amp; form di Rincian Gangguan</p>
+                </div>
+                <button onclick="closeCustomParameterModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1 bg-white">
+                <div class="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl text-[11px] text-slate-600 font-semibold flex items-start gap-2.5 mb-5">
+                    <i class="fa-solid fa-circle-info text-[#0c1d37] mt-0.5"></i>
+                    <span><strong>Penyebab</strong> &amp; <strong>Unit Terkait</strong> sengaja TIDAK dikelola di sini - keduanya sudah terdaftar sendiri dari setiap data yang masuk (input manual maupun Upload Excel), jadi mengaturnya manual hanya menduplikasi pekerjaan. Yang tersisa di halaman ini adalah tiga daftar yang memang perlu dijaga bakunya.</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[340px]">
+                            <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                    <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                        <i class="fa-solid fa-location-dot text-rose-600"></i> Wilayah
+                                    </span>
+                                    <span id="count-area" class="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                                </div>
+                                <div id="list-area" class="space-y-2 overflow-y-auto flex-1 custom-scrollbar pr-1 font-semibold text-slate-700"></div>
+                            </div>
+                            <div class="pt-3 border-t border-slate-200 mt-3">
+                                <div class="flex items-center gap-1">
+                                    <input type="text" id="input-add-area" placeholder="Tambah..." class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold focus:ring-1 focus:ring-rose-500" />
+                                    <button id="btn-add-gangguan-custom-3" onclick="addCustomOption('area')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[340px]">
+                            <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                    <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                        <i class="fa-solid fa-tags text-amber-600"></i> Kategori
+                                    </span>
+                                    <span id="count-kategori" class="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                                </div>
+                                <div id="list-kategori" class="space-y-2 overflow-y-auto flex-1 custom-scrollbar pr-1 font-semibold text-slate-700"></div>
+                            </div>
+                            <div class="pt-3 border-t border-slate-200 mt-3">
+                                <div class="flex items-center gap-1">
+                                    <input type="text" id="input-add-kategori" placeholder="Tambah... (mis. INTERNAL)" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold focus:ring-1 focus:ring-amber-500" />
+                                    <button id="btn-add-gangguan-custom-4" onclick="addCustomOption('kategori')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[340px]">
+                            <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                    <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                        <i class="fa-solid fa-barcode text-violet-600"></i> Kode
+                                    </span>
+                                    <span id="count-kode" class="text-[10px] bg-violet-100 text-violet-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                                </div>
+                                <div id="list-kode" class="space-y-2 overflow-y-auto flex-1 custom-scrollbar pr-1 font-semibold text-slate-700"></div>
+                            </div>
+                            <div class="pt-3 border-t border-slate-200 mt-3">
+                                <div class="flex items-center gap-1">
+                                    <input type="text" id="input-add-kode" placeholder="Tambah... (mis. D)" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold focus:ring-1 focus:ring-violet-500" />
+                                    <button id="btn-add-gangguan-custom-5" onclick="addCustomOption('kode')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                </div>
+            </div>
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+                <button onclick="closeCustomParameterModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Lengkapi Data Sarana (menu Rekap Gangguan Sarana).
+      Baris gangguannya sendiri TIDAK bisa diubah dari sini - ditampilkan
+      hanya sebagai rujukan supaya jelas baris mana yang sedang dilengkapi.
+      Untuk mengubah data gangguannya, gunakan menu Rincian Gangguan.
+    -->
+    <div id="modal-edit-sarana" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div class="min-w-0">
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-train-subway text-[#d4af37]"></i><span>Lengkapi Data Sarana</span>
+                    </h3>
+                    <p id="sarana-modal-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+                </div>
+                <button onclick="closeSaranaEditModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <form id="form-edit-sarana" onsubmit="handleSaranaSubmit(event)" class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+                <!-- Rujukan baris gangguan (hanya baca) -->
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Data Gangguan (dari Rincian Gangguan)</p>
+                    <p id="sarana-ref-judul" class="text-xs font-black text-[#0c1d37]">-</p>
+                    <p id="sarana-ref-meta" class="text-[11px] text-slate-500 font-semibold">-</p>
+                    <p id="sarana-ref-penyebab" class="text-[11px] text-slate-500 font-semibold">-</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <!-- Daftar tetap (6000TM/7000TM/203JR/205JR/8000T/8500T) - isinya
+                             dari SARANA_JENIS_OPTIONS di Script_Gangguan.html. -->
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">Jenis Sarana</label>
+                        <select id="sarana-in-jenis" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">Stamformasi</label>
+                        <input type="text" id="sarana-in-stamformasi" list="datalist-stamformasi" placeholder="Contoh: 8 SF / TS-05"
+                            oninput="this.value = this.value.toUpperCase()"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <datalist id="datalist-stamformasi"></datalist>
+                    </div>
+                    <div>
+                        <!-- Komponen masih bebas ketik (belum ada daftar bakunya);
+                             datalist hanya menawarkan nilai yang pernah dipakai. -->
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">Komponen</label>
+                        <input type="text" id="sarana-in-komponen" list="datalist-komponen-sarana" placeholder="Contoh: PANTOGRAPH"
+                            oninput="this.value = this.value.toUpperCase()"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <datalist id="datalist-komponen-sarana"></datalist>
+                    </div>
+                    <div>
+                        <!-- Daftar tetap (PTR/AC/BIE/ME/PNE/APS/ICA) - dari
+                             SARANA_ID_GANGGUAN_OPTIONS di Script_Gangguan.html. -->
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">ID Gangguan</label>
+                        <select id="sarana-in-idgangguan" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">ID Sarana</label>
+                        <input type="text" id="sarana-in-ket" placeholder="Contoh: KRL 205-142 / nomor rangkaian"
+                            oninput="this.value = this.value.toUpperCase()"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <!--
+                          KODEFIKASI: satu-satunya field di form ini yang MILIK baris
+                          Rincian Gangguan, bukan milik menu ini. Perubahannya menulis
+                          langsung ke baris aslinya & tercatat di riwayat yang sama -
+                          jadi kedua menu selalu menampilkan nilai yang sama.
+                        -->
+                        <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                            Kodefikasi <span class="text-[9px] text-[#d4af37] normal-case font-bold">(tersambung ke Rincian Gangguan)</span>
+                        </label>
+                        <select id="sarana-in-kode" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"></select>
+                        <p id="sarana-kode-note" class="text-[10px] text-slate-400 font-semibold mt-1"></p>
+                    </div>
+                </div>
+
+                <!--
+                  KOMENTAR - catatan bebas petugas sarana.
+
+                  Dibuat selebar dua kolom & berupa textarea, bukan input
+                  sebaris: isinya kalimat, bukan kode. Kolom sempit sebaris
+                  memaksa orang menyingkat sampai keterangannya kehilangan arti.
+
+                  Juga TIDAK diubah jadi huruf kapital seperti kolom lain di
+                  formulir ini, karena kalimat berhuruf kapital semua justru
+                  lebih sulit dibaca.
+                -->
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Komentar <span class="text-[9px] text-slate-400 normal-case font-bold">(opsional &mdash; tidak memengaruhi status lengkap)</span>
+                    </label>
+                    <textarea id="sarana-in-komentar" rows="3"
+                        placeholder="Catatan bebas, mis. menunggu suku cadang dari Depo Depok; sudah dicoba reset, kambuh lagi sore harinya."
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+                </div>
+
+                <p id="sarana-modal-updated" class="hidden text-[10px] text-slate-400 font-bold"></p>
+
+                <div class="flex items-center justify-between gap-3 pt-2">
+                    <button type="button" id="sarana-btn-kosongkan" onclick="kosongkanDataSarana()" class="px-4 py-2.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-eraser"></i><span>Kosongkan</span>
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <button type="button" onclick="closeSaranaEditModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                        <button type="submit" id="sarana-btn-simpan" class="px-6 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2">
+                            <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Data Sarana</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Preview Resume Gangguan (menu Rekap Gangguan Sarana).
+      HANYA BACA - tidak ada satu pun field yang bisa diubah dari sini.
+      Tujuannya supaya petugas yang melengkapi data sarana bisa membaca
+      kronologi lengkap kejadiannya tanpa harus pindah ke menu Rincian
+      Gangguan dan mencarinya lagi.
+
+      Modal ini SENGAJA terpisah dari modal Preview milik Rincian Gangguan:
+      modal itu membaca rincianGangguanData yang belum tentu sudah dimuat
+      kalau user langsung membuka menu ini. Data untuk modal ini sudah ikut
+      terbawa di saranaData, jadi selalu siap tanpa permintaan tambahan.
+    -->
+    <div id="modal-preview-sarana" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div class="min-w-0">
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-eye text-[#d4af37]"></i><span>Resume Gangguan</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">Hanya baca - untuk mengubah datanya, gunakan menu Rincian Gangguan</p>
+                </div>
+                <button onclick="closeSaranaPreviewModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+                <div class="flex items-start justify-between gap-4 flex-wrap">
+                    <div class="min-w-0 flex-1">
+                        <h4 id="sprev-judul" class="text-base font-black text-[#0c1d37] leading-snug">-</h4>
+                        <p class="text-[11px] text-slate-400 font-bold mt-1">
+                            <span id="sprev-tanggal">-</span> &middot; <span id="sprev-waktu">-</span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-wrap shrink-0">
+                        <span id="sprev-kategori-badge" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border bg-slate-100 text-slate-700 border-slate-300">-</span>
+                        <span id="sprev-unit-badge" class="px-3 py-1 rounded text-[10px] font-bold uppercase border bg-slate-100 text-slate-700 border-slate-300">-</span>
+                        <span id="sprev-kode-badge" class="px-3 py-1 rounded text-[10px] font-bold uppercase border bg-[#0c1d37] text-white border-[#0c1d37]">Kode A</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">No KA</p>
+                        <p id="sprev-noka" class="text-xs font-black text-[#0c1d37] mt-0.5 font-mono">-</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Andil</p>
+                        <p id="sprev-andil" class="text-xs font-black text-amber-700 mt-0.5">-</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Wilayah</p>
+                        <p id="sprev-area" class="text-xs font-black text-[#0c1d37] mt-0.5">-</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">KA Batal</p>
+                        <p id="sprev-kabatal" class="text-xs font-black text-rose-700 mt-0.5">-</p>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div>
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Lokasi</p>
+                        <p id="sprev-tempat" class="text-xs font-bold text-slate-700">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Penyebab</p>
+                        <p id="sprev-penyebab" class="text-xs font-bold text-slate-700">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Uraian Kronologi</p>
+                        <p id="sprev-uraian" class="text-xs font-semibold text-slate-600 whitespace-pre-line leading-relaxed">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Tindak Lanjut</p>
+                        <p id="sprev-tindaklanjut" class="text-xs font-semibold text-slate-600 whitespace-pre-line leading-relaxed">-</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">KA Terganggu</p>
+                            <p id="sprev-katerganggu" class="text-xs font-bold text-slate-700">-</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Keterangan Tambahan</p>
+                            <p id="sprev-keterangan" class="text-xs font-bold text-slate-700">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Blok data sarana - lima kolom milik menu ini -->
+                <div class="p-4 bg-[#0c1d37] rounded-2xl">
+                    <p class="text-[9px] font-extrabold text-[#d4af37] uppercase tracking-wider mb-3">Data Sarana</p>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Jenis Sarana</p>
+                            <p id="sprev-jenis" class="text-xs font-black text-white mt-0.5">-</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Stamformasi</p>
+                            <p id="sprev-stamformasi" class="text-xs font-black text-white mt-0.5 font-mono">-</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Komponen</p>
+                            <p id="sprev-komponen" class="text-xs font-black text-white mt-0.5">-</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">ID Gangguan</p>
+                            <p id="sprev-idgangguan" class="text-xs font-black text-white mt-0.5 font-mono">-</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">ID Sarana</p>
+                            <p id="sprev-idsarana" class="text-xs font-black text-white mt-0.5 font-mono">-</p>
+                        </div>
+                        <!--
+                          Komentar dibuat selebar penuh, bukan satu petak seperti
+                          kolom lain: isinya kalimat & akan terpotong di petak
+                          sempit. font-mono juga dilepas - itu untuk kode, bukan
+                          untuk teks yang dibaca.
+                        -->
+                        <div class="sm:col-span-2 lg:col-span-3">
+                            <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Komentar</p>
+                            <p id="sprev-komentar" class="text-xs font-semibold text-slate-200 mt-0.5 leading-relaxed whitespace-pre-line">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Riwayat: sumbernya sheet GangguanHistory yang SAMA dengan Rincian Gangguan -->
+                <div id="sarana-history-box" class="hidden p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Riwayat Perubahan Data Ini</p>
+                    <div id="sarana-history-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1"></div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+                <button onclick="tampilkanRiwayatSarana()" class="px-4 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span>Lihat Riwayat</span>
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeSaranaPreviewModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+                    <button onclick="editSaranaDariPreview()" class="px-5 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square text-[#d4af37]"></i><span>Lengkapi Data Sarana</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Kelola Parameter Rekap Gangguan Sarana.
+      Tiga daftar ini memang perlu dijaga bakunya - beda dengan Penyebab &
+      Unit Terkait yang wajar tumbuh bebas mengikuti kejadian di lapangan.
+      Nilai awal Jenis Sarana & ID Gangguan diisikan otomatis oleh server
+      saat daftarnya masih kosong (lihat GANGGUAN_SARANA_DEFAULT_OPTIONS di
+      Module_Gangguan.gs).
+    -->
+    <div id="modal-param-sarana" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div>
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-[#d4af37]"></i><span>Kelola Parameter Gangguan Sarana</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">Mengatur isi dropdown Jenis Sarana, ID Gangguan, &amp; Stamformasi</p>
+                </div>
+                <button onclick="closeSaranaParamModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1 bg-white">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[330px]">
+                        <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                    <i class="fa-solid fa-train-subway text-emerald-600"></i> Jenis Sarana
+                                </span>
+                                <span id="count-jenis-sarana" class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 font-semibold leading-relaxed">Kode baku jenis armada. Dipakai sebagai pilihan tetap di form &amp; filter.</p>
+                            <div id="list-jenis-sarana" class="space-y-1.5 overflow-y-auto flex-1 custom-scrollbar pr-1"></div>
+                        </div>
+                        <div class="pt-3 border-t border-slate-200 mt-3">
+                            <div class="flex items-center gap-1">
+                                <input type="text" id="input-add-jenis-sarana" placeholder="Contoh: 205JR" oninput="this.value = this.value.toUpperCase()"
+                                    class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold uppercase focus:ring-1 focus:ring-emerald-500" />
+                                <button onclick="tambahOpsiSarana('jenis-sarana')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[330px]">
+                        <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                    <i class="fa-solid fa-fingerprint text-violet-600"></i> ID Gangguan
+                                </span>
+                                <span id="count-id-gangguan" class="text-[10px] bg-violet-100 text-violet-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 font-semibold leading-relaxed">Klasifikasi gangguan sarana. Dipakai sebagai pilihan tetap di form &amp; filter.</p>
+                            <div id="list-id-gangguan" class="space-y-1.5 overflow-y-auto flex-1 custom-scrollbar pr-1"></div>
+                        </div>
+                        <div class="pt-3 border-t border-slate-200 mt-3">
+                            <div class="flex items-center gap-1">
+                                <input type="text" id="input-add-id-gangguan" placeholder="Contoh: PTR" oninput="this.value = this.value.toUpperCase()"
+                                    class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold uppercase focus:ring-1 focus:ring-violet-500" />
+                                <button onclick="tambahOpsiSarana('id-gangguan')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between h-[330px]">
+                        <div class="space-y-3 flex-1 overflow-hidden flex flex-col">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-extrabold text-[#0c1d37] text-xs flex items-center gap-2">
+                                    <i class="fa-solid fa-list-ol text-amber-600"></i> Stamformasi
+                                </span>
+                                <span id="count-stamformasi" class="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">0</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 font-semibold leading-relaxed">Dipakai sebagai saran isian - mengetik nilai baru tetap boleh, &amp; otomatis ikut terdaftar di sini.</p>
+                            <div id="list-stamformasi" class="space-y-1.5 overflow-y-auto flex-1 custom-scrollbar pr-1"></div>
+                        </div>
+                        <div class="pt-3 border-t border-slate-200 mt-3">
+                            <div class="flex items-center gap-1">
+                                <input type="text" id="input-add-stamformasi" placeholder="Contoh: TS-05" oninput="this.value = this.value.toUpperCase()"
+                                    class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold uppercase focus:ring-1 focus:ring-amber-500" />
+                                <button onclick="tambahOpsiSarana('stamformasi')" class="p-2.5 bg-[#0c1d37] text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+                <button onclick="closeSaranaParamModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+<!--
+  KONFIRMASI HAPUS BANYAK SEKALIGUS.
+  Menampilkan daftar judulnya (maksimal 8) supaya user bisa memastikan yang
+  dipilih memang benar sebelum menekan hapus - menghapus banyak data tidak
+  boleh terasa seringan menghapus satu.
+-->
+<div id="modal-hapus-massal" class="hidden fixed inset-0 z-[75] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-5 flex items-start gap-4 shrink-0">
+            <div class="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center text-xl shrink-0">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-sm font-black text-slate-900">
+                    Hapus <span id="massal-jumlah" class="text-red-600">0</span> data gangguan?
+                </h3>
+                <p class="text-[11px] text-slate-500 font-semibold mt-1 leading-relaxed">
+                    Data yang dihapus tidak dapat dikembalikan. Data detail sarana yang menempel pada gangguan ini ikut terhapus.
+                </p>
+            </div>
+        </div>
+
+        <div class="px-6 pb-4 overflow-y-auto flex-1">
+            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Data yang akan dihapus</p>
+                <ul id="massal-daftar" class="space-y-1.5"></ul>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+            <button onclick="tutupHapusMassal_()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+            <button id="massal-btn-hapus" onclick="jalankanHapusMassal_()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i><span>Ya, Hapus Semua</span>
+            </button>
+        </div>
+    </div>
+</div>

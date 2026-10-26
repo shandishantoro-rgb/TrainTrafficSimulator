@@ -1,0 +1,532 @@
+<!--
+  Modals_SapEmplasemen.html
+  Modal-modal untuk Emplasemen Stasiun v3 (Sarana & Prasarana). Palet warna
+  mengikuti identitas visual dashboard (navy #0c1d37 + gold #d4af37).
+
+  Update 25 Agustus 2026 (koreksi ke-4 dari user, 7 poin):
+  1. MODAL PREVIEW jadi penampil gambar biasa. Semua dokumen sekarang
+     tersimpan sebagai JPG per halaman (dikonversi di browser saat upload,
+     lihat Script_SaranaPrasarana.html), jadi tidak ada lagi jenis berkas
+     yang "tidak bisa dibuka" - <img> selalu bisa menampilkannya.
+  2. ZOOM IN/OUT + GESER (drag) untuk presentasi, plus navigasi halaman.
+  3. MODAL TAMBAH dipakai ulang sebagai modal EDIT, dan di mode Edit
+     muncul PENGELOLA DOKUMEN: daftar seluruh versi yang pernah diupload,
+     dengan tombol Lihat / Aktifkan / Unduh asli / Hapus permanen.
+  4. Peringatan dini kalau nama/singkatan stasiun sudah terdaftar - user
+     tahu lebih dulu bahwa simpanannya akan MEMPERBARUI data yang ada.
+  5. Konfirmasi hapus menyebutkan dengan jelas bahwa berkas Drive ikut
+     terhapus permanen.
+-->
+
+<!-- 1. PREVIEW: penampil dokumen (JPG per halaman) dengan zoom & geser -->
+<!--
+  z-[80] (bukan z-50 seperti modal lain): Preview bisa dibuka DARI DALAM
+  modal Edit lewat tombol "Lihat" di pengelola dokumen. Dengan z-index yang
+  sama, Preview muncul di BELAKANG lapisan Edit & jadi tidak terlihat -
+  persis keluhan user. Angka 80 menaruhnya di atas modal Edit (z-50),
+  sub-modal jalur (z-60), maupun dialog konfirmasi (z-70).
+-->
+<div id="emp-preview-modal" class="fixed inset-0 bg-[#0c1d37]/90 backdrop-blur-md z-[80] hidden flex items-center justify-center p-4">
+    <div id="emp-preview-card" class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden border border-slate-700">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between border-b border-[#1a3d6d] flex-wrap gap-3">
+            <div class="flex items-center space-x-3.5 min-w-0">
+                <div class="w-9 h-9 bg-[#d4af37]/20 text-[#d4af37] rounded-xl flex items-center justify-center text-base border border-[#d4af37]/30 shrink-0"><i class="fa-solid fa-map"></i></div>
+                <div class="min-w-0">
+                    <h3 id="emp-preview-title" class="font-bold text-sm leading-tight truncate">Layout Stasiun</h3>
+                    <p id="emp-preview-subtitle" class="text-xs text-slate-400 font-medium mt-0.5 truncate">Wilayah</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 shrink-0">
+                <button id="emp-fullscreen-btn" onclick="empTogglePreviewFullscreen()" class="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition"><i class="fa-solid fa-expand"></i> Layar Penuh</button>
+                <button onclick="closeEmpPreviewModal()" class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/10"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+        </div>
+
+        <!--
+          Toolbar presentasi: zoom, navigasi halaman, unduh. Hanya tampil saat
+          ada gambar yang benar-benar sedang ditampilkan (state 'image').
+        -->
+        <div id="emp-doc-toolbar" class="hidden px-5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-1.5">
+                <button id="emp-doc-prev-btn" onclick="empHalamanSebelumnya()" title="Halaman sebelumnya" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="emp-doc-page-info" class="text-[11px] text-slate-300 font-bold px-2 whitespace-nowrap">Halaman 1 / 1</span>
+                <button id="emp-doc-next-btn" onclick="empHalamanBerikutnya()" title="Halaman berikutnya" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button onclick="empZoomOut()" title="Perkecil" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                <span id="emp-doc-zoom-label" class="text-[11px] text-slate-300 font-bold w-12 text-center">100%</span>
+                <button onclick="empZoomIn()" title="Perbesar" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+                <button onclick="empResetZoom()" title="Kembalikan ke ukuran & putaran normal" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition ml-1"><i class="fa-solid fa-arrows-to-dot mr-1"></i>Reset</button>
+            </div>
+            <!-- Putar gambar: tiap klik 90 derajat, empat klik = satu putaran penuh (360). -->
+            <div class="flex items-center gap-1.5">
+                <button onclick="empPutarKiri()" title="Putar 90&deg; ke kiri" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-rotate-left"></i></button>
+                <span id="emp-doc-rotate-label" class="text-[11px] text-slate-300 font-bold w-10 text-center">0&deg;</span>
+                <button onclick="empPutarKanan()" title="Putar 90&deg; ke kanan" class="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-rotate-right"></i></button>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button onclick="empUnduhHalamanAktif()" title="Unduh halaman ini sebagai JPG" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-image mr-1"></i>Unduh JPG</button>
+                <button onclick="empUnduhAsliDariViewer()" title="Unduh berkas asli sebelum konversi" class="px-3 py-1.5 bg-[#d4af37] hover:bg-amber-600 text-[#0c1d37] rounded-lg text-[11px] font-bold transition"><i class="fa-solid fa-download mr-1"></i>Berkas Asli</button>
+            </div>
+        </div>
+
+        <div class="flex-1 bg-slate-950 relative overflow-hidden">
+            <div id="emp-doc-loading" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3">
+                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-[#d4af37]"></i>
+                <span class="text-xs font-bold">Memuat halaman dokumen...</span>
+            </div>
+            <div id="emp-doc-empty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center px-8">
+                <div class="w-14 h-14 bg-white/5 rounded-full flex items-center justify-center mb-3 text-slate-500 text-xl border border-white/10"><i class="fa-solid fa-file-circle-xmark"></i></div>
+                <h4 class="text-sm font-bold text-slate-300">Belum Ada Dokumen</h4>
+                <p class="text-xs text-slate-500 mt-1 max-w-xs">Stasiun ini belum punya berkas layout. Unggah lewat tombol Edit pada baris stasiun.</p>
+            </div>
+
+            <!--
+              Panggung gambar. Zoom & geser dikerjakan dengan CSS transform pada
+              <img> - ringan, mulus, dan tidak perlu menggambar ulang apa pun,
+              jadi tetap lancar walau gambarnya beresolusi tinggi.
+            -->
+            <div id="emp-doc-stage" class="hidden absolute inset-0 flex items-center justify-center overflow-hidden select-none"
+                 onwheel="empWheelZoom(event)" onmousedown="empMulaiGeser(event)" onmousemove="empSedangGeser(event)"
+                 onmouseup="empSelesaiGeser()" onmouseleave="empSelesaiGeser()">
+                <img id="emp-doc-image" class="max-w-full max-h-full object-contain shadow-2xl" style="transform-origin:center center; transition:transform 0.08s linear;" alt="Halaman dokumen layout emplasemen" draggable="false">
+            </div>
+
+            <!-- Format yang memang tidak bisa diubah jadi gambar (DXF/CAD dsb): hanya berkas asli yang tersimpan. -->
+            <div id="emp-doc-openexternal" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center px-8">
+                <div class="w-14 h-14 bg-[#d4af37]/15 rounded-full flex items-center justify-center mb-3 text-[#d4af37] text-xl border border-[#d4af37]/30"><i class="fa-solid fa-file-shield"></i></div>
+                <h4 id="emp-doc-openexternal-name" class="text-sm font-bold text-slate-200">berkas</h4>
+                <p id="emp-doc-openexternal-desc" class="text-xs text-slate-500 mt-1 max-w-sm">Format berkas ini tidak bisa ditampilkan sebagai gambar.</p>
+                <button onclick="empUnduhAsliDariViewer()" class="mt-4 px-4 py-2 bg-[#d4af37] hover:bg-amber-600 text-[#0c1d37] rounded-xl text-xs font-bold flex items-center gap-2 transition"><i class="fa-solid fa-download"></i> Unduh Berkas Asli</button>
+            </div>
+
+            <div id="emp-doc-error" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center px-8">
+                <div class="w-14 h-14 bg-red-500/15 rounded-full flex items-center justify-center mb-3 text-red-400 text-xl border border-red-500/30"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <h4 class="text-sm font-bold text-slate-200">Gagal Menampilkan Halaman</h4>
+                <p id="emp-doc-error-desc" class="text-xs text-slate-500 mt-1 max-w-sm">Halaman ini gagal diambil dari Drive.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. TAMBAH / EDIT EMPLASEMEN (satu modal, dua mode - lihat openEmpEditModal()) -->
+<div id="emp-upload-modal" class="fixed inset-0 bg-[#0c1d37]/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between flex-shrink-0 border-b border-[#1a3d6d]">
+            <h3 class="font-bold text-sm flex items-center gap-2"><i id="emp-upload-modal-icon" class="fa-solid fa-plus-circle text-[#d4af37]"></i><span id="emp-upload-modal-title">Tambah Emplasemen Stasiun Baru</span></h3>
+            <button onclick="closeEmpUploadModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <form id="emp-upload-form" onsubmit="handleEmpUploadForm(event)" class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+
+            <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Nama Stasiun <span class="text-red-500">*</span></label>
+                <!--
+                  oninput mengubah isian jadi kapital sambil diketik (bukan cuma
+                  ditampilkan kapital lewat CSS) - jadi yang benar-benar terkirim
+                  ke server pun sudah kapital. Server tetap menegakkan hal yang
+                  sama lewat kapitalkanMetaEmp_ sebagai jaring pengaman.
+                -->
+                <input type="text" id="emp-input-nama" required placeholder="CONTOH: STASIUN GAMBIR"
+                    oninput="this.value = this.value.toUpperCase()" onkeyup="empCekDuplikatStasiun()"
+                    class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Singkatan <span class="text-red-500">*</span></label>
+                    <input type="text" id="emp-input-singkatan" required placeholder="GMR" maxlength="5"
+                        oninput="this.value = this.value.toUpperCase()" onkeyup="empCekDuplikatStasiun()"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Lokasi (Wilayah Daop/Divre) <span class="text-red-500">*</span></label>
+                    <select id="emp-input-wilayah" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"></select>
+                </div>
+            </div>
+
+            <!-- Peringatan dini duplikat: muncul otomatis begitu nama/singkatan yang diketik cocok dengan stasiun yang sudah terdaftar. -->
+            <div id="emp-duplikat-notice" class="hidden p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5">
+                <i class="fa-solid fa-circle-info text-amber-600 mt-0.5"></i>
+                <p id="emp-duplikat-text" class="text-[11px] text-amber-900 font-semibold leading-relaxed"></p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Tanggal Upload <span class="text-red-500">*</span></label>
+                    <input type="date" id="emp-input-tanggal" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Status Emplasemen</label>
+                    <select id="emp-input-status" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer">
+                        <option value="Aktif">Aktif</option>
+                        <option value="Tidak Aktif">Tidak Aktif</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Konfigurasi jalur awal: HANYA relevan saat menambah stasiun baru. -->
+            <div id="emp-track-config-section" class="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div>
+                    <label class="block text-xs font-extrabold text-[#0c1d37] uppercase tracking-wider">Konfigurasi Jalur KA</label>
+                    <p id="emp-track-config-badge" class="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1.5"><i class="fa-solid fa-list-check text-amber-500"></i> 6 Jalur Siap Diatur</p>
+                </div>
+                <button type="button" onclick="openEmpTrackConfigSubModal()" class="w-full sm:w-auto px-4 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition shrink-0">
+                    <i class="fa-solid fa-sliders text-[#d4af37]"></i><span>Atur Jalur KA</span>
+                </button>
+            </div>
+            <div id="emp-edit-track-note" class="hidden p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl text-[11px] text-slate-600 font-semibold flex items-start gap-2.5">
+                <i class="fa-solid fa-circle-info text-[#0c1d37] mt-0.5"></i>
+                <span>Rincian jalur KA stasiun ini diatur lewat kolom <strong>JALUR KA</strong> di tabel (tambah / edit / hapus per jalur), jadi tidak diubah dari form ini.</span>
+            </div>
+
+            <!--
+              PENGELOLA DOKUMEN - hanya muncul di mode Edit.
+              Semua versi yang pernah diupload terdaftar di sini, jadi user bisa
+              mencocokkan data stasiun dengan dokumen yang benar, mengaktifkan
+              versi lama kembali, atau menghapus versi yang salah unggah
+              (permanen, berkasnya ikut hilang dari Drive).
+            -->
+            <div id="emp-doc-manager" class="hidden border border-slate-200 rounded-2xl overflow-hidden">
+                <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-extrabold text-[#0c1d37] uppercase tracking-wider">Dokumen Tersimpan</p>
+                        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Versi aktif yang dipakai di Preview &amp; presentasi</p>
+                    </div>
+                    <span id="emp-doc-count-badge" class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-extrabold text-slate-600">0 versi</span>
+                </div>
+                <div id="emp-doc-list" class="p-3 space-y-2 max-h-56 overflow-y-auto bg-white"></div>
+            </div>
+
+            <div>
+                <label id="emp-upload-file-label" class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Unggah Dokumen Layout (opsional)</label>
+                <div class="border-2 border-dashed border-slate-300 rounded-2xl p-5 text-center hover:border-amber-500 transition cursor-pointer bg-slate-50/50" onclick="document.getElementById('emp-input-file').click()">
+                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-400 mb-1"></i>
+                    <p class="text-xs font-bold text-slate-700">Klik atau seret berkas (PDF / JPG / PNG / WEBP)</p>
+                    <p class="text-[10px] text-slate-400 font-semibold mt-0.5">Berkas otomatis diubah jadi JPG mutu tinggi per halaman sebelum disimpan</p>
+                    <p id="emp-file-name-display" class="hidden text-[11px] text-emerald-600 font-bold mt-1.5"></p>
+                </div>
+                <input type="file" id="emp-input-file" class="hidden" onchange="handleEmpFileSelect(event)">
+
+                <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input type="checkbox" id="emp-simpan-asli" checked class="rounded border-slate-300 text-[#0c1d37] focus:ring-amber-500">
+                    <span class="text-[11px] text-slate-600 font-semibold">Simpan juga berkas aslinya di Drive sebagai arsip (mutu penuh, bisa diunduh kapan saja)</span>
+                </label>
+
+                <!--
+                  Mode EDIT: cukup satu baris ringkas seperti ini, TIDAK ada
+                  deretan gambar pratinjau di bawah (permintaan user) - karena
+                  di modal Edit sudah ada pengelola dokumen di atasnya yang
+                  punya tombol Lihat sendiri, jadi deretan gambar cuma mengulang
+                  hal yang sama dan membuat form jadi panjang.
+                -->
+                <p id="emp-upload-status-line" class="hidden mt-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-semibold text-slate-600"></p>
+
+                <!-- Mode TAMBAH: pratinjau tiap halaman, muncul otomatis begitu berkas dipilih. -->
+                <div id="emp-upload-file-preview" class="hidden mt-3 p-3 bg-slate-950 rounded-2xl border border-slate-800">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5"><i class="fa-solid fa-eye text-[#d4af37]"></i> <span id="emp-upload-preview-title">Pratinjau Berkas</span></p>
+                    <div id="emp-upload-preview-strip" class="max-h-56 overflow-auto whitespace-nowrap text-center"></div>
+                </div>
+
+                <!-- Progres upload bertahap (per halaman) - supaya user tahu prosesnya berjalan, bukan menggantung. -->
+                <div id="emp-upload-progress" class="hidden mt-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span id="emp-upload-progress-text" class="text-[11px] font-bold text-slate-600">Menyiapkan...</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div id="emp-upload-progress-bar" class="h-full bg-[#0c1d37] rounded-full transition-all duration-300" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onclick="closeEmpUploadModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                <button id="emp-upload-submit-btn" type="submit" class="px-6 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2">
+                    <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Emplasemen</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!--
+  3. PERBAIKI DOKUMEN (sub-modal di atas modal Edit, z-[65]).
+  Untuk versi dokumen yang isinya keliru atau tidak tepat: berkasnya diganti
+  DI TEMPAT - nomor versi & status aktif/arsipnya tetap, jadi tidak menambah
+  versi baru yang tidak perlu. Berkas lama dihapus permanen dari Drive.
+-->
+<div id="emp-doc-edit-submodal" class="fixed inset-0 bg-[#0c1d37]/90 backdrop-blur-md z-[65] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0 border-b border-[#1a3d6d]">
+            <div class="min-w-0">
+                <h3 id="emp-docedit-title" class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-screwdriver-wrench text-[#d4af37]"></i><span>Perbaiki Dokumen</span></h3>
+                <p id="emp-docedit-subtitle" class="text-xs text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button type="button" onclick="closeEmpDocEditSubModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+            <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Catatan Versi</label>
+                <input type="text" id="emp-docedit-catatan" placeholder="Contoh: revisi jalur 3, menyesuaikan Gapeka 2026"
+                    class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <p class="text-[10px] text-slate-400 font-semibold mt-1">Keterangan singkat supaya mudah dibedakan dari versi lain.</p>
+            </div>
+
+            <!--
+              DATA STASIUN & TANGGAL SAH DOKUMEN (4 September 2026)
+              Sebelumnya modal ini hanya bisa mengubah catatan & mengganti
+              berkas. Sesuai permintaan, kini bisa menyunting seluruh isian
+              seperti saat mengunggah - termasuk tanggal sah dokumen, yang
+              menentukan urutan versi di daftar.
+            -->
+            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <p class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Data Stasiun &amp; Dokumen</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Nama Stasiun</label>
+                        <input type="text" id="emp-docedit-nama" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Singkatan</label>
+                        <input type="text" id="emp-docedit-singkatan" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Lokasi (Wilayah Daop/Divre)</label>
+                        <select id="emp-docedit-wilayah" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Tanggal Sah Dokumen</label>
+                        <input type="date" id="emp-docedit-tanggal" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <p class="text-[9px] text-slate-400 font-semibold mt-1">Menentukan urutan versi di daftar</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 mb-1">Status Emplasemen</label>
+                    <select id="emp-docedit-status-emp" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer">
+                        <option value="Aktif">Aktif</option>
+                        <option value="Tidak Aktif">Tidak Aktif</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Ganti Berkas Versi Ini (opsional)</label>
+                <div class="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center hover:border-amber-500 transition cursor-pointer bg-slate-50/50" onclick="document.getElementById('emp-docedit-file').click()">
+                    <i class="fa-solid fa-arrows-rotate text-xl text-slate-400 mb-1"></i>
+                    <p class="text-xs font-bold text-slate-700">Pilih berkas pengganti (PDF / JPG / PNG)</p>
+                    <p class="text-[10px] text-slate-400 font-semibold mt-0.5">Kosongkan kalau hanya ingin mengubah catatan</p>
+                </div>
+                <input type="file" id="emp-docedit-file" class="hidden" onchange="handleEmpDocEditFileSelect(event)">
+                <p id="emp-docedit-status" class="hidden mt-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-semibold text-slate-600"></p>
+
+                <!--
+                  Pratinjau berkas pengganti. Justru di sini pratinjau paling
+                  dibutuhkan: isi versi yang lama akan DIHAPUS PERMANEN, jadi
+                  memastikan berkas penggantinya benar sebelum menekan Simpan
+                  itu penting.
+                -->
+                <div id="emp-docedit-preview" class="hidden mt-2.5 p-3 bg-slate-950 rounded-2xl border border-slate-800">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-eye text-[#d4af37]"></i>
+                        <span id="emp-docedit-preview-title">Pratinjau Berkas Pengganti</span>
+                    </p>
+                    <div id="emp-docedit-preview-strip" class="overflow-x-auto whitespace-nowrap custom-scrollbar"></div>
+                </div>
+
+                <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input type="checkbox" id="emp-docedit-simpan-asli" checked class="rounded border-slate-300 text-[#0c1d37] focus:ring-amber-500">
+                    <span class="text-[11px] text-slate-600 font-semibold">Simpan juga berkas aslinya sebagai arsip</span>
+                </label>
+            </div>
+
+            <div class="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5">
+                <i class="fa-solid fa-triangle-exclamation text-red-600 mt-0.5"></i>
+                <p class="text-[11px] text-red-800 font-semibold leading-relaxed">Kalau berkas pengganti dipilih, seluruh halaman &amp; berkas asli versi ini <strong>dihapus permanen dari Google Drive</strong> lalu digantikan yang baru. Nomor versi &amp; statusnya tidak berubah.</p>
+            </div>
+
+            <div id="emp-docedit-progress" class="hidden p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <span id="emp-docedit-progress-text" class="text-[11px] font-bold text-slate-600">Menyiapkan...</span>
+                <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
+                    <div id="emp-docedit-progress-bar" class="h-full bg-[#0c1d37] rounded-full transition-all duration-300" style="width:0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+            <button type="button" onclick="closeEmpDocEditSubModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+            <button type="button" id="emp-docedit-save-btn" onclick="simpanEmpDocEdit()" class="px-5 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2"><i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Perbaikan</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- 4. TRACK DETAIL: Rincian Jalur KA (lihat/tambah/edit/hapus) -->
+<div id="emp-track-detail-modal" class="fixed inset-0 bg-[#0c1d37]/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0 border-b border-[#1a3d6d]">
+            <div>
+                <h3 id="emp-track-detail-title" class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-ruler-horizontal text-[#d4af37]"></i><span>Rincian Jalur KA</span></h3>
+                <p id="emp-track-detail-subtitle" class="text-xs text-slate-400 font-medium mt-0.5">-</p>
+            </div>
+            <button onclick="closeEmpTrackDetailModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+            <div class="flex items-center justify-between bg-blue-50/70 border border-blue-100 rounded-2xl p-3 text-xs">
+                <span class="text-slate-700 font-bold">Total Jalur Terdaftar:</span>
+                <div class="flex items-center gap-2">
+                    <span id="emp-track-detail-total-badge" class="font-bold text-[#0c1d37] bg-white px-3 py-1 rounded-xl border border-blue-200">0 Jalur KA</span>
+                    <button onclick="addEmpTrackToActiveStation()" class="px-3 py-1 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-xl font-bold flex items-center gap-1 transition"><i class="fa-solid fa-plus text-[10px]"></i> Tambah Jalur</button>
+                </div>
+            </div>
+            <div class="space-y-2.5" id="emp-track-detail-list"></div>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+            <span class="text-[11px] text-slate-500 font-medium">Perubahan langsung tersimpan ke server.</span>
+            <button onclick="closeEmpTrackDetailModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- 5. TRACK CONFIG SUB-MODAL: dipakai saat Tambah Emplasemen -->
+<div id="emp-track-config-submodal" class="fixed inset-0 bg-[#0c1d37]/90 backdrop-blur-md z-[60] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0 border-b border-[#1a3d6d]">
+            <div>
+                <h3 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-sliders text-[#d4af37]"></i><span>Pengaturan Jalur KA</span></h3>
+                <p class="text-xs text-slate-400 font-medium mt-0.5">Tentukan nama &amp; panjang efektif (meter) tiap jalur</p>
+            </div>
+            <button onclick="closeEmpTrackConfigSubModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+            <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs font-medium text-slate-600">
+                <span>Atur tiap jalur, lalu klik <strong>Simpan &amp; Kembali</strong>.</span>
+                <button type="button" onclick="addEmpTrackToSubModal()" class="px-3 py-1.5 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition shrink-0"><i class="fa-solid fa-plus text-xs"></i> Tambah Jalur</button>
+            </div>
+            <div id="emp-submodal-track-list" class="space-y-2"></div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+            <span class="text-xs text-slate-600 font-bold" id="emp-submodal-track-count-info">6 Jalur Terkonfigurasi</span>
+            <div class="flex items-center space-x-2">
+                <button type="button" onclick="closeEmpTrackConfigSubModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                <button type="button" onclick="saveEmpTrackConfigSubModal()" class="px-5 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i><span>Simpan &amp; Kembali</span></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 6. KONFIRMASI HAPUS JALUR -->
+<div id="emp-delete-track-confirm-modal" class="fixed inset-0 bg-[#0c1d37]/90 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center border border-slate-200">
+        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-600 text-xl border border-amber-200"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h4 class="text-base font-extrabold text-slate-900">Hapus Jalur Ini?</h4>
+        <p class="text-xs text-slate-500 mt-1.5 leading-relaxed font-medium">Yakin ingin menghapus <strong id="emp-delete-track-target-name" class="text-slate-900 font-bold">Jalur KA</strong> dari stasiun ini?</p>
+        <div class="mt-5 flex items-center justify-center space-x-2">
+            <button onclick="closeEmpDeleteTrackConfirmModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+            <button onclick="executeEmpDeleteTrack()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5"><i class="fa-solid fa-trash-can"></i><span>Ya, Hapus</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- 7. KONFIRMASI HAPUS STASIUN (menyebutkan berkas Drive yang ikut terhapus) -->
+<div id="emp-delete-station-confirm-modal" class="fixed inset-0 bg-[#0c1d37]/90 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center border border-slate-200">
+        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3 text-red-600 text-xl border border-red-200"><i class="fa-solid fa-trash-can"></i></div>
+        <h4 class="text-base font-extrabold text-slate-900">Hapus Data Emplasemen?</h4>
+        <p class="text-xs text-slate-500 mt-1.5 leading-relaxed font-medium">Yakin ingin menghapus data emplasemen <strong id="emp-delete-station-name" class="text-slate-900 font-bold">Stasiun</strong>? Seluruh rincian jalur &amp; riwayat ikut terhapus, tindakan ini permanen.</p>
+        <p id="emp-delete-station-docinfo" class="text-[11px] text-red-600 font-bold mt-2 leading-relaxed"></p>
+        <div class="mt-5 flex items-center justify-center space-x-2">
+            <button onclick="closeEmpDeleteStationModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+            <button onclick="confirmEmpDeleteStation()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5"><i class="fa-solid fa-trash-can"></i><span>Ya, Hapus</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- 8. HISTORY: Riwayat Versi GAPEKA -->
+<div id="emp-history-modal" class="fixed inset-0 bg-[#0c1d37]/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between flex-shrink-0 border-b border-[#1a3d6d]">
+            <div>
+                <h3 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span id="emp-history-modal-title">Riwayat Dokumen</span></h3>
+                <p class="text-xs text-slate-400 font-medium mt-0.5">Catatan Perubahan Layout berdasarkan GAPEKA</p>
+            </div>
+            <button onclick="closeEmpHistoryModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+            <span class="text-xs text-slate-700 font-extrabold uppercase tracking-wider">Log Riwayat</span>
+            <button onclick="openEmpAddHistoryForm()" class="px-3.5 py-1.5 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition"><i class="fa-solid fa-plus text-xs"></i> Tambah Catatan</button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-1 bg-white">
+            <div id="emp-history-edit-form-container" class="hidden mb-6 p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
+                <h4 id="emp-history-form-header" class="text-xs font-extrabold text-slate-900 uppercase tracking-wide">Tambah Catatan Riwayat Baru</h4>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Versi Dokumen</label>
+                        <input type="text" id="emp-hist-input-version" placeholder="v2.5" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gapeka</label>
+                        <input type="text" id="emp-hist-input-gapeka" placeholder="Gapeka 2025" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Deskripsi Perubahan</label>
+                    <input type="text" id="emp-hist-input-desc" placeholder="Keterangan perbaikan jalur..." class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div class="flex items-center justify-end space-x-2 pt-1">
+                    <button onclick="closeEmpAddHistoryForm()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                    <button onclick="saveEmpHistoryEntry()" class="px-3 py-1.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">Simpan Log</button>
+                </div>
+            </div>
+            <ol id="emp-history-timeline" class="relative border-l-2 border-slate-200 ml-3 space-y-6"></ol>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end flex-shrink-0">
+            <button onclick="closeEmpHistoryModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- 9. RIWAYAT AKTIVITAS: log tambah/edit/hapus seluruh menu Emplasemen Stasiun -->
+<div id="emp-activity-log-modal" class="fixed inset-0 bg-[#0c1d37]/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between flex-shrink-0 border-b border-[#1a3d6d]">
+            <div>
+                <h3 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span>Riwayat Aktivitas Emplasemen Stasiun</span></h3>
+                <p class="text-xs text-slate-400 font-medium mt-0.5">Log tambah / edit / hapus stasiun, jalur, &amp; dokumen</p>
+            </div>
+            <button onclick="closeEmpActivityLogModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1">
+                <button id="emp-log-sort-terbaru" onclick="empActivityLogSetSort('terbaru')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition bg-[#0c1d37] text-white">Terbaru</button>
+                <button id="emp-log-sort-abjad" onclick="empActivityLogSetSort('abjad')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition text-slate-500 hover:bg-slate-100">Nama Stasiun A-Z</button>
+            </div>
+            <span id="emp-log-count-info" class="text-[11px] text-slate-500 font-bold">0 aktivitas</span>
+        </div>
+        <div class="overflow-y-auto flex-1 bg-white">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead class="sticky top-0 bg-slate-100">
+                    <tr class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                        <th class="px-4 py-2.5 border-b border-slate-200">Waktu</th>
+                        <th class="px-4 py-2.5 border-b border-slate-200">Pengguna</th>
+                        <th class="px-4 py-2.5 border-b border-slate-200">Aksi</th>
+                        <th class="px-4 py-2.5 border-b border-slate-200">Stasiun</th>
+                        <th class="px-4 py-2.5 border-b border-slate-200">Keterangan</th>
+                    </tr>
+                </thead>
+                <tbody id="emp-activity-log-body" class="divide-y divide-slate-100 font-semibold text-slate-700"></tbody>
+            </table>
+            <div id="emp-log-empty-state" class="hidden py-14 text-center">
+                <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400 border border-slate-200"><i class="fa-solid fa-inbox"></i></div>
+                <p class="text-xs font-bold text-slate-500">Belum ada aktivitas tercatat.</p>
+            </div>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
+            <button onclick="empActivityLogPrevPage()" class="px-3.5 py-1.5 bg-white border border-slate-200 hover:border-[#0c1d37] rounded-xl text-xs font-bold transition flex items-center gap-1.5"><i class="fa-solid fa-chevron-left text-[10px]"></i> Sebelumnya</button>
+            <span id="emp-log-page-info" class="text-[11px] text-slate-500 font-bold">Halaman 1 / 1</span>
+            <button onclick="empActivityLogNextPage()" class="px-3.5 py-1.5 bg-white border border-slate-200 hover:border-[#0c1d37] rounded-xl text-xs font-bold transition flex items-center gap-1.5">Selanjutnya <i class="fa-solid fa-chevron-right text-[10px]"></i></button>
+        </div>
+    </div>
+</div>

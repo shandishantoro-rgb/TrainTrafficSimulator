@@ -1,0 +1,96 @@
+<!--
+  Modals_Kinop.html
+  Modal untuk modul Kinerja Operasi
+-->
+    <div id="modal-input-kinop" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center">
+                <h3 class="font-bold text-xs uppercase"><i class="fa-solid fa-plus-circle mr-1.5"></i>Input Performa Lintas KA</h3>
+                <button onclick="closeKinopInputModal()" class="text-slate-300 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleKinopManualSubmit(event)" class="p-6 space-y-4 text-xs">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Tanggal</label>
+                        <input type="date" id="k-tanggal" required class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Nomor KA</label>
+                        <input type="text" id="k-no-ka" required placeholder="cth: KA-202" class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Lintas</label>
+                        <select id="k-line" class="w-full p-2 border border-slate-300 rounded-lg font-bold text-slate-700">
+                            <option value="Bogor Line">Bogor Line</option>
+                            <option value="Cikarang Line">Cikarang Line</option>
+                            <option value="Rangkas Line">Rangkas Line</option>
+                            <option value="Tangerang Line">Tangerang Line</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Kelambatan (Menit)</label>
+                        <input type="number" id="k-delay" required min="0" class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Stasiun Awal</label>
+                        <input type="text" id="k-awal" required placeholder="cth: Jakarta Kota" class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Stasiun Akhir</label>
+                        <input type="text" id="k-akhir" required placeholder="cth: Bogor" class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Jam Jadwal</label>
+                        <input type="time" id="k-jam-jadwal" required class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                    <div>
+                        <label class="font-bold text-slate-700 block mb-1">Jam Realisasi</label>
+                        <input type="time" id="k-jam-real" required class="w-full p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Keterangan / Penyebab Kelambatan</label>
+                    <input type="text" id="k-ket" placeholder="cth: Gangguan persinyalan stasiun Depok Baru" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-lg transition">Simpan &amp; Sync</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-input-kinop-db" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center">
+                <h3 class="font-bold text-xs uppercase"><i class="fa-solid fa-plus-circle mr-1.5"></i>Registrasi Jadwal Gapeka</h3>
+                <button onclick="closeKinopDbAddModal()" class="text-slate-300 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleKinopDbSubmit(event)" class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Kode Jadwal / Nomor KA</label>
+                    <input type="text" id="kd-no" required placeholder="cth: KA-404" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Seri KRL</label>
+                    <input type="text" id="kd-seri" required placeholder="cth: JR-205 Series" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Formasi Car (SF)</label>
+                    <select id="kd-sf" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                        <option value="SF10">SF10</option>
+                        <option value="SF12">SF12</option>
+                        <option value="SF8">SF8</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Rute Lintas Perjalanan (Relasi)</label>
+                    <input type="text" id="kd-rute" required placeholder="cth: Tanah Abang - Rangkasbitung" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-[#0c1d37] text-white font-bold rounded-lg">Daftarkan Jadwal</button>
+            </form>
+        </div>
+    </div>

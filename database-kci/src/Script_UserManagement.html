@@ -1,0 +1,1028 @@
+<!--
+  Script_UserManagement.html
+  Logic untuk modul User Management. Mandiri - tidak memengaruhi modul lain.
+
+  STATUS: SUDAH tersambung ke backend nyata (Google Sheets, lewat
+  Module_UserManagement.gs). Badge status di tabel sekarang mencerminkan
+  kolom "aktif" (aktif/nonaktif akun), BUKAN status koneksi real-time
+  seperti di desain awal (fitur presence/online tracking tidak termasuk
+  cakupan project ini).
+-->
+<script>
+        // ─── FUNGSI DASAR (cadangan mandiri) ─────────────────────────────
+        // Definisi cadangan fungsi umum yang dipakai file ini. Ditanam di
+        // SETIAP Script_*.html dengan pola idempotent (window.x = window.x
+        // || ...) supaya file ini TETAP BERFUNGSI walau SharedScripts.html
+        // kebetulan belum ter-update ke versi terbaru. Ini mencegah satu
+        // file yang ketinggalan versi merusak seluruh modul lain.
+        window.escapeHtml = window.escapeHtml || function (val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        };
+        window.startLoadingWatchdog = window.startLoadingWatchdog || function () { return null; };
+
+
+        // Cache data user dari server - BUKAN dummy lagi.
+        let userList = [];
+
+        /**
+         * Daftar role hasil usermgmt_getRoles - diambil SEKALI tiap kali menu
+         * User Management dibuka, lalu dipakai mengisi kedua dropdown role.
+         *
+         * Sebelumnya pilihan role ditulis mati sebagai <option> di
+         * Modals_User.html. Akibatnya, menambah role baru di ROLE_LABELS
+         * (Service_Session.gs) tidak pernah terlihat di formulir - role-nya
+         * ada di server & izinnya terbentuk, tapi tidak ada cara memilihnya.
+         *
+         * <option> bawaan di Modals_User.html SENGAJA dibiarkan: kalau
+         * pemanggilan ini gagal (jaringan sesaat), formulirnya tetap terpakai
+         * dengan enam role yang sudah ada, bukan jadi dropdown kosong.
+         */
+        let daftarRoleServer_ = null;
+
+        /**
+         * Mengambil daftar user dari backend, lalu merender ulang tabelnya.
+         * Dipanggil tiap kali menu User Management dibuka.
+         */
+        function loadUserList() {
+            // Tombol cadangan hanya untuk Super Admin - cadangan berisi
+            // SELURUH data termasuk tabel Users.
+            const btnCad = document.getElementById('btn-cadangan-data');
+            if (btnCad) {
+                const superadmin = currentUser && String(currentUser.roleId || '').toUpperCase() === 'SUPERADMIN';
+                btnCad.style.display = superadmin ? '' : 'none';
+                const btnPulih = document.getElementById('btn-pulihkan-data');
+                if (btnPulih) btnPulih.style.display = superadmin ? '' : 'none';
+                if (superadmin) { muatInfoCadangan_(); muatInfoKapasitas_(false); }
+                const btnSampah = document.getElementById('btn-tempat-sampah');
+                if (btnSampah) btnSampah.style.display = superadmin ? '' : 'none';
+            }
+
+            muatDaftarRole_();
+
+            const tbody = document.getElementById('user-mgmt-table-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-400 font-bold">Memuat data...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        userList = res.data;
+                        renderUserTable();
+                    } else {
+                        showToast('Gagal memuat data user: ' + (res.message || ''));
+                        if (tbody) tbody.innerHTML = '';
+                    }
+                })
+                .withFailureHandler(function () {
+                    showToast('Terjadi kesalahan saat memuat data user.');
+                    if (tbody) tbody.innerHTML = '';
+                })
+                .usermgmt_getAll(currentSessionToken);
+        }
+
+        function renderUserTable() {
+            const tbody = document.getElementById('user-mgmt-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            // Edit & Hapus hanya untuk SUPERADMIN. Penegakan sesungguhnya tetap
+            // di server (usermgmt_update & usermgmt_delete) - penyembunyian di
+            // sini murni agar tampilan tidak menawarkan aksi yang pasti ditolak.
+            const akuSuperadmin = (currentUser && currentUser.roleId === 'SUPERADMIN');
+            userList.forEach(user => {
+                const isAktif = user.aktif === true || user.aktif === 'true';
+                const tombolEdit = akuSuperadmin
+                    ? `<button onclick="openEditUserModal('${user.id}')" title="Ubah data petugas" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-500 hover:text-white text-amber-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition">Edit</button>`
+                    : '';
+                const tombolHapus = akuSuperadmin
+                    ? `<button onclick="removeUser('${user.id}')" title="Hapus akses login" class="px-2.5 py-1 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-[10px] font-black uppercase tracking-wider transition">Hapus</button>`
+                    : '<span class="text-[10px] text-slate-300 font-bold">-</span>';
+                // Membuka kunci login hanya berguna bagi SUPERADMIN - lihat
+                // auth_bukaKunciLogin di Service_Auth.gs yang menolak role lain.
+                const tombolKunci = akuSuperadmin
+                    ? `<button onclick="bukaKunciAkun('${user.id}')" title="Buka kunci login (akun terkunci 15 menit setelah 5x salah password)" class="px-2.5 py-1 bg-slate-100 hover:bg-[#0c1d37] hover:text-white text-slate-600 rounded-lg text-[10px] font-black transition"><i class="fa-solid fa-unlock"></i></button>`
+                    : '';
+                const badgeIsi = isAktif ?
+                    `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1"></span>Aktif</span>` :
+                    `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 bg-slate-400 rounded-full mr-1"></span>Nonaktif</span>`;
+                // Badge dibuat bisa diklik untuk SUPERADMIN: menonaktifkan satu
+                // akun sekarang cukup satu klik, tidak perlu membuka modal Edit
+                // lalu menyimpan seluruh formulirnya kembali.
+                const badge = akuSuperadmin
+                    ? `<button onclick="toggleStatusAkun('${user.id}')" title="Klik untuk ${isAktif ? 'menonaktifkan' : 'mengaktifkan'} akun ini" class="transition hover:opacity-60 active:scale-95 cursor-pointer">${badgeIsi}</button>`
+                    : badgeIsi;
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="hover:bg-slate-50 transition text-slate-700 h-14">
+                        <td class="px-6 py-4 font-bold text-slate-900">${escapeHtml(user.nama)}</td>
+                        <td class="px-6 py-4 font-mono font-bold">${escapeHtml(user.nip)}</td>
+                        <td class="px-6 py-4 font-mono text-slate-500">${user.usernameAkun ? escapeHtml(user.usernameAkun) : '<span class="text-slate-300">-</span>'}</td>
+                        <td class="px-6 py-4"><span class="px-2.5 py-1 text-[9px] font-black uppercase rounded ${warnaBadgeRole_(user.roleId)}">${escapeHtml(user.roleId)}</span></td>
+                        <td class="px-6 py-4 font-bold text-slate-500">${escapeHtml(user.wilayah)}</td>
+                        <td class="px-6 py-4 text-center">${badge}</td>
+                        <td class="px-6 py-4 text-center">
+                            <div class="flex items-center justify-center gap-1.5">${tombolKunci}${tombolEdit}${tombolHapus}</div>
+                        </td>
+                    </tr>
+                `);
+            });
+            if (userList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-400 font-bold">Belum ada petugas terdaftar.</td></tr>';
+            }
+        }
+
+        /** Tampilkan pesan kesalahan di dalam modal Registrasi User Baru. */
+        function tampilkanErrorUser_(pesan) {
+            const el = document.getElementById('u-error');
+            if (el) { el.innerText = pesan; el.classList.remove('hidden'); }
+            showToast('Gagal mendaftarkan petugas: ' + pesan);
+        }
+
+        function openAddUserModal() {
+            siapkanPilihanRole_();
+            document.getElementById('form-user-new').reset();
+            const err = document.getElementById('u-error');
+            if (err) err.classList.add('hidden');
+            document.getElementById('modal-add-user').classList.remove('hidden');
+        }
+
+        /**
+         * Menyembunyikan pilihan role istimewa (SUPERADMIN & ADMIN) kalau yang
+         * sedang membuat akun BUKAN SUPERADMIN.
+         *
+         * Ini murni supaya tampilan tidak menawarkan sesuatu yang pasti gagal -
+         * penegakan sesungguhnya tetap di server (usermgmt_add di
+         * Module_UserManagement.gs), karena apa pun yang dikirim dari browser
+         * bisa diubah orang & tidak boleh dipercaya begitu saja.
+         */
+        /**
+         * Mengambil daftar role dari server sekali per pembukaan menu.
+         * Gagalnya TIDAK dianggap kesalahan yang perlu dilaporkan: dropdown
+         * bawaan di Modals_User.html sudah memuat keenam role yang berlaku,
+         * jadi formulirnya tetap bisa dipakai.
+         */
+        function muatDaftarRole_() {
+            if (daftarRoleServer_) return;
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res || !res.success || !res.data || !res.data.length) return;
+                    daftarRoleServer_ = res.data;
+                    isiPilihanRoleDariServer_('u-role');
+                    isiPilihanRoleDariServer_('eu-role');
+                })
+                .withFailureHandler(function () { /* daftar bawaan tetap dipakai */ })
+                .usermgmt_getRoles(currentSessionToken);
+        }
+
+        /**
+         * Menimpa isi satu dropdown role dengan daftar dari server, sambil
+         * MEMPERTAHANKAN pilihan yang sedang aktif - kalau tidak, membuka
+         * modal Edit lalu daftarnya baru datang akan diam-diam mengubah role
+         * yang tertera menjadi yang pertama di daftar.
+         */
+        function isiPilihanRoleDariServer_(elId) {
+            const sel = document.getElementById(elId);
+            if (!sel || !daftarRoleServer_ || !daftarRoleServer_.length) return;
+            const terpilih = sel.value;
+            sel.innerHTML = '';
+            daftarRoleServer_.forEach(function (r) {
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.innerText = r.namaRole || r.id;
+                sel.appendChild(opt);
+            });
+            if (terpilih) sel.value = terpilih;
+        }
+
+        function siapkanPilihanRole_() {
+            isiPilihanRoleDariServer_('u-role');
+            const sel = document.getElementById('u-role');
+            if (!sel) return;
+            const akuSuperadmin = (typeof currentUser !== 'undefined' && currentUser && currentUser.roleId === 'SUPERADMIN');
+            Array.prototype.forEach.call(sel.options, function (opt) {
+                // ADMINISTRATOR ikut dikunci: role itu bisa menambah & mengubah
+                // data di seluruh menu, jadi pemberiannya harus lewat Super Admin.
+                const istimewa = (opt.value === 'SUPERADMIN' || opt.value === 'ADMINISTRATOR' || opt.value === 'ADMIN');
+                opt.hidden = istimewa && !akuSuperadmin;
+                opt.disabled = opt.hidden;
+            });
+            // Pastikan yang terpilih bukan opsi yang disembunyikan.
+            // 'VIEWER' adalah role LAMA yang sudah tidak ada di dropdown mana
+            // pun (penggantinya VIEW_2, lihat ROLE_LAMA_PENGGANTI di
+            // Service_Session.gs). Menyetel ke nilai yang tidak ada membuat
+            // dropdown diam-diam tetap menunjuk opsi tersembunyi.
+            if (sel.selectedOptions.length && sel.selectedOptions[0].hidden) sel.value = 'VIEW_2';
+        }
+
+        function closeAddUserModal() { document.getElementById('modal-add-user').classList.add('hidden'); }
+
+        /**
+         * Penjaga anti klik-ganda. Sebelumnya tombol "Daftarkan Petugas"
+         * tetap bisa ditekan berkali-kali selama menunggu jawaban server -
+         * dan setiap tekanan mengirim permintaan baru, sehingga satu petugas
+         * bisa terdaftar berulang kali. Sekarang satu proses diselesaikan
+         * dulu sampai tuntas sebelum tombolnya bisa ditekan lagi.
+         */
+        let tambahUserSedangProses_ = false;
+
+        function handleUserSubmit(e) {
+            e.preventDefault();
+            if (tambahUserSedangProses_) { showToast('Masih memproses pendaftaran sebelumnya, mohon tunggu...'); return; }
+            tambahUserSedangProses_ = true;
+
+            const btn = document.getElementById('u-submit-btn');
+            const htmlAsli = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Mendaftarkan...</span>';
+            }
+
+            const nama = document.getElementById('u-nama').value.trim();
+            const nip = document.getElementById('u-nip').value.trim();
+            const role = document.getElementById('u-role').value;
+            const wilayah = document.getElementById('u-wilayah').value.trim();
+            const password = document.getElementById('u-password').value;
+
+            function selesai() {
+                tambahUserSedangProses_ = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                    btn.innerHTML = htmlAsli;
+                }
+            }
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    selesai();
+                    if (res.success) {
+                        closeAddUserModal();
+                        document.getElementById('form-user-new').reset();
+                        showToast(`Petugas ${nama} telah terdaftar.`);
+                        loadUserList();
+                    } else {
+                        // Alasan gagal ditampilkan DI DALAM modal, bukan hanya
+                        // lewat toast yang cepat hilang. Sebelumnya, saat
+                        // pendaftaran ditolak server, modal tetap terbuka tanpa
+                        // penjelasan apa pun di layar - terlihat seperti tombolnya
+                        // tidak berfungsi.
+                        tampilkanErrorUser_(res.message || 'Pendaftaran ditolak server.');
+                    }
+                })
+                .withFailureHandler(function () {
+                    selesai();
+                    tampilkanErrorUser_('Terjadi kesalahan saat menghubungi server.');
+                })
+                .usermgmt_add(currentSessionToken, nama, nip, role, wilayah, password);
+        }
+
+        /**
+         * Menghapus akun petugas (permanen). NIP-nya jadi bisa dipakai
+         * lagi untuk pendaftaran baru setelah ini.
+         * @param {string} id ID user di Google Sheets.
+         */
+        function removeUser(id) {
+            if (!confirm('Yakin ingin menghapus akses login petugas ini? Tindakan ini permanen.')) return;
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res.success) {
+                        showToast('Akses login petugas dihapus.');
+                        loadUserList();
+                    } else {
+                        showToast('Gagal menghapus: ' + (res.message || ''));
+                    }
+                })
+                .withFailureHandler(function () {
+                    showToast('Terjadi kesalahan saat menghapus akun.');
+                })
+                .usermgmt_delete(currentSessionToken, id);
+        }
+
+        /** Warna badge role - dibedakan supaya beda tingkat wewenang langsung terlihat. */
+        function warnaBadgeRole_(roleId) {
+            switch (String(roleId || '').toUpperCase()) {
+                case 'SUPERADMIN': return 'bg-rose-100 text-rose-800';
+                case 'ADMIN': return 'bg-amber-100 text-amber-800'; // role lama - perlu dipindahkan
+                case 'ADMINISTRATOR': return 'bg-sky-100 text-sky-800';
+                case 'ADMIN_GANGSAR': return 'bg-emerald-100 text-emerald-800';
+                case 'ADMIN_TRAFFIC': return 'bg-orange-100 text-orange-800';
+                case 'VIEW_1': return 'bg-cyan-100 text-cyan-800';
+                case 'VIEW_2': return 'bg-slate-100 text-slate-700';
+                case 'VIEWER': return 'bg-amber-100 text-amber-800'; // role lama - perlu dipindahkan
+                default: return 'bg-amber-100 text-amber-800';
+            }
+        }
+
+        // ─── STATUS AKUN & KUNCI LOGIN (khusus SUPERADMIN) ───────────────
+
+        /**
+         * Menyalakan/mematikan satu akun lewat klik pada badge statusnya.
+         *
+         * Menonaktifkan diminta konfirmasi, mengaktifkan tidak: yang pertama
+         * memutus akses seseorang, yang kedua memulihkannya.
+         */
+        function toggleStatusAkun(userId) {
+            const user = userList.find(function (u) { return u.id === userId; });
+            if (!user) { showToast('Data petugas tidak ditemukan, coba muat ulang.'); return; }
+            const sedangAktif = (user.aktif === true || user.aktif === 'true');
+
+            // Akun yang SEDANG DIPAKAI tidak boleh dimatikan dari sini. Kalau
+            // ini satu-satunya Super Admin, tidak akan ada lagi yang bisa
+            // menyalakannya kembali - dan satu-satunya jalan keluar adalah
+            // menyunting Spreadsheet langsung.
+            if (sedangAktif && currentUser && String(user.id) === String(currentUser.id)) {
+                showToast('Akun yang sedang Anda pakai tidak bisa dinonaktifkan sendiri.');
+                return;
+            }
+
+            const lanjut = function () {
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (!res || !res.success) {
+                            showToast('Gagal mengubah status akun: ' + ((res && res.message) || 'tidak diketahui.'));
+                            return;
+                        }
+                        user.aktif = !sedangAktif;
+                        renderUserTable();
+                        showToast(sedangAktif
+                            ? (user.nama || 'Akun') + ' dinonaktifkan - sekarang tidak bisa login.'
+                            : (user.nama || 'Akun') + ' diaktifkan kembali - sekarang bisa login.');
+                    })
+                    .withFailureHandler(function () { showToast('Terjadi kesalahan saat mengubah status akun.'); })
+                    .usermgmt_setActive(currentSessionToken, userId, !sedangAktif);
+            };
+
+            if (!sedangAktif) { lanjut(); return; }
+
+            if (typeof konfirmasi_ === 'function') {
+                konfirmasi_({
+                    judul: 'Nonaktifkan akun ini?',
+                    pesan: 'Petugas ini langsung tidak bisa login lagi. Datanya tetap tersimpan & akunnya bisa dinyalakan kembali kapan saja.',
+                    rincian: escapeHtml(user.nama || '-') + ' &middot; ' + escapeHtml(user.nip || user.usernameAkun || '-'),
+                    ya: 'Nonaktifkan', ikonYa: 'fa-user-slash', ikon: 'fa-user-lock', bahaya: false
+                }).then(function (ya) { if (ya) lanjut(); });
+            } else {
+                lanjut();
+            }
+        }
+
+        /**
+         * Membuka kunci login sebuah akun.
+         *
+         * Kunci 15 menit itu disimpan di CacheService dengan kunci berupa
+         * APA YANG DIKETIK petugas di layar login - dan login menerima NIP
+         * maupun username (lihat cocokIdentitas_ di Service_Auth.gs). Karena
+         * tidak ada cara mengetahui yang mana yang dipakai, keduanya dibuka.
+         */
+        function bukaKunciAkun(userId) {
+            const user = userList.find(function (u) { return u.id === userId; });
+            if (!user) { showToast('Data petugas tidak ditemukan, coba muat ulang.'); return; }
+
+            const identitas = [];
+            [user.nip, user.usernameAkun, user.username].forEach(function (v) {
+                const teks = String(v === undefined || v === null ? '' : v).trim();
+                if (teks && identitas.indexOf(teks) === -1) identitas.push(teks);
+            });
+            if (!identitas.length) { showToast('Akun ini tidak punya NIP maupun username untuk dibuka kuncinya.'); return; }
+
+            let sisa = identitas.length, adaGagal = '';
+            identitas.forEach(function (nama) {
+                google.script.run
+                    .withSuccessHandler(function (res) {
+                        if (!res || !res.success) adaGagal = (res && res.message) || 'ditolak server.';
+                        if (--sisa === 0) selesai();
+                    })
+                    .withFailureHandler(function () {
+                        adaGagal = 'terjadi kesalahan saat menghubungi server.';
+                        if (--sisa === 0) selesai();
+                    })
+                    .auth_bukaKunciLogin(currentSessionToken, nama);
+            });
+
+            function selesai() {
+                if (adaGagal) { showToast('Gagal membuka kunci: ' + adaGagal); return; }
+                showToast('Kunci login ' + (user.nama || identitas[0]) + ' dibuka. Petugas bisa mencoba masuk lagi sekarang.');
+            }
+        }
+
+
+        // ─── EDIT PETUGAS (khusus SUPERADMIN) ────────────────────────────
+        // ─── EDIT PETUGAS (khusus SUPERADMIN) ────────────────────────────
+
+        let editingUserId_ = null;
+        let editUserSedangProses_ = false;
+
+        function openEditUserModal(userId) {
+            const user = userList.find(function (u) { return u.id === userId; });
+            if (!user) { showToast('Data petugas tidak ditemukan, coba muat ulang.'); return; }
+            editingUserId_ = userId;
+
+            document.getElementById('eu-nama').value = user.nama || '';
+            document.getElementById('eu-nip').value = user.nip || user.username || '';
+            document.getElementById('eu-wilayah').value = user.wilayah || '';
+            document.getElementById('eu-aktif').value = (user.aktif === true || user.aktif === 'true') ? 'true' : 'false';
+            document.getElementById('eu-password').value = '';
+
+            // Kalau role tersimpan tidak ada di daftar (data lama), tambahkan
+            // sebagai opsi supaya tidak diam-diam berubah saat disimpan.
+            isiPilihanRoleDariServer_('eu-role');
+            const sel = document.getElementById('eu-role');
+            sel.value = user.roleId || '';
+            if (user.roleId && sel.value !== user.roleId) {
+                const opt = document.createElement('option');
+                opt.value = user.roleId;
+                opt.innerText = user.roleId + ' (nilai lama)';
+                sel.appendChild(opt);
+                sel.value = user.roleId;
+            }
+
+            document.getElementById('eu-subtitle').innerText = (user.nama || '-') + ' \u00B7 ' + (user.nip || user.username || '-');
+            document.getElementById('modal-edit-user').classList.remove('hidden');
+        }
+
+        function closeEditUserModal() {
+            document.getElementById('modal-edit-user').classList.add('hidden');
+            editingUserId_ = null;
+        }
+
+        function handleEditUserSubmit(e) {
+            e.preventDefault();
+            if (!editingUserId_ || editUserSedangProses_) return;
+            editUserSedangProses_ = true;
+
+            const btn = document.getElementById('eu-submit-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyimpan...</span>';
+
+            const id = editingUserId_;
+            const passwordBaru = document.getElementById('eu-password').value;
+            const fields = {
+                nama: document.getElementById('eu-nama').value.trim(),
+                nip: document.getElementById('eu-nip').value.trim(),
+                wilayah: document.getElementById('eu-wilayah').value.trim(),
+                roleId: document.getElementById('eu-role').value,
+                aktif: document.getElementById('eu-aktif').value === 'true'
+            };
+
+            function selesai(pesan) {
+                editUserSedangProses_ = false;
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = htmlAsli;
+                if (pesan) { closeEditUserModal(); showToast(pesan); loadUserList(); }
+            }
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast('Gagal menyimpan: ' + (res.message || '')); selesai(); return; }
+                    // Password hanya disetel ulang kalau kolomnya benar-benar diisi -
+                    // dibiarkan kosong berarti password lamanya tetap dipakai.
+                    if (!passwordBaru) { selesai('Data petugas berhasil diperbarui.'); return; }
+                    google.script.run
+                        .withSuccessHandler(function (r2) {
+                            if (!r2.success) { showToast('Data tersimpan, tapi password gagal disetel ulang: ' + (r2.message || '')); selesai(); return; }
+                            selesai('Data petugas diperbarui & passwordnya disetel ulang.');
+                        })
+                        .withFailureHandler(function () { showToast('Data tersimpan, tapi terjadi kesalahan saat menyetel ulang password.'); selesai(); })
+                        .usermgmt_resetPassword(currentSessionToken, id, passwordBaru);
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat menyimpan data petugas.'); selesai(); })
+                .usermgmt_update(currentSessionToken, id, fields);
+        }
+
+        // ─── GANTI PASSWORD SENDIRI (berlaku untuk semua role) ───────────
+
+        let gantiPasswordSedangProses_ = false;
+
+        function openMyPasswordModal() {
+            document.getElementById('form-my-password').reset();
+            document.getElementById('mp-error').classList.add('hidden');
+            document.getElementById('mp-akun').innerText =
+                (currentUser ? (currentUser.nama || currentUser.username) : '-') +
+                ' \u00B7 ' + (currentUser ? (currentUser.roleNama || currentUser.roleId) : '-');
+            document.getElementById('modal-my-password').classList.remove('hidden');
+        }
+
+        function closeMyPasswordModal() {
+            document.getElementById('modal-my-password').classList.add('hidden');
+        }
+
+        function handleMyPasswordSubmit(e) {
+            e.preventDefault();
+            if (gantiPasswordSedangProses_) return;
+
+            const lama = document.getElementById('mp-lama').value;
+            const baru = document.getElementById('mp-baru').value;
+            const ulang = document.getElementById('mp-ulang').value;
+            const err = document.getElementById('mp-error');
+            err.classList.add('hidden');
+
+            function tampilkanError(pesan) { err.innerText = pesan; err.classList.remove('hidden'); }
+
+            // Diperiksa di sini dulu supaya user dapat jawaban seketika -
+            // server tetap memeriksa hal yang sama sebagai penentu akhir.
+            if (baru.length < 8) { tampilkanError('Password baru minimal 8 karakter.'); return; }
+            if (baru !== ulang) { tampilkanError('Ketikan ulang password baru tidak cocok.'); return; }
+
+            gantiPasswordSedangProses_ = true;
+            const btn = document.getElementById('mp-submit-btn');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyimpan...</span>';
+
+            function selesai() {
+                gantiPasswordSedangProses_ = false;
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                btn.innerHTML = htmlAsli;
+            }
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    selesai();
+                    if (!res.success) { tampilkanError(res.message || 'Gagal mengganti password.'); return; }
+                    closeMyPasswordModal();
+                    showToast('Password berhasil diganti. Pakai password baru saat login berikutnya.');
+                })
+                .withFailureHandler(function () { selesai(); tampilkanError('Terjadi kesalahan saat menghubungi server.'); })
+                .auth_changeMyPassword(currentSessionToken, lama, baru);
+        }
+
+        // ─── DETAIL ROLE ─────────────────────────────────────────────────
+
+        let daftarRoleInfo_ = null;
+
+        function openRoleInfoModal() {
+            const wadah = document.getElementById('role-info-list');
+            document.getElementById('modal-role-info').classList.remove('hidden');
+
+            if (daftarRoleInfo_) { gambarRoleInfo_(daftarRoleInfo_); return; }
+            wadah.innerHTML = '<p class="text-xs font-bold text-slate-400 py-6 text-center"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat keterangan role...</p>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { wadah.innerHTML = '<p class="text-xs font-bold text-red-500 py-6 text-center">Gagal memuat keterangan role.</p>'; return; }
+                    daftarRoleInfo_ = res.data;
+                    gambarRoleInfo_(res.data);
+                })
+                .withFailureHandler(function () {
+                    wadah.innerHTML = '<p class="text-xs font-bold text-red-500 py-6 text-center">Terjadi kesalahan saat menghubungi server.</p>';
+                })
+                .auth_getRoleInfoList(currentSessionToken);
+        }
+
+        function closeRoleInfoModal() {
+            document.getElementById('modal-role-info').classList.add('hidden');
+        }
+
+        /** Menggambar kartu keterangan tiap role, diurutkan dari yang paling terbatas. */
+        function gambarRoleInfo_(daftar) {
+            const urutan = ['VIEW_1', 'VIEW_2', 'ADMIN_GANGSAR', 'ADMIN_TRAFFIC', 'ADMINISTRATOR', 'SUPERADMIN'];
+            const terurut = daftar.slice().sort(function (a, b) {
+                return urutan.indexOf(a.id) - urutan.indexOf(b.id);
+            });
+            document.getElementById('role-info-list').innerHTML = terurut.map(function (r) {
+                const rinci = (r.rinci || []).map(function (x) {
+                    return `<li class="flex items-start gap-2 text-[11px] text-slate-600 font-semibold">
+                        <i class="fa-solid fa-circle text-[3px] mt-1.5 text-slate-300"></i><span>${escapeHtml(x)}</span></li>`;
+                }).join('');
+                return `<div class="p-4 border border-slate-200 rounded-2xl bg-slate-50/60">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <span class="px-2.5 py-1 text-[9px] font-black uppercase rounded ${warnaBadgeRole_(r.id)}">${escapeHtml(r.label)}</span>
+                        <span class="text-[11px] font-bold text-slate-700">${escapeHtml(r.ringkas)}</span>
+                    </div>
+                    <ul class="space-y-1 mt-2">${rinci}</ul>
+                </div>`;
+            }).join('');
+        }
+
+        // ─── CADANGAN DATA (tombol di User Management) ───────────────────
+        //
+        // Sebelumnya cadangan hanya bisa dibuat dari editor Apps Script
+        // lewat Service_Pemeliharaan. Itu berarti hanya orang yang paham
+        // editor yang bisa melakukannya - padahal mencadangkan adalah hal
+        // yang justru harus mudah dan sering dilakukan.
+
+        function muatInfoCadangan_() {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    const el = document.getElementById('info-cadangan');
+                    if (!el || !res.success) return;
+                    if (!res.jumlah) {
+                        el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500 mr-1"></i>' +
+                            'Belum ada cadangan data. Klik <strong>Backup Data</strong> untuk membuat yang pertama.';
+                        el.classList.remove('hidden');
+                        return;
+                    }
+                    el.innerHTML = '<i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i>' +
+                        res.jumlah + ' cadangan tersimpan &middot; terakhir ' + escapeHtml(res.terakhir);
+                    el.classList.remove('hidden');
+                })
+                .withFailureHandler(function () { /* keterangan cadangan bukan syarat - diabaikan */ })
+                .usermgmt_infoCadangan(currentSessionToken);
+        }
+
+        function buatCadanganData() {
+            const btn = document.getElementById('btn-cadangan-data');
+            if (!btn || btn.disabled) return;
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Menyalin data...</span>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    if (!res.success) { showToast(res.message || 'Gagal membuat cadangan.'); return; }
+                    showToast('Cadangan dibuat: ' + res.nama +
+                        (res.dibuang ? ' (' + res.dibuang + ' cadangan lama dibuang)' : '') + '.');
+                    muatInfoCadangan_();
+                })
+                .withFailureHandler(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    showToast('Terjadi kesalahan saat membuat cadangan.');
+                })
+                .usermgmt_buatCadangan(currentSessionToken);
+        }
+
+
+        // ─── PULIHKAN DATA DARI CADANGAN ─────────────────────────────────
+
+        let pulihCadanganTerpilih_ = null;
+        let pulihHasilPeriksa_ = [];
+
+        function bukaPulihkan() {
+            document.getElementById('modal-pulihkan').classList.remove('hidden');
+            document.getElementById('pulih-hasil-periksa').classList.add('hidden');
+            document.getElementById('pulih-ringkasan').textContent = '-';
+            document.getElementById('pulih-btn-jalankan').disabled = true;
+
+            const sel = document.getElementById('pulih-pilih-cadangan');
+            sel.innerHTML = '<option value="">- Memuat daftar cadangan... -</option>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { sel.innerHTML = '<option value="">' + escapeHtml(res.message || 'Gagal memuat') + '</option>'; return; }
+                    if (!res.data.length) {
+                        sel.innerHTML = '<option value="">- Belum ada cadangan. Klik Backup Data dulu. -</option>';
+                        return;
+                    }
+                    sel.innerHTML = '<option value="">- Pilih cadangan -</option>' +
+                        res.data.map(function (c) {
+                            return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.tanggal) +
+                                '  (' + c.ukuranKb + ' KB)</option>';
+                        }).join('');
+                })
+                .withFailureHandler(function () { sel.innerHTML = '<option value="">- Gagal memuat daftar -</option>'; })
+                .usermgmt_daftarCadangan(currentSessionToken);
+        }
+
+        function tutupPulihkan() {
+            document.getElementById('modal-pulihkan').classList.add('hidden');
+            pulihCadanganTerpilih_ = null;
+            pulihHasilPeriksa_ = [];
+        }
+
+        /** Membandingkan cadangan terpilih dengan data sekarang. */
+        function periksaCadanganTerpilih() {
+            const fileId = document.getElementById('pulih-pilih-cadangan').value;
+            const kotak = document.getElementById('pulih-hasil-periksa');
+            const memuat = document.getElementById('pulih-memuat');
+            document.getElementById('pulih-btn-jalankan').disabled = true;
+
+            if (!fileId) { kotak.classList.add('hidden'); return; }
+            pulihCadanganTerpilih_ = fileId;
+            kotak.classList.add('hidden');
+            memuat.classList.remove('hidden');
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    memuat.classList.add('hidden');
+                    if (!res.success) { showToast(res.message || 'Gagal membaca cadangan.'); return; }
+                    pulihHasilPeriksa_ = res.sheet || [];
+                    gambarDaftarPulih_();
+                    kotak.classList.remove('hidden');
+                })
+                .withFailureHandler(function () {
+                    memuat.classList.add('hidden');
+                    showToast('Terjadi kesalahan saat membaca cadangan.');
+                })
+                .usermgmt_periksaCadangan(currentSessionToken, fileId);
+        }
+
+        /** Nama sheet dibuat terbaca manusia - "RincianGangguan" tidak menolong. */
+        const PULIH_LABEL_SHEET = {
+            'RincianGangguan': 'Rincian Gangguan',
+            'GangguanSarana': 'Data Sarana pada Gangguan',
+            'GangguanOptions': 'Parameter Gangguan',
+            'GangguanHistory': 'Riwayat Perubahan Gangguan',
+            'ArsipDokumen': 'Dokumen (Document Repository)',
+            'ArsipDokumenVersi': 'Riwayat Versi Dokumen',
+            'SerahTerimaDinasan': 'Serah Terima Dinasan',
+            'SerahTerimaDinasanKlb': 'KLB pada Serah Terima',
+            'Users': 'Akun Pengguna',
+            'Role_Menu_Access': 'Izin Hak Akses',
+            'SapEmplasemen': 'Emplasemen Stasiun',
+            'ActivityLog': 'Jejak Aktivitas'
+        };
+
+        function gambarDaftarPulih_() {
+            const wadah = document.getElementById('pulih-daftar-sheet');
+            const adaYangHilang = pulihHasilPeriksa_.filter(function (s) { return s.hilang > 0; });
+
+            if (!adaYangHilang.length) {
+                wadah.innerHTML = '<div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center">' +
+                    '<i class="fa-solid fa-circle-check text-emerald-600 text-xl mb-1.5"></i>' +
+                    '<p class="text-[11px] font-bold text-emerald-800">Tidak ada data yang hilang.</p>' +
+                    '<p class="text-[10px] text-emerald-700 font-semibold mt-0.5">Seluruh data pada cadangan ini masih ada di sistem.</p></div>';
+                document.getElementById('pulih-ringkasan').textContent = 'Tidak ada yang perlu dipulihkan';
+                return;
+            }
+
+            wadah.innerHTML = adaYangHilang.map(function (s) {
+                const label = PULIH_LABEL_SHEET[s.nama] || s.nama;
+                const contoh = (s.contoh || []).length
+                    ? '<div class="text-[10px] text-slate-400 font-semibold mt-1 pl-6 leading-relaxed">' +
+                      s.contoh.map(function (c) { return '&bull; ' + escapeHtml(c); }).join('<br>') +
+                      (s.hilang > s.contoh.length ? '<br><span class="italic">...dan ' + (s.hilang - s.contoh.length) + ' lainnya</span>' : '') +
+                      '</div>'
+                    : '';
+                return '<label class="block p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:border-slate-400 transition">' +
+                    '<div class="flex items-start gap-2.5">' +
+                        '<input type="checkbox" value="' + escapeHtml(s.nama) + '" onchange="perbaruiRingkasanPulih_()" ' +
+                            'class="pulih-cek mt-0.5 w-3.5 h-3.5 rounded border-slate-300 text-[#0c1d37] focus:ring-1 focus:ring-amber-500 cursor-pointer">' +
+                        '<div class="min-w-0 flex-1">' +
+                            '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+                                '<span class="text-[11px] font-black text-[#0c1d37]">' + escapeHtml(label) + '</span>' +
+                                '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">' +
+                                    s.hilang + ' baris hilang</span>' +
+                            '</div>' +
+                            '<div class="text-[10px] text-slate-400 font-bold mt-0.5">' +
+                                'Di cadangan: ' + s.dicadangan + ' baris &middot; sekarang: ' + s.sekarang + ' baris</div>' +
+                        '</div>' +
+                    '</div>' + contoh + '</label>';
+            }).join('');
+
+            perbaruiRingkasanPulih_();
+        }
+
+        function perbaruiRingkasanPulih_() {
+            const dipilih = [...document.querySelectorAll('.pulih-cek:checked')].map(function (c) { return c.value; });
+            const total = pulihHasilPeriksa_
+                .filter(function (s) { return dipilih.indexOf(s.nama) !== -1; })
+                .reduce(function (t, s) { return t + s.hilang; }, 0);
+
+            document.getElementById('pulih-ringkasan').textContent = dipilih.length
+                ? total + ' baris akan ditarik kembali'
+                : 'Belum ada data yang dipilih';
+            document.getElementById('pulih-btn-jalankan').disabled = dipilih.length === 0;
+        }
+
+        function jalankanPemulihan() {
+            const dipilih = [...document.querySelectorAll('.pulih-cek:checked')].map(function (c) { return c.value; });
+            if (!dipilih.length || !pulihCadanganTerpilih_) return;
+
+            const btn = document.getElementById('pulih-btn-jalankan');
+            const htmlAsli = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Memulihkan...</span>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    if (!res.success) { showToast(res.message || 'Gagal memulihkan data.'); return; }
+                    tutupPulihkan();
+                    showToast(res.total + ' baris berhasil ditarik kembali dari cadangan.');
+                    if (typeof loadUserList === 'function') loadUserList();
+                })
+                .withFailureHandler(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlAsli;
+                    showToast('Terjadi kesalahan saat memulihkan data.');
+                })
+                .usermgmt_pulihkanCadangan(currentSessionToken, pulihCadanganTerpilih_, dipilih);
+        }
+
+
+        // ─── PEMANTAU KAPASITAS PENYIMPANAN ──────────────────────────────
+        //
+        // Google Sheets punya batas keras 10 juta sel. Kalau tersentuh,
+        // penyimpanan gagal total & muncul sebagai error biasa di tengah
+        // pekerjaan - petugas akan mengira sistemnya rusak. Karena itu
+        // diberi tahu jauh sebelum batas tercapai.
+
+        let kapasitasTerakhir_ = null;
+
+        function muatInfoKapasitas_(diamDiam) {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) return;
+                    kapasitasTerakhir_ = res.data;
+                    gambarInfoKapasitas_(res.data);
+
+                    // Peringatan menonjol hanya saat sudah waktunya - kalau
+                    // muncul terus sejak masih lapang, orang berhenti membacanya.
+                    if (!diamDiam && res.data.status !== 'aman') {
+                        peringatanKapasitas_(res.data);
+                    }
+                })
+                .withFailureHandler(function () { /* pemantauan bukan syarat - diabaikan */ })
+                .kapasitas_periksa(currentSessionToken);
+        }
+
+        function gambarInfoKapasitas_(d) {
+            const el = document.getElementById('info-kapasitas');
+            if (!el) return;
+            const warna = d.status === 'kritis' ? 'text-red-600'
+                : (d.status === 'peringatan' ? 'text-amber-600' : 'text-slate-400');
+            const ikon = d.status === 'aman' ? 'fa-database' : 'fa-triangle-exclamation';
+            el.className = 'text-[11px] font-bold mt-1.5 ' + warna;
+            el.innerHTML = '<i class="fa-solid ' + ikon + ' mr-1"></i>Penyimpanan terpakai <strong>' +
+                d.persen + '%</strong> dari batas Google Sheets &middot; ' +
+                Number(d.totalBaris).toLocaleString('id-ID') + ' baris data di ' + d.jumlahSheet + ' sheet' +
+                (d.status !== 'aman'
+                    ? ' <button onclick="bukaKapasitas()" class="underline hover:no-underline">lihat rincian</button>'
+                    : '');
+            el.classList.remove('hidden');
+        }
+
+        /** Peringatan menonjol saat kapasitas mulai menipis. */
+        function peringatanKapasitas_(d) {
+            // Ditampilkan sekali per sesi supaya tidak mengganggu.
+            if (sessionStorage.getItem('kapasitas_diberitahu') === d.status) return;
+            sessionStorage.setItem('kapasitas_diberitahu', d.status);
+            bukaKapasitas();
+        }
+
+        function bukaKapasitas() {
+            const modal = document.getElementById('modal-kapasitas');
+            if (!modal) return;
+            const d = kapasitasTerakhir_;
+            if (!d) { muatInfoKapasitas_(true); return; }
+
+            const warnaBar = d.status === 'kritis' ? 'bg-red-500'
+                : (d.status === 'peringatan' ? 'bg-amber-500' : 'bg-emerald-500');
+
+            document.getElementById('kapasitas-isi').innerHTML =
+                '<div class="p-4 rounded-2xl border ' +
+                    (d.status === 'kritis' ? 'bg-red-50 border-red-300'
+                        : d.status === 'peringatan' ? 'bg-amber-50 border-amber-300'
+                        : 'bg-emerald-50 border-emerald-200') + '">' +
+                    '<div class="flex items-center justify-between mb-2">' +
+                        '<span class="text-xs font-black text-slate-800">' + d.persen + '% terpakai</span>' +
+                        '<span class="text-[10px] font-bold text-slate-500">' +
+                            Number(d.totalSel).toLocaleString('id-ID') + ' / ' +
+                            Number(d.batasSel).toLocaleString('id-ID') + ' sel</span>' +
+                    '</div>' +
+                    '<div class="h-2.5 bg-white rounded-full overflow-hidden border border-slate-200">' +
+                        '<div class="h-full ' + warnaBar + ' rounded-full" style="width:' + Math.min(d.persen, 100) + '%"></div>' +
+                    '</div>' +
+                    '<p class="text-[11px] font-semibold text-slate-700 mt-2.5 leading-relaxed">' + escapeHtml(d.pesan) + '</p>' +
+                '</div>' +
+
+                '<div>' +
+                    '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Sheet Terbesar</p>' +
+                    '<div class="space-y-1.5">' +
+                        (d.terbesar || []).map(function (t) {
+                            const p = Math.round(t.sel / d.totalSel * 100);
+                            return '<div class="flex items-center gap-2.5">' +
+                                '<span class="text-[11px] font-bold text-slate-600 w-44 truncate">' + escapeHtml(t.nama) + '</span>' +
+                                '<div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">' +
+                                    '<div class="h-full bg-[#0c1d37] rounded-full" style="width:' + p + '%"></div></div>' +
+                                '<span class="text-[10px] font-bold text-slate-500 w-24 text-right">' +
+                                    Number(t.baris).toLocaleString('id-ID') + ' baris</span></div>';
+                        }).join('') +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 font-semibold leading-relaxed">' +
+                    '<i class="fa-solid fa-circle-info text-[#0c1d37] mr-1"></i>' +
+                    '<strong>Rapikan Penyimpanan</strong> membuang baris & kolom kosong yang tidak terpakai. ' +
+                    'Sheet baru dibuat dengan 1.000 baris meski hanya beberapa yang terisi, dan sel kosong ' +
+                    'tetap dihitung terhadap batas. Ini cara menambah ruang yang paling murah.' +
+                '</div>';
+
+            modal.classList.remove('hidden');
+        }
+
+        function tutupKapasitas() { document.getElementById('modal-kapasitas').classList.add('hidden'); }
+
+        function rapikanKapasitas() {
+            const btn = document.getElementById('btn-rapikan-kapasitas');
+            const asli = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Merapikan...</span>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false; btn.innerHTML = asli;
+                    if (!res.success) { showToast(res.message || 'Gagal merapikan.'); return; }
+                    showToast(res.selDibebaskan
+                        ? Number(res.selDibebaskan).toLocaleString('id-ID') + ' sel kosong dibebaskan.'
+                        : 'Tidak ada sel kosong yang bisa dibebaskan - sudah rapi.');
+                    kapasitasTerakhir_ = null;
+                    muatInfoKapasitas_(true);
+                    tutupKapasitas();
+                })
+                .withFailureHandler(function () {
+                    btn.disabled = false; btn.innerHTML = asli;
+                    showToast('Terjadi kesalahan saat merapikan penyimpanan.');
+                })
+                .kapasitas_rapikan(currentSessionToken);
+        }
+
+
+        // ─── TEMPAT SAMPAH 30 HARI ───────────────────────────────────────
+        //
+        // Data yang dihapus tidak langsung lenyap: ia menunggu 30 hari di
+        // sini sebelum dibuang sungguhan dari Drive. Yang menghapus karena
+        // salah klik punya waktu untuk membatalkannya.
+
+        function bukaTempatSampah() {
+            const modal = document.getElementById('modal-sampah');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            document.getElementById('sampah-isi').innerHTML =
+                '<p class="text-[11px] text-slate-400 font-bold py-8 text-center"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Memuat isi tempat sampah...</p>';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) {
+                        document.getElementById('sampah-isi').innerHTML =
+                            '<p class="text-[11px] text-red-500 font-bold py-8 text-center">' + escapeHtml(res.message || 'Gagal memuat.') + '</p>';
+                        return;
+                    }
+                    gambarIsiSampah_(res.data || [], res.umurHari || 30);
+                })
+                .withFailureHandler(function () {
+                    document.getElementById('sampah-isi').innerHTML =
+                        '<p class="text-[11px] text-red-500 font-bold py-8 text-center">Terjadi kesalahan saat memuat.</p>';
+                })
+                .sampah_getAll(currentSessionToken, '');
+        }
+
+        function tutupTempatSampah() { document.getElementById('modal-sampah').classList.add('hidden'); }
+
+        function gambarIsiSampah_(daftar, umurHari) {
+            const wadah = document.getElementById('sampah-isi');
+            document.getElementById('sampah-ringkas').textContent =
+                daftar.length ? daftar.length + ' data menunggu dibuang' : 'Kosong';
+
+            if (!daftar.length) {
+                wadah.innerHTML =
+                    '<div class="py-10 text-center">' +
+                        '<i class="fa-regular fa-trash-can text-3xl text-slate-200 mb-3"></i>' +
+                        '<p class="text-[11px] text-slate-400 font-bold">Tempat sampah kosong.</p>' +
+                        '<p class="text-[10px] text-slate-400 font-semibold mt-1">Data yang dihapus akan muncul di sini selama ' + umurHari + ' hari.</p>' +
+                    '</div>';
+                return;
+            }
+
+            wadah.innerHTML = daftar.map(function (d) {
+                // Sisa waktu diberi warna: makin sedikit, makin mendesak.
+                const warna = d.sisaHari <= 3 ? 'bg-red-50 text-red-700 border-red-200'
+                    : (d.sisaHari <= 7 ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-slate-100 text-slate-500 border-slate-200');
+                return '<div class="p-3 bg-white border border-slate-200 rounded-xl flex items-start gap-3">' +
+                    '<div class="w-9 h-9 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">' +
+                        '<i class="fa-regular fa-file text-xs"></i></div>' +
+                    '<div class="min-w-0 flex-1">' +
+                        '<div class="flex items-center gap-1.5 flex-wrap mb-0.5">' +
+                            '<span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#0c1d37] text-white uppercase tracking-wider">' +
+                                escapeHtml(d.jenis) + '</span>' +
+                            '<span class="text-[9px] font-black px-1.5 py-0.5 rounded border ' + warna + '">' +
+                                (d.sisaHari > 0 ? 'sisa ' + d.sisaHari + ' hari' : 'dibuang hari ini') + '</span>' +
+                            (d.jumlahBerkas
+                                ? '<span class="text-[9px] font-bold text-slate-400">' + d.jumlahBerkas + ' berkas</span>'
+                                : '') +
+                        '</div>' +
+                        '<p class="text-[11px] font-bold text-slate-800 truncate">' + escapeHtml(d.judul) + '</p>' +
+                        '<p class="text-[10px] text-slate-400 font-semibold mt-0.5">Dihapus oleh ' +
+                            escapeHtml(d.olehNama) + ' &middot; ' + escapeHtml(tanggalDariCapWaktu_(d.dihapusPada)) + '</p>' +
+                    '</div>' +
+                    '<button onclick="pulihkanDariSampah(\'' + d.id + '\')" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold transition shrink-0 flex items-center gap-1.5">' +
+                        '<i class="fa-solid fa-rotate-left"></i><span>Pulihkan</span></button>' +
+                '</div>';
+            }).join('');
+        }
+
+        function pulihkanDariSampah(id) {
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (!res.success) { showToast(res.message || 'Gagal memulihkan.'); return; }
+                    showToast('Data dipulihkan' + (res.berkasPulih ? ' beserta ' + res.berkasPulih + ' berkas.' : '.'));
+                    bukaTempatSampah();
+                    if (typeof loadUsers === 'function') loadUsers();
+                })
+                .withFailureHandler(function () { showToast('Terjadi kesalahan saat memulihkan.'); })
+                .sampah_pulihkan(currentSessionToken, id);
+        }
+
+</script>

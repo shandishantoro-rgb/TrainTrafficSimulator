@@ -1,0 +1,276 @@
+<!--
+  Pane_Dashboard.html
+  Pane/menu: Dashboard Utama
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-dashboard" class="space-y-6 animate-fade-in">
+                <!--
+                  PETA PERJALANAN LANGSUNG (C-Track)
+
+                  KEDUA situs ini dibatasi di sisi SERVER-nya: hanya bisa dibuka
+                  dari jaringan kantor atau perangkat yang tersambung VPN KCI.
+                  Pembatasan itu ada di luar aplikasi ini & tidak bisa diakali
+                  dari halaman web - lihat catatan panjang di CARA_MENERAPKAN.
+
+                  Karena itu setiap kartu selalu menyertakan tombol "Buka di Tab
+                  Baru" sebagai jalan yang pasti berhasil, & tombol "Uji Akses"
+                  untuk memastikan penyebabnya bila peta tidak muncul.
+                -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center shrink-0">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h4 class="text-xs font-black text-[#0c1d37] uppercase tracking-wider">Peta Perjalanan Langsung</h4>
+                            <p id="peta-keterangan" class="text-[10px] text-slate-400 font-bold mt-0.5">Memerlukan jaringan kantor atau VPN KCI aktif di perangkat ini</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button onclick="ujiAksesPeta()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-stethoscope text-slate-500"></i><span>Uji Akses</span>
+                        </button>
+                        <button onclick="bukaPanduanVpn()" class="px-3 py-2 bg-white hover:bg-slate-50 text-[#0c1d37] border border-slate-200 hover:border-[#d4af37]/60 font-bold text-[11px] rounded-lg flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-shield-halved text-emerald-600"></i><span>Cara Pasang VPN</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4" id="dash-peta">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 bg-[#0c1d37] text-white flex items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <p class="text-[11px] font-black tracking-tight truncate">C-Track Jabodetabek</p>
+                                <p class="text-[9px] text-slate-400 font-bold">trackingv2.krl.co.id</p>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button onclick="muatUlangPeta_('peta-jkt')" title="Muat ulang peta" class="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                                    <i class="fa-solid fa-rotate text-[10px]"></i>
+                                </button>
+                                <a href="https://trackingv2.krl.co.id/" target="_blank" rel="noopener" title="Buka di tab baru" class="w-7 h-7 rounded-lg bg-[#d4af37] hover:bg-[#b8902c] text-white flex items-center justify-center transition">
+                                    <i class="fa-solid fa-up-right-from-square text-[10px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="relative bg-slate-100" style="height:340px">
+                            <iframe id="peta-jkt" src="https://trackingv2.krl.co.id/" class="w-full h-full border-0" referrerpolicy="no-referrer"></iframe>
+                            <div id="peta-jkt-pesan" class="absolute inset-0 flex items-center justify-center p-5 text-center pointer-events-none opacity-0 transition-opacity">
+                                <div class="bg-white/95 rounded-xl p-4 shadow pointer-events-auto max-w-xs">
+                                    <i class="fa-solid fa-plug-circle-xmark text-2xl text-slate-300 mb-2"></i>
+                                    <p class="text-[11px] font-bold text-slate-700">Peta tidak dapat dimuat di sini</p>
+                                    <p class="text-[10px] text-slate-500 font-semibold mt-1">Sambungkan VPN KCI lalu klik muat ulang, atau buka di tab baru.</p>
+                                    <button onclick="ujiAksesPeta()" class="mt-2 px-3 py-1.5 bg-[#0c1d37] text-white rounded-lg text-[10px] font-bold">Cari tahu penyebabnya</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 bg-[#0c1d37] text-white flex items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <p class="text-[11px] font-black tracking-tight truncate">C-Track Yogyakarta</p>
+                                <p class="text-[9px] text-slate-400 font-bold">trackingv2.kci.id/jogja</p>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button onclick="muatUlangPeta_('peta-jog')" title="Muat ulang peta" class="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                                    <i class="fa-solid fa-rotate text-[10px]"></i>
+                                </button>
+                                <a href="https://trackingv2.kci.id/jogja" target="_blank" rel="noopener" title="Buka di tab baru" class="w-7 h-7 rounded-lg bg-[#d4af37] hover:bg-[#b8902c] text-white flex items-center justify-center transition">
+                                    <i class="fa-solid fa-up-right-from-square text-[10px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="relative bg-slate-100" style="height:340px">
+                            <iframe id="peta-jog" src="https://trackingv2.kci.id/jogja" class="w-full h-full border-0" referrerpolicy="no-referrer"></iframe>
+                            <div id="peta-jog-pesan" class="absolute inset-0 flex items-center justify-center p-5 text-center pointer-events-none opacity-0 transition-opacity">
+                                <div class="bg-white/95 rounded-xl p-4 shadow pointer-events-auto max-w-xs">
+                                    <i class="fa-solid fa-plug-circle-xmark text-2xl text-slate-300 mb-2"></i>
+                                    <p class="text-[11px] font-bold text-slate-700">Peta tidak dapat dimuat di sini</p>
+                                    <p class="text-[10px] text-slate-500 font-semibold mt-1">Sambungkan VPN KCI lalu klik muat ulang, atau buka di tab baru.</p>
+                                    <button onclick="ujiAksesPeta()" class="mt-2 px-3 py-1.5 bg-[#0c1d37] text-white rounded-lg text-[10px] font-bold">Cari tahu penyebabnya</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!--
+                  SEBARAN EMPLASEMEN PER DAOP/DIVRE (6 September 2026)
+                  Jumlahnya dihitung di server lewat dashboard_getRingkasan(),
+                  jadi mustahil berbeda dengan angka di menu Emplasemen.
+                  Mengklik kartunya membuka menu Emplasemen dengan filter
+                  wilayah itu sudah terpasang - bukan sekadar berpindah lalu
+                  membiarkan user menyaring ulang sendiri.
+                -->
+                <div id="dash-emplasemen-wrap" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 hidden">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-diagram-project text-sm"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-black text-[#0c1d37] uppercase tracking-wider">Sebaran Emplasemen Stasiun</h4>
+                                <p id="dash-emp-sub" class="text-[10px] text-slate-400 font-bold mt-0.5">-</p>
+                            </div>
+                        </div>
+                        <button onclick="switchTab('sap-emplasemen')" class="px-3 py-1.5 bg-white hover:bg-[#0c1d37] hover:text-white text-slate-600 border border-slate-200 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5">
+                            <span>Buka Menu</span><i class="fa-solid fa-arrow-right text-[9px]"></i>
+                        </button>
+                    </div>
+                    <div id="dash-emplasemen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5"></div>
+                </div>
+
+                <!--
+                  RINGKASAN LINTAS-MODUL (30 Agustus 2026)
+                  Angkanya dihitung dari sheet yang SAMA dengan menu
+                  masing-masing lewat dashboard_getRingkasan(), jadi mustahil
+                  berbeda dengan angka di menunya. Seluruh kartu diambil
+                  dalam SATU panggilan - memisahnya per kartu akan membuat
+                  Dashboard menembak 6-7 permintaan sekaligus saat dibuka.
+                -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="dash-kartu"></div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+                    <div class="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-5">
+                            <div>
+                                <h4 class="text-xs font-black text-slate-800 uppercase tracking-wider">Tren Gangguan Bulanan</h4>
+                                <p id="dash-tren-sub" class="text-[10px] text-slate-400 font-bold mt-0.5">-</p>
+                            </div>
+                            <button onclick="loadDashboard(true)" title="Muat ulang" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-600 flex items-center justify-center transition">
+                                <i class="fa-solid fa-rotate text-xs"></i>
+                            </button>
+                        </div>
+                        <div id="dash-tren"></div>
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2.5">Unit Penyumbang Terbanyak</p>
+                            <div id="dash-unit" class="space-y-1.5"></div>
+                        </div>
+                    </div>
+
+                    <!--
+                      ══ KALENDER KEGIATAN ══ (11 Oktober 2026)
+                      Menempati tempat yang dulu dipakai "Aktivitas Terakhir".
+                      Kartu aktivitas itu TIDAK dihapus - ia pindah ke panel
+                      geser (lihat Modals_Kalender.html), dibuka lewat tombol
+                      melayang di pojok kanan bawah. Alasannya: aktivitas
+                      adalah catatan yang sesekali ditengok, sedangkan agenda
+                      kegiatan perlu terlihat setiap kali dashboard dibuka.
+
+                      Isi kalender digambar oleh Script_Kalender.html.
+                    -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+
+                        <div class="p-5 pb-3 border-b border-slate-100">
+                            <div class="flex items-start justify-between gap-2 mb-3">
+                                <div class="flex items-center gap-2.5 min-w-0">
+                                    <div class="w-9 h-9 rounded-xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center shrink-0">
+                                        <i class="fa-regular fa-calendar-days text-sm"></i>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <h4 class="text-xs font-black text-slate-800 uppercase tracking-wider leading-tight">Kalender Kegiatan</h4>
+                                        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Pengingat otomatis H-14, H-7 &amp; H-3</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <button onclick="kalBukaPengingat_()" title="Lihat kegiatan yang perlu perhatian"
+                                            class="relative w-8 h-8 rounded-lg bg-slate-100 hover:bg-[#0c1d37] hover:text-white text-slate-600 flex items-center justify-center transition">
+                                        <i class="fa-regular fa-bell text-xs"></i>
+                                        <span id="kal-lonceng" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#e11d48] text-white text-[9px] font-black flex items-center justify-center border-2 border-white"></span>
+                                    </button>
+                                    <button id="kal-btn-tambah" onclick="kalBukaForm_()" title="Tambah kegiatan"
+                                            class="w-8 h-8 rounded-lg bg-[#0c1d37] hover:bg-slate-800 text-white flex items-center justify-center transition">
+                                        <i class="fa-solid fa-plus text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between gap-2">
+                                <button onclick="kalGeserBulan_(-1)" title="Bulan sebelumnya"
+                                        class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition shrink-0">
+                                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                                </button>
+                                <button onclick="kalKeBulanIni_()" title="Kembali ke bulan ini"
+                                        id="kal-bulan-judul"
+                                        class="flex-1 text-[11px] font-black text-slate-700 hover:text-[#e11d48] transition truncate">&nbsp;</button>
+                                <button onclick="kalGeserBulan_(1)" title="Bulan berikutnya"
+                                        class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition shrink-0">
+                                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="px-5 pt-3.5 pb-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-[9px] font-black text-slate-400 uppercase tracking-wide mb-1.5">
+                                <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+                            </div>
+                            <div id="kal-grid" class="grid grid-cols-7 gap-1"></div>
+                        </div>
+
+                        <!--
+                          AGENDA: SATU KEGIATAN SEKALI TAMPIL.
+                          Daftar bergulir membuat kartu paling penting - yang
+                          paling dekat harinya - bersaing perhatian dengan
+                          yang masih berbulan-bulan lagi. Satu kartu sekali
+                          tampil membuat yang terdekat selalu yang terbaca
+                          lebih dulu, & sisanya tinggal digeser.
+                        -->
+                        <div class="px-5 pb-4 pt-4 border-t border-slate-100">
+                            <div class="flex items-center justify-between gap-2 mb-2.5">
+                                <p id="kal-agenda-tajuk" class="text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Agenda Terdekat</p>
+                                <div id="kal-agenda-nav" class="hidden items-center gap-1 shrink-0">
+                                    <button onclick="kalGeserAgenda_(-1)" title="Kegiatan sebelumnya"
+                                            class="w-6 h-6 rounded-md bg-slate-100 hover:bg-[#0c1d37] hover:text-white text-slate-500 flex items-center justify-center transition">
+                                        <i class="fa-solid fa-chevron-left text-[9px]"></i>
+                                    </button>
+                                    <span id="kal-agenda-posisi" class="text-[9px] font-black text-slate-400 min-w-[34px] text-center">1/1</span>
+                                    <button onclick="kalGeserAgenda_(1)" title="Kegiatan berikutnya"
+                                            class="w-6 h-6 rounded-md bg-slate-100 hover:bg-[#0c1d37] hover:text-white text-slate-500 flex items-center justify-center transition">
+                                        <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Sentuhan: geser jari ke kiri/kanan juga
+                                 berpindah kegiatan - lihat kalSentuhAgenda_. -->
+                            <div id="kal-agenda"></div>
+
+                            <!-- Titik penanda posisi. Menggantikan bilah gulir
+                                 yang hilang bersama daftarnya: tanpa penanda,
+                                 tidak ada cara mengetahui masih ada berapa. -->
+                            <div id="kal-agenda-titik" class="flex items-center justify-center gap-1.5 mt-2.5"></div>
+                        </div>
+
+                        <!--
+                          AKTIVITAS TERAKHIR - batang penuh di kaki kartu.
+                          Sebelumnya berupa tombol bundar melayang di pojok
+                          kanan bawah layar; bentuk itu menutupi kartu agenda
+                          paling bawah & tidak pernah bisa disingkirkan.
+                          Sebagai batang di sini ia selalu ikut tergulung
+                          bersama isinya, jadi tidak pernah menghalangi apa pun.
+                        -->
+                        <button onclick="toggleActivityPanel()"
+                                class="w-full px-5 py-3.5 border-t border-slate-100 bg-slate-50 hover:bg-[#0c1d37] text-slate-600 hover:text-white flex items-center justify-between gap-3 transition group">
+                            <span class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-7 h-7 rounded-lg bg-white group-hover:bg-white/10 border border-slate-200 group-hover:border-white/20 text-slate-500 group-hover:text-[#d4af37] flex items-center justify-center shrink-0 transition">
+                                    <i class="fa-solid fa-clock-rotate-left text-[11px]"></i>
+                                </span>
+                                <span class="text-left min-w-0">
+                                    <span class="block text-[11px] font-black uppercase tracking-wider leading-tight">Aktivitas Terakhir</span>
+                                    <span class="block text-[9px] font-bold text-slate-400 group-hover:text-slate-300 mt-0.5 truncate">Perubahan data di seluruh menu</span>
+                                </span>
+                            </span>
+                            <i class="fa-solid fa-chevron-right text-[10px] opacity-40 group-hover:opacity-100 shrink-0 transition"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!--
+                  Tombol melayang Aktivitas Terakhir DIHAPUS (11 Okt 2026).
+                  Penggantinya ada di kaki kartu kalender di atas - lihat
+                  catatan di sana. Bentuk melayang menutupi kartu agenda
+                  terbawah, & karena posisinya tetap (fixed) ia tidak ikut
+                  bergulir sehingga tidak ada cara menyingkirkannya.
+                -->
+</section>

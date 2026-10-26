@@ -1,0 +1,354 @@
+<!--
+  Modals_Perlintasan.html
+  Empat modal untuk menu Perlintasan Sebidang KA (JPL):
+
+    1. modal-jpl-pilih  - pilihan cara menambah: manual atau impor Excel
+    2. modal-jpl-form   - tambah / ubah satu perlintasan
+    3. modal-jpl-impor  - impor berkala dari berkas Excel Daop
+    4. modal-jpl-detail - lihat rinci satu perlintasan
+
+  ═══ AWALAN ID: jpl-m-* HANYA UNTUK KOLOM ISIAN MODAL ═══
+  Penyaring di Pane_SapPerlintasan.html memakai awalan jpl-f-*. Keduanya
+  WAJIB berbeda. document.getElementById mengembalikan elemen PERTAMA yang
+  ditemukan di halaman, dan pane disisipkan lebih dulu daripada modal -
+  sehingga nama yang sama membuat formulir ini membaca & menulis ke
+  dropdown penyaring, bukan ke dirinya sendiri. Gejala yang sempat
+  terjadi: membuka "Tambah JPL" membuat dropdown penyaring berubah jadi
+  "- pilih -", dan formulirnya sendiri tidak pernah terisi.
+
+  Modal impor sengaja BERTAHAP (pilih berkas -> periksa -> terapkan), bukan
+  sekali klik. Mengimpor 436 baris ke register yang sudah terisi adalah
+  tindakan yang sulit dibatalkan; memperlihatkan lebih dulu apa yang akan
+  berubah jauh lebih murah daripada memulihkannya sesudahnya.
+-->
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 1. PILIH CARA MENAMBAH DATA                                    -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- Dulu "Impor Excel" & "Template" berdiri sendiri di bilah tombol.
+         Ketiganya sama-sama berarti "menambah data", jadi sekarang semua
+         masuk ke satu tombol Tambah JPL: bilah atas jadi sepi, & orang
+         tidak perlu menebak bedanya Template dengan Impor. -->
+    <div id="modal-jpl-pilih" class="hidden fixed inset-0 z-[88] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#d4af37] flex items-center justify-center">
+                        <i class="fa-solid fa-plus text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xs uppercase tracking-wider">Tambah Data Perlintasan</h3>
+                        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Pilih cara yang paling sesuai</p>
+                    </div>
+                </div>
+                <button type="button" onclick="jplTutupPilih_()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-3">
+
+                <button type="button" onclick="jplPilihManual_()"
+                        class="w-full text-left rounded-2xl border border-slate-200 hover:border-[#0c1d37] hover:bg-slate-50 transition p-4 flex items-start gap-3.5 group">
+                    <div class="w-11 h-11 rounded-xl bg-[#0c1d37] text-[#d4af37] flex items-center justify-center text-base shrink-0">
+                        <i class="fa-regular fa-pen-to-square"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-xs font-black text-slate-800 group-hover:text-[#0c1d37]">Isi Satu Per Satu</p>
+                        <p class="text-[11px] text-slate-500 font-semibold leading-relaxed mt-1">
+                            Mengisi formulir untuk <b>satu perlintasan</b>. Dipakai saat menambah titik baru
+                            atau memperbaiki data yang sudah ada.
+                        </p>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-[#0c1d37] text-[11px] mt-4 ml-auto shrink-0"></i>
+                </button>
+
+                <button type="button" onclick="jplPilihImpor_()"
+                        class="w-full text-left rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition p-4 flex items-start gap-3.5 group">
+                    <div class="w-11 h-11 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center text-base shrink-0">
+                        <i class="fa-solid fa-file-excel"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-xs font-black text-slate-800 group-hover:text-emerald-700">Impor Dari Berkas Excel</p>
+                        <p class="text-[11px] text-slate-500 font-semibold leading-relaxed mt-1">
+                            Memasukkan <b>banyak baris sekaligus</b> dari berkas Excel. Data yang sudah ada
+                            akan diperbarui, bukan ditambah ulang. Template kosongnya bisa diunduh di
+                            dalam langkah ini.
+                        </p>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-emerald-600 text-[11px] mt-4 ml-auto shrink-0"></i>
+                </button>
+            </div>
+
+            <div class="px-5 pb-5">
+                <button type="button" onclick="jplTutupPilih_()" class="w-full py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold rounded-xl text-xs transition">Batal</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 2. FORM TAMBAH / UBAH PERLINTASAN                              -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div id="modal-jpl-form" class="hidden fixed inset-0 z-[89] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] flex flex-col overflow-hidden">
+
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#d4af37] flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-road-barrier text-sm"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 id="jpl-m-judul" class="font-black text-xs uppercase tracking-wider">Tambah Perlintasan</h3>
+                        <p id="jpl-m-subjudul" class="text-[10px] text-slate-400 font-bold mt-0.5 truncate">Register perlintasan sebidang</p>
+                    </div>
+                </div>
+                <button type="button" onclick="jplTutupForm_()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form onsubmit="jplSimpan_(event)" class="p-6 space-y-5 overflow-y-auto flex-1">
+                <input type="hidden" id="jpl-m-id">
+
+                <!-- IDENTITAS -->
+                <div>
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-2.5 pb-1.5 border-b border-slate-100">Identitas &amp; Lokasi</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div class="lg:col-span-2">
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Resor <span class="text-rose-500">*</span></label>
+                            <input id="jpl-m-resor" list="jpl-dl-resor" type="text" required autocomplete="off" placeholder="1.1 JAKARTAKOTA"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                            <datalist id="jpl-dl-resor"></datalist>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">No JPL</label>
+                            <input id="jpl-m-nojpl" type="text" autocomplete="off" placeholder="7A"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                            <p class="text-[9px] text-slate-400 font-semibold mt-1">Kosongkan bila perlintasan tidak terdaftar resmi.</p>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lokasi (KM/HM)</label>
+                            <input id="jpl-m-km" type="text" autocomplete="off" placeholder="2 + 876"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Nama Jalan</label>
+                            <input id="jpl-m-jalan" type="text" autocomplete="off" placeholder="Jl. Budi Mulya"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lintas</label>
+                            <input id="jpl-m-lintas" list="jpl-dl-lintas" type="text" autocomplete="off" placeholder="Jakk - Tpk"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                            <datalist id="jpl-dl-lintas"></datalist>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Antara</label>
+                            <input id="jpl-m-antara" type="text" autocomplete="off" placeholder="Kpb - Ac"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Koridor</label>
+                            <input id="jpl-m-koridor" type="text" autocomplete="off" placeholder="Jak - Tpk"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lebar JPL (m)</label>
+                            <input id="jpl-m-lebar" type="text" autocomplete="off" placeholder="6"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Kategori Jalan</label>
+                            <input id="jpl-m-katjalan" type="text" autocomplete="off" placeholder="Jalan Kota"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Kodya / Kabupaten</label>
+                            <input id="jpl-m-kodya" type="text" autocomplete="off" placeholder="Jakarta Utara"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Provinsi</label>
+                            <input id="jpl-m-provinsi" list="jpl-dl-provinsi" type="text" autocomplete="off" placeholder="DKI JAKARTA"
+                                   class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition">
+                            <datalist id="jpl-dl-provinsi"></datalist>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STATUS -->
+                <div>
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-2.5 pb-1.5 border-b border-slate-100">Status &amp; Penjagaan</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Terdaftar Resmi?</label>
+                            <select id="jpl-m-register" onchange="jplPratinjauSkor_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Ada Penjaganya?</label>
+                            <select id="jpl-m-jaga" onchange="jplPratinjauSkor_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Dijaga Oleh</label>
+                            <select id="jpl-m-domain" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lalu Lintas Padat?</label>
+                            <select id="jpl-m-lalin" onchange="jplPratinjauSkor_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Di Pusat Kota?</label>
+                            <select id="jpl-m-posisi" onchange="jplPratinjauSkor_()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#d4af37] cursor-pointer"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KECELAKAAN -->
+                <!-- Kolom Laka sudah tidak tampil di tabel, tapi datanya tetap
+                     disimpan & dipakai menghitung tingkat prioritas - jadi
+                     pengisiannya tetap ada di sini. -->
+                <div>
+                    <div class="flex items-center justify-between gap-2 mb-2.5 pb-1.5 border-b border-slate-100">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Riwayat Kecelakaan</p>
+                        <button type="button" onclick="jplTambahTahunLaka_()" class="text-[10px] font-black text-[#e11d48] hover:underline">
+                            <i class="fa-solid fa-plus mr-1"></i>Tambah tahun
+                        </button>
+                    </div>
+                    <!-- Per tahun, bukan satu angka total: tahunnya ikut
+                         tersimpan, jadi data tahun depan tinggal ditambahkan
+                         tanpa menghapus riwayat sebelumnya. -->
+                    <div id="jpl-m-laka" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5"></div>
+                    <p class="text-[9px] text-slate-400 font-semibold mt-1.5">Kosongkan atau isi 0 bila tidak ada kejadian pada tahun itu.</p>
+                </div>
+
+                <!-- KETERANGAN -->
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Keterangan / Tindak Lanjut</label>
+                    <textarea id="jpl-m-ket" rows="3" maxlength="500" placeholder="Usulan dijaga, rencana penutupan, koordinasi dengan Pemda..."
+                              class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:bg-white transition resize-none"></textarea>
+                    <p class="text-[9px] text-slate-400 font-semibold mt-1">
+                        Isi kolom ini tampil di tabel daftar, dan <b>tidak akan tertimpa kosong</b> saat impor Excel berikutnya.
+                    </p>
+                </div>
+
+                <!-- PRATINJAU PRIORITAS -->
+                <div id="jpl-m-skor" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"></div>
+
+                <div id="jpl-m-galat" class="hidden rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-[11px] font-bold text-rose-700"></div>
+
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="jplTutupForm_()" class="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs transition">Batal</button>
+                    <button type="submit" id="jpl-m-simpan" class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-black rounded-xl text-xs transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-[11px]"></i><span>Simpan Perlintasan</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 3. IMPOR BERKALA DARI EXCEL                                    -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div id="modal-jpl-impor" class="hidden fixed inset-0 z-[90] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[94vh] flex flex-col overflow-hidden">
+
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#d4af37] flex items-center justify-center">
+                        <i class="fa-solid fa-file-import text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xs uppercase tracking-wider">Impor Register Perlintasan</h3>
+                        <p class="text-[10px] text-slate-400 font-bold mt-0.5">Data yang sudah ada diperbarui, bukan ditambah ulang</p>
+                    </div>
+                </div>
+                <button type="button" onclick="jplTutupImpor_()" class="w-8 h-8 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Penanda langkah -->
+            <div class="px-6 pt-4 shrink-0">
+                <div id="jpl-i-langkah" class="flex items-center gap-1.5"></div>
+            </div>
+
+            <div class="p-6 pt-4 overflow-y-auto flex-1">
+
+                <!-- LANGKAH 1: PILIH BERKAS -->
+                <div id="jpl-i-step1">
+
+                    <!-- Tombol template ada DI SINI, bukan di bilah atas:
+                         orang baru membutuhkannya tepat pada saat hendak
+                         menyiapkan berkas, bukan sebelum itu. -->
+                    <div class="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3.5 mb-4 flex items-center justify-between gap-3 flex-wrap">
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-black text-amber-900">Belum punya berkasnya?</p>
+                            <p class="text-[10px] font-semibold text-amber-700 mt-0.5">Unduh template kosong dengan judul kolom yang sudah benar.</p>
+                        </div>
+                        <button type="button" onclick="jplUnduhTemplate_()"
+                                class="px-3.5 py-2 bg-white border border-amber-300 hover:border-amber-500 text-amber-800 font-black text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition shrink-0">
+                            <i class="fa-solid fa-download text-[10px]"></i><span>Unduh Template</span>
+                        </button>
+                    </div>
+
+                    <label for="jpl-i-file" id="jpl-i-drop"
+                           class="block rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 hover:border-[#d4af37] hover:bg-amber-50/40 transition cursor-pointer p-8 text-center">
+                        <div class="w-14 h-14 rounded-2xl bg-white border border-slate-200 text-[#0c1d37] flex items-center justify-center mx-auto mb-3 shadow-sm">
+                            <i class="fa-solid fa-file-excel text-xl text-emerald-600"></i>
+                        </div>
+                        <p class="text-xs font-black text-slate-700">Pilih berkas Excel, atau seret ke sini</p>
+                        <p class="text-[10px] text-slate-400 font-bold mt-1">Format .xlsx atau .xls &mdash; judul kolom boleh di baris berapa pun</p>
+                        <input id="jpl-i-file" type="file" accept=".xlsx,.xls" class="hidden" onchange="jplPilihBerkas_(event)">
+                    </label>
+
+                    <div class="mt-4 rounded-xl bg-sky-50 border border-sky-200 px-4 py-3">
+                        <p class="text-[10px] font-black text-sky-900 uppercase tracking-wider mb-1.5">Yang dikenali otomatis</p>
+                        <p class="text-[11px] font-semibold text-sky-800 leading-relaxed">
+                            Judul kolom dicocokkan berdasarkan <b>namanya</b>, bukan urutannya &mdash; jadi susunan kolom
+                            boleh berbeda. Judul bertingkat (seperti <i>Status JPL</i> yang terbagi
+                            <i>Register</i> dan <i>Dijaga</i>) ikut terbaca. Kolom bertahun
+                            (<i>2024</i>, <i>2025</i>, &hellip;) otomatis dibaca sebagai jumlah kecelakaan tahun itu,
+                            sehingga berkas tahun depan tidak perlu penyesuaian apa pun.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- LANGKAH 2: HASIL PEMERIKSAAN -->
+                <div id="jpl-i-step2" class="hidden space-y-4"></div>
+
+                <!-- LANGKAH 3: HASIL AKHIR -->
+                <div id="jpl-i-step3" class="hidden"></div>
+            </div>
+
+            <div id="jpl-i-kaki" class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+                <p id="jpl-i-ket" class="text-[10px] text-slate-400 font-bold">Belum ada berkas dipilih.</p>
+                <div class="flex items-center gap-2">
+                    <button onclick="jplTutupImpor_()" class="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold rounded-xl text-xs transition">Tutup</button>
+                    <button id="jpl-i-terapkan" onclick="jplTerapkanImpor_()" disabled
+                            class="hidden px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-black rounded-xl text-xs shadow-md transition items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-check text-[#d4af37] text-[11px]"></i><span>Terapkan Impor</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 4. DETAIL SATU PERLINTASAN                                     -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div id="modal-jpl-detail" class="hidden fixed inset-0 z-[89] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div id="jpl-d-kepala" class="px-6 py-4 bg-[#0c1d37] text-white shrink-0"></div>
+            <div id="jpl-d-isi" class="p-6 overflow-y-auto flex-1"></div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+                <button id="jpl-d-edit" onclick="jplEditDariDetail_()" class="px-4 py-2.5 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                    <i class="fa-regular fa-pen-to-square text-[11px]"></i><span>Ubah data ini</span>
+                </button>
+                <button onclick="jplTutupDetail_()" class="px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">Tutup</button>
+            </div>
+        </div>
+    </div>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <base target="_top">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DATABASE KCI - COTP Department</title>
+
+    <!-- Tailwind + Fonts + Icons (sama seperti desain awal, dimuat lewat CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- SheetJS: baca & buat file Excel (.xlsx) sungguhan di browser (dipakai fitur download template & input by Excel) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!--
+      PDF.js - dipakai mengubah PDF jadi gambar per halaman DI BROWSER.
+      Wajib ada: tanpa ini, pratinjau dokumen PDF di menu Document Repository
+      & Emplasemen Stasiun tidak akan pernah tampil, karena browser memblokir
+      <iframe src="data:application/pdf"> di dalam sandbox Apps Script.
+    -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Pembuat QR pengesahan serah terima dinasan -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- PptxGenJS: membuat file PowerPoint (.pptx) SUNGGUHAN di browser (dipakai fitur Export PPT Slide di
+         Summary Gangguan). Sebelumnya export PPT cuma trik HTML berlabel ".ppt" yang TIDAK benar-benar bisa
+         dibuka PowerPoint (beda dengan trik serupa untuk Word, yang memang didukung mesin Word). -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+
+    <?!= include('Styles'); ?>
+</head>
+<body class="flex h-screen w-screen overflow-hidden text-slate-800">
+
+    <?!= include('Pane_Login'); ?>
+
+    <!-- ============================================================ -->
+    <!-- APP SHELL: disembunyikan sampai login sukses (lihat           -->
+    <!-- Script_Login.html -> showLoginScreen()/enterDashboard())      -->
+    <!-- ============================================================ -->
+    <div id="app-shell" class="hidden w-full h-full flex">
+
+        <!--
+          Latar gelap laci menu. Hanya muncul di ponsel saat lacinya terbuka -
+          lihat aturan `body.laci-buka` di Styles.html. Mengkliknya menutup
+          laci, kebiasaan yang sudah umum & lebih cepat daripada mencari
+          tombol tutup.
+        -->
+        <div id="laci-backdrop" onclick="tutupLaciMenu_()"></div>
+
+        <?!= include('Sidebar'); ?>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT -->
+        <!-- ============================================================ -->
+        <div class="flex-1 flex flex-col h-full overflow-hidden">
+
+            <?!= include('Header'); ?>
+
+            <!-- SCROLLABLE MAIN -->
+            <main id="main-scroll" class="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
+
+                <!--
+                  ═══ TOAST HARUS DI ATAS MODAL ═══
+                  Dulu kotak ini ikut mengalir di dalam isi halaman (hanya
+                  `mb-4`). Akibatnya setiap pesan yang muncul SAAT MODAL
+                  TERBUKA tertutup latar gelap modal - pesannya benar-benar
+                  tampil, hanya tidak terlihat.
+
+                  Dampaknya jauh melampaui satu layar: hampir seluruh
+                  penyimpanan di aplikasi ini terjadi di dalam modal, jadi
+                  setiap penolakan ("Nama jabatan wajib diisi", "Sesi
+                  kedaluwarsa", dan sebagainya) hilang tanpa jejak. Bagi
+                  pengguna, tombol Simpan sekadar "tidak berjalan".
+
+                  z-[120] dipilih supaya di atas seluruh modal yang ada -
+                  yang tertinggi saat ini z-[96].
+                -->
+                <div id="custom-toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 z-[120] w-[min(92vw,32rem)] bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between shadow-2xl border border-slate-700 animate-fade-in">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-emerald-500 text-slate-950 p-1.5 rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-check text-xs"></i>
+                        </div>
+                        <p id="toast-message" class="text-xs font-bold tracking-tight"></p>
+                    </div>
+                    <button onclick="closeToast()" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <!-- ================================ -->
+                <!-- Dashboard Utama -->
+                <!-- ================================ -->
+                <?!= include('Pane_Dashboard'); ?>
+
+                <!-- ================================ -->
+                <!-- Kinerja & Operasional -->
+                <!-- ================================ -->
+                <?!= include('Pane_KinopSummary'); ?>
+                <?!= include('Pane_KinopRincian'); ?>
+                <?!= include('Pane_KinopDb'); ?>
+                <?!= include('Pane_GangguanSummary'); ?>
+                <?!= include('Pane_GangguanRincian'); ?>
+                <?!= include('Pane_GangguanCustom'); ?>
+                <?!= include('Pane_TcSerah'); ?>
+                <?!= include('Pane_TcDinasan'); ?>
+                <?!= include('Pane_TcResume'); ?>
+                <?!= include('Pane_TcRoster'); ?>
+                <?!= include('Pane_TcRaport'); ?>
+        <?!= include('Pane_TcStruktur'); ?>
+
+                <!-- ================================ -->
+                <!-- Sarana & Prasarana -->
+                <!-- ================================ -->
+                <?!= include('Pane_SapEmplasemen'); ?>
+                <?!= include('Pane_SapSpesifikasi'); ?>
+                <?!= include('Pane_SapPerlintasan'); ?>
+
+                <!-- ================================ -->
+                <!-- Administrasi & Anggaran -->
+                <!-- ================================ -->
+                <?!= include('Pane_PeraturanDokumen'); ?>
+                <?!= include('Pane_PeraturanCustom'); ?>
+                <?!= include('Pane_IzinLinpel'); ?>
+                <?!= include('Pane_IzinIops'); ?>
+                <?!= include('Pane_Anggaran'); ?>
+                <?!= include('Pane_UserMgmt'); ?>
+
+            </main>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- MODALS (dikelompokkan per modul) -->
+        <!-- ============================================================ -->
+        <?!= include('Modals_Kinop'); ?>
+        <?!= include('Modals_Gangguan'); ?>
+        <?!= include('Modals_TrainControl'); ?>
+        <?!= include('Modals_Sap'); ?>
+        <?!= include('Modals_SapEmplasemen'); ?>
+        <?!= include('Modals_Admin'); ?>
+        <?!= include('Modals_Arsip'); ?>
+        <?!= include('Modals_User'); ?>
+        <?!= include('Modals_Kalender'); ?>
+        <?!= include('Modals_Perlintasan'); ?>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- SCRIPTS: Script_Login duluan (state sesi), SharedScripts,     -->
+    <!-- lalu modul lain, Init wajib paling akhir                      -->
+    <!-- ============================================================ -->
+    <?!= include('Script_Login'); ?>
+    <?!= include('SharedScripts'); ?>
+    <?!= include('Script_KinopOperasi'); ?>
+    <?!= include('Script_Gangguan'); ?>
+    <?!= include('Script_TrainControl'); ?>
+    <?!= include('Script_SaranaPrasarana'); ?>
+    <?!= include('Script_PeraturanIzinAnggaran'); ?>
+    <?!= include('Script_UserManagement'); ?>
+    <?!= include('Script_Kalender'); ?>
+    <?!= include('Script_Perlintasan'); ?>
+    <?!= include('Init'); ?>
+</body>
+</html>

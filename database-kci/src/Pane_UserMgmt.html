@@ -1,0 +1,76 @@
+<!--
+  Pane_UserMgmt.html
+  Pane/menu: User Management
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-user-mgmt" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                    <!--
+                      Judul & tombol dibuat MEMBUNGKUS (flex-wrap) dan rata atas.
+                      Sebelumnya keduanya dipaksa satu baris; setelah tombolnya
+                      bertambah jadi lima, barisan tombol melebar & menabrak
+                      keterangan kapasitas di sebelah kirinya.
+                    -->
+                    <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 border-b border-slate-100 pb-4">
+                        <div class="min-w-0">
+                            <h3 class="text-base font-extrabold text-slate-900">User Management</h3>
+                            <p class="text-xs text-slate-500 mt-1">Konfigurasi hak akses login personil kendali dinas aktif.</p>
+                            <p id="info-kapasitas" class="text-[11px] font-bold mt-1.5 hidden"></p>
+                            <p id="info-cadangan" class="text-[11px] text-slate-400 font-bold mt-1.5 hidden"></p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap shrink-0">
+                            <button id="btn-tempat-sampah" onclick="bukaTempatSampah()" class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-[#0c1d37] font-bold text-[11px] rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                                <span class="w-5 h-5 rounded-md bg-slate-500/15 text-slate-600 flex items-center justify-center text-[10px]"><i class="fa-solid fa-trash-arrow-up"></i></span>
+                                <span>Tempat Sampah</span>
+                            </button>
+                            <!-- Ganti password sendiri - tersedia untuk semua role yang bisa membuka menu ini.
+                                 Role yang tidak punya akses ke menu ini tetap bisa menggantinya lewat tombol
+                                 kunci di footer sidebar. -->
+                            <!--
+                              Detail Role & Cadangan Data ditaruh di sini supaya
+                              seluruh urusan pengelolaan pengguna & pengamanan
+                              data ada di satu tempat - tidak perlu lagi membuka
+                              editor Apps Script hanya untuk mencadangkan.
+                            -->
+                            <button onclick="openRoleInfoModal()" title="Penjelasan setiap role hak akses" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                <span class="w-5 h-5 rounded-md bg-sky-500/15 text-sky-600 flex items-center justify-center text-[10px] group-hover:bg-sky-600 group-hover:text-white transition"><i class="fa-solid fa-circle-question"></i></span>
+                                <span>Detail Role</span>
+                            </button>
+                            <button id="btn-pulihkan-data" onclick="bukaPulihkan()" title="Menarik kembali data yang sudah terhapus dari cadangan" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                <span class="w-5 h-5 rounded-md bg-amber-500/15 text-amber-600 flex items-center justify-center text-[10px] group-hover:bg-amber-600 group-hover:text-white transition"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                                <span>Pulihkan Data</span>
+                            </button>
+                            <button id="btn-cadangan-data" onclick="buatCadanganData()" title="Membuat salinan seluruh data ke folder Cadangan_DatabaseKCI" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                <span class="w-5 h-5 rounded-md bg-emerald-500/15 text-emerald-600 flex items-center justify-center text-[10px] group-hover:bg-emerald-600 group-hover:text-white transition"><i class="fa-solid fa-shield-halved"></i></span>
+                                <span>Backup Data</span>
+                            </button>
+                            <button onclick="openMyPasswordModal()" class="bg-white hover:bg-slate-50 text-[#0c1d37] font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm border border-slate-200 hover:border-[#d4af37]/60 transition group">
+                                <span class="w-5 h-5 rounded-md bg-[#d4af37]/15 text-[#b8952b] flex items-center justify-center text-[10px] group-hover:bg-[#d4af37] group-hover:text-white transition"><i class="fa-solid fa-key"></i></span>
+                                <span>Ganti Password Saya</span>
+                            </button>
+                            <button id="btn-add-user-mgmt" onclick="openAddUserModal()" class="bg-[#0c1d37] hover:bg-slate-800 text-white font-bold text-[11px] pl-3 pr-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition">
+                                <span class="w-5 h-5 rounded-md bg-white/15 text-[#d4af37] flex items-center justify-center text-[10px]"><i class="fa-solid fa-user-plus"></i></span>
+                                <span>Tambah Petugas</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-200 rounded-2xl">
+                        <table class="w-full text-left text-xs font-semibold text-slate-700 border-collapse">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-extrabold uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-4">NAMA LENGKAP</th>
+                                    <th class="px-6 py-4">ID PETUGAS</th>
+                                    <!-- Username dibuat otomatis dari nama; login menerima keduanya -->
+                                    <th class="px-6 py-4">USERNAME</th>
+                                    <th class="px-6 py-4">ROLE HAK AKSES</th>
+                                    <th class="px-6 py-4">STASIUN / AREA DINAS</th>
+                                    <th class="px-6 py-4 text-center">STATUS KONEKSI</th>
+                                    <th class="px-6 py-4 text-center">TINDAKAN</th>
+                                </tr>
+                            </thead>
+                            <tbody id="user-mgmt-table-body" class="divide-y divide-slate-150 bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>

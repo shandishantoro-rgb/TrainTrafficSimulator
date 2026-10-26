@@ -1,0 +1,415 @@
+<!--
+  Modals_User.html
+  Modal untuk modul User Management
+-->
+    <div id="modal-add-user" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200">
+            <div class="bg-[#0c1d37] text-white p-5 flex justify-between items-center">
+                <h3 class="font-bold text-xs uppercase">Registrasi User Baru</h3>
+                <button onclick="closeAddUserModal()" class="text-slate-300 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-user-new" onsubmit="handleUserSubmit(event)" class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Nama Lengkap</label>
+                    <input type="text" id="u-nama" required placeholder="cth: Aris Pramono" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">ID Petugas (NIP)</label>
+                    <input type="text" id="u-nip" required placeholder="cth: KCI-120092" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Role Hak Akses</label>
+                    <!--
+                      PERBAIKAN BUG: pilihannya dulu "Admin" & "Operator" -
+                      keduanya BUKAN roleId yang dikenal sistem, sehingga akun
+                      yang dibuat lewat form ini punya role yang tidak ada di
+                      sheet Role_Menu_Access & ditolak di semua menu. Nilai di
+                      bawah ini persis roleId yang dipakai requirePermission_.
+                      Pilihan SUPERADMIN & ADMIN otomatis disembunyikan untuk
+                      pembuat yang bukan SUPERADMIN (lihat siapkanPilihanRole_
+                      di Script_UserManagement.html) - server juga menolaknya,
+                      jadi penyembunyian ini murni agar tampilan tidak
+                      menawarkan hal yang pasti gagal.
+                    -->
+                    <select id="u-role" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                        <option value="VIEW_1">View 1</option>
+                        <option value="VIEW_2">View 2</option>
+                        <option value="ADMIN_GANGSAR">Admin GangSar</option>
+                        <option value="ADMIN_TRAFFIC">Admin Traffic</option>
+                        <option value="ADMINISTRATOR">Administrator</option>
+                        <option value="SUPERADMIN">Superadmin</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Stasiun / Area Dinas</label>
+                    <input type="text" id="u-wilayah" required placeholder="cth: Pusdalops Daop 1" class="w-full p-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                    <label class="font-bold text-slate-700 block mb-1">Password Awal</label>
+                    <input type="password" id="u-password" required minlength="8" placeholder="Minimal 8 karakter" class="w-full p-2 border border-slate-300 rounded-lg" />
+                    <p class="text-[10px] text-slate-400 font-semibold mt-1">Minimal 8 karakter. NIP dipakai sebagai username login. Petugas bisa ganti password ini setelah login pertama.</p>
+                </div>
+                <p id="u-error" class="hidden p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] font-bold text-red-700"></p>
+
+                <button type="submit" id="u-submit-btn" class="w-full py-2.5 bg-[#0c1d37] text-white font-bold rounded-lg hover:bg-slate-800 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-user-plus"></i><span>Daftarkan Petugas</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Edit Data Petugas (HANYA SUPERADMIN).
+      Perpindahan role hanya bisa dilakukan dari sini - itulah sebabnya
+      modal ini dikunci untuk SUPERADMIN, baik di tampilan maupun di server
+      (usermgmt_update). Password dikosongkan secara sengaja: diisi hanya
+      kalau memang ingin disetel ulang, dibiarkan kosong berarti password
+      lama tetap berlaku.
+    -->
+    <div id="modal-edit-user" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div class="min-w-0">
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-user-pen text-[#d4af37]"></i><span>Edit Data Petugas</span>
+                    </h3>
+                    <p id="eu-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+                </div>
+                <button onclick="closeEditUserModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <form id="form-edit-user" onsubmit="handleEditUserSubmit(event)" class="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Nama Lengkap</label>
+                    <input type="text" id="eu-nama" required class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">ID Petugas (NIP)</label>
+                    <input type="text" id="eu-nip" required class="w-full p-2 border border-slate-300 rounded-lg font-mono font-bold">
+                    <p class="text-[10px] text-slate-400 font-semibold mt-1">Dipakai sebagai username login - tidak boleh sama dengan petugas lain.</p>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block font-bold text-slate-600">Role Hak Akses</label>
+                        <!-- Keterangan tiap role dipindah ke sini supaya pilihannya
+                             tetap ringkas & mudah dibaca sekilas. -->
+                        <button type="button" onclick="openRoleInfoModal()" class="text-[10px] font-bold text-[#0c1d37] hover:text-[#d4af37] transition flex items-center gap-1">
+                            <i class="fa-solid fa-circle-question"></i><span>Detail Role</span>
+                        </button>
+                    </div>
+                    <select id="eu-role" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                        <option value="VIEW_1">View 1</option>
+                        <option value="VIEW_2">View 2</option>
+                        <option value="ADMIN_GANGSAR">Admin GangSar</option>
+                        <option value="ADMIN_TRAFFIC">Admin Traffic</option>
+                        <option value="ADMINISTRATOR">Administrator</option>
+                        <option value="SUPERADMIN">Superadmin</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Stasiun / Area Dinas</label>
+                    <input type="text" id="eu-wilayah" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Status Akun</label>
+                    <select id="eu-aktif" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                        <option value="true">Aktif - bisa login</option>
+                        <option value="false">Nonaktif - tidak bisa login</option>
+                    </select>
+                </div>
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <label class="block font-bold text-amber-900 mb-1">Setel Ulang Password (opsional)</label>
+                    <input type="password" id="eu-password" minlength="8" placeholder="Kosongkan bila tidak diganti" class="w-full p-2 border border-amber-300 rounded-lg font-bold bg-white">
+                    <p class="text-[10px] text-amber-800 font-semibold mt-1">Diisi hanya bila petugas lupa passwordnya. Minimal 8 karakter.</p>
+                </div>
+
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="closeEditUserModal()" class="flex-1 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg transition">Batal</button>
+                    <button type="submit" id="eu-submit-btn" class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-lg transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Perubahan</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Ganti Password Sendiri (berlaku untuk SEMUA role).
+      Dibuka dari tombol kunci di footer sidebar, jadi tetap terjangkau
+      oleh role yang tidak punya akses ke menu User Management - misalnya
+      ADMIN GANGSAR yang hanya melihat satu menu.
+
+      Password lama WAJIB diisi: supaya orang yang menemukan komputer dalam
+      keadaan masih login tidak bisa langsung mengunci pemilik aslinya.
+      Role tidak bisa diubah dari sini - hanya SUPERADMIN yang berhak.
+    -->
+    <div id="modal-my-password" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between">
+                <div class="min-w-0">
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-key text-[#d4af37]"></i><span>Ganti Password</span>
+                    </h3>
+                    <p id="mp-akun" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+                </div>
+                <button onclick="closeMyPasswordModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <form id="form-my-password" onsubmit="handleMyPasswordSubmit(event)" class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Password Saat Ini</label>
+                    <input type="password" id="mp-lama" required class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Password Baru</label>
+                    <input type="password" id="mp-baru" required minlength="8" placeholder="Minimal 8 karakter" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-600 mb-1">Ketik Ulang Password Baru</label>
+                    <input type="password" id="mp-ulang" required minlength="8" class="w-full p-2 border border-slate-300 rounded-lg font-bold">
+                </div>
+
+                <p id="mp-error" class="hidden p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] font-bold text-red-700"></p>
+
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="closeMyPasswordModal()" class="flex-1 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg transition">Batal</button>
+                    <button type="submit" id="mp-submit-btn" class="flex-1 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-lg transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!--
+      MODAL: Detail Role - penjelasan lengkap tiap role.
+      Isinya DIAMBIL DARI SERVER (ROLE_KETERANGAN di Service_Session.gs),
+      bukan ditulis ulang di sini - supaya penjelasan yang dibaca petugas
+      selalu bersumber dari tempat yang sama dengan aturan izin sebenarnya
+      & tidak bisa jadi usang saat aturannya berubah.
+    -->
+    <div id="modal-role-info" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+                <div>
+                    <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-[#d4af37]"></i><span>Detail Role Hak Akses</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">Apa saja yang bisa diakses tiap role</p>
+                </div>
+                <button onclick="closeRoleInfoModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="role-info-list" class="p-6 space-y-3 overflow-y-auto flex-1 bg-white"></div>
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+                <button onclick="closeRoleInfoModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+<!--
+  KONFIRMASI LOGOUT.
+  Menggantikan confirm() bawaan browser yang di dalam sandbox Apps Script
+  muncul sebagai kotak sistem bertuliskan "An embedded page at
+  ...googleusercontent.com says" - alamat acak yang terlihat mencurigakan.
+-->
+<div id="modal-konfirmasi-logout" class="hidden fixed inset-0 z-[90] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="px-6 py-5 flex items-start gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center text-xl shrink-0">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-sm font-black text-slate-900">Keluar dari sistem?</h3>
+                <p class="text-[11px] text-slate-500 font-semibold mt-1 leading-relaxed">
+                    Anda akan kembali ke halaman login dan perlu memasukkan password lagi untuk masuk.
+                </p>
+                <div class="mt-2.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p id="logout-nama" class="text-xs font-black text-[#0c1d37] truncate">-</p>
+                    <p id="logout-role" class="text-[10px] font-bold text-emerald-600">-</p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+            <button onclick="batalLogout()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tidak, Batal</button>
+            <button onclick="jalankanLogout_()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-right-from-bracket"></i><span>Ya, Keluar</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!--
+  PULIHKAN DATA DARI CADANGAN.
+
+  Dua langkah: pilih cadangan -> pilih data mana yang mau ditarik kembali.
+  Yang dilakukan hanya MENAMBAHKAN baris yang sudah tidak ada; data
+  sekarang tidak pernah ditimpa, supaya memulihkan data lama tidak
+  menghilangkan pekerjaan yang dilakukan setelah cadangan dibuat.
+-->
+<div id="modal-pulihkan" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span>Pulihkan Data dari Cadangan</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Menarik kembali data yang sudah terhapus</p>
+            </div>
+            <button onclick="tutupPulihkan()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+            <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 font-semibold flex items-start gap-2.5">
+                <i class="fa-solid fa-circle-info text-[#0c1d37] mt-0.5"></i>
+                <span>Data yang ada sekarang <strong>tidak akan ditimpa atau dihapus</strong>. Yang dilakukan hanya menambahkan kembali baris yang sudah tidak ada.</span>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">1. Pilih Cadangan</label>
+                <select id="pulih-pilih-cadangan" onchange="periksaCadanganTerpilih()" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer">
+                    <option value="">- Memuat daftar cadangan... -</option>
+                </select>
+            </div>
+
+            <div id="pulih-hasil-periksa" class="hidden">
+                <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">2. Pilih Data yang Ingin Ditarik Kembali</label>
+                <div id="pulih-daftar-sheet" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+
+            <div id="pulih-memuat" class="hidden py-8 text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-[#d4af37] mb-2"></i>
+                <p class="text-[11px] font-bold text-slate-500">Membandingkan cadangan dengan data sekarang...</p>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <span id="pulih-ringkasan" class="text-[11px] font-bold text-slate-400">-</span>
+            <div class="flex items-center gap-2">
+                <button onclick="tutupPulihkan()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+                <button id="pulih-btn-jalankan" onclick="jalankanPemulihan()" disabled class="px-5 py-2.5 bg-[#0c1d37] hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-left text-[#d4af37]"></i><span>Pulihkan Terpilih</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HASIL UJI AKSES PETA -->
+<div id="modal-uji-peta" class="hidden fixed inset-0 z-[85] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-stethoscope text-[#d4af37]"></i><span>Hasil Uji Akses Peta</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Diperiksa dari server, di luar jaringan KCI</p>
+            </div>
+            <button onclick="tutupUjiPeta()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div id="uji-peta-isi" class="p-6 space-y-3 overflow-y-auto flex-1"></div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            <button onclick="tutupUjiPeta()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!--
+  PANDUAN PASANG VPN.
+  Kredensial SENGAJA TIDAK ditulis di sini - halaman ini bisa dibuka semua
+  petugas, dan kredensial jaringan tidak boleh tersebar lebih luas dari
+  yang seharusnya.
+-->
+<div id="modal-panduan-vpn" class="hidden fixed inset-0 z-[85] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-[#d4af37]"></i><span>Cara Memasang VPN KCI</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Agar peta bisa dibuka dari luar kantor</p>
+            </div>
+            <button onclick="tutupPanduanVpn()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-3 overflow-y-auto flex-1">
+            <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl text-[11px] text-amber-900 font-semibold leading-relaxed">
+                <i class="fa-solid fa-circle-info mr-1"></i>
+                VPN dipasang di <strong>Windows</strong>, bukan di aplikasi ini. Setelah tersambung,
+                peta akan tampil sendiri di Dashboard.
+            </div>
+
+            <ol class="space-y-2.5 text-[11px] text-slate-700 font-semibold">
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">1</span>
+                    <span>Buka <strong>Settings &rarr; Network &amp; Internet &rarr; VPN</strong>, lalu klik <strong>Add VPN</strong>.</span></li>
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">2</span>
+                    <span>VPN provider: <strong>Windows (built-in)</strong>. Connection name: <strong>KCI</strong>.</span></li>
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">3</span>
+                    <span>Server name or address: <strong class="font-mono">vpn.kci.id</strong> &middot; VPN type: <strong>Automatic</strong>.</span></li>
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">4</span>
+                    <span>Type of sign-in info: <strong>Username and password</strong>.</span></li>
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">5</span>
+                    <span>Isi username &amp; password VPN. <strong>Minta ke admin unit</strong> bila belum punya &mdash;
+                    kredensial sengaja tidak dicantumkan di halaman ini.</span></li>
+                <li class="flex gap-2.5"><span class="w-5 h-5 rounded-full bg-[#0c1d37] text-white flex items-center justify-center text-[10px] font-black shrink-0">6</span>
+                    <span>Simpan, lalu klik <strong>Connect</strong>. Setelah tersambung, kembali ke Dashboard
+                    dan klik tombol muat ulang pada kartu peta.</span></li>
+            </ol>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            <button onclick="tutupPanduanVpn()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- KAPASITAS PENYIMPANAN -->
+<div id="modal-kapasitas" class="hidden fixed inset-0 z-[86] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-database text-[#d4af37]"></i><span>Kapasitas Penyimpanan</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Batas Google Sheets: 10 juta sel per spreadsheet</p>
+            </div>
+            <button onclick="tutupKapasitas()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div id="kapasitas-isi" class="p-6 space-y-4 overflow-y-auto flex-1"></div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <button id="btn-rapikan-kapasitas" onclick="rapikanKapasitas()" class="px-4 py-2.5 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-700 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-broom text-emerald-600"></i><span>Rapikan Penyimpanan</span>
+            </button>
+            <button onclick="tutupKapasitas()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- TEMPAT SAMPAH 30 HARI -->
+<div id="modal-sampah" class="hidden fixed inset-0 z-[87] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-trash-arrow-up text-[#d4af37]"></i><span>Tempat Sampah</span>
+                </h3>
+                <p id="sampah-ringkas" class="text-[11px] text-slate-400 font-medium mt-0.5">-</p>
+            </div>
+            <button onclick="tutupTempatSampah()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="px-6 pt-5 shrink-0">
+            <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 font-semibold leading-relaxed">
+                <i class="fa-solid fa-circle-info text-[#0c1d37] mr-1"></i>
+                Data yang dihapus disimpan <strong>30 hari</strong> di sini, lalu dibuang otomatis dari
+                Google Drive agar penyimpanan tidak terus membengkak. Berkasnya masih bisa diselamatkan
+                dari Sampah Google Drive selama 30 hari berikutnya.
+            </div>
+        </div>
+
+        <div id="sampah-isi" class="p-6 space-y-2 overflow-y-auto flex-1"></div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            <button onclick="tutupTempatSampah()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>

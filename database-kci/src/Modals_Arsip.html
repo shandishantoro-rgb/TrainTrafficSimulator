@@ -1,0 +1,472 @@
+<!--
+  Modals_Arsip.html
+  Modal untuk menu Peraturan Perusahaan - ARSIP DOKUMEN (v2).
+
+  Empat modal:
+    1. Form dokumen  - dipakai untuk tambah MAUPUN edit. Field yang muncul
+                       menyesuaikan arsip yang sedang dibuka (Status hanya
+                       untuk Peraturan/Kajian/Gapeka, Versi hanya Gapeka).
+    2. Preview       - membaca isi dokumen tanpa bisa mengubah, plus daftar
+                       riwayat versi untuk Gapeka.
+    3. Perbarui Versi- khusus Gapeka: mencatat versi baru tanpa menimpa
+                       versi lama.
+    4. Kelola Kategori - daftar kategori per arsip; bisa tambah, ubah nama
+                       (data ikut diperbarui), & hapus.
+
+  BELUM ADA di Index.html - tambahkan barisnya:
+      <?!= include('Modals_Arsip'); ?>
+-->
+
+<!-- 1. FORM DOKUMEN (tambah / edit) -->
+<div id="modal-arsip-form" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i id="arsip-form-icon" class="fa-solid fa-cloud-arrow-up text-[#d4af37]"></i>
+                    <span id="arsip-form-title">Upload Dokumen</span>
+                </h3>
+                <p id="arsip-form-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button onclick="closeArsipFormModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <form id="form-arsip" onsubmit="handleArsipSubmit(event)" class="p-6 space-y-4 overflow-y-auto flex-1 bg-white text-xs">
+            <div>
+                <label id="arsip-in-judul-label" class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Judul Dokumen <span class="text-red-500">*</span></label>
+                <input type="text" id="arsip-in-judul" required placeholder="Judul lengkap dokumen" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="arsip-in-nomor-wrap">
+                    <label id="arsip-in-nomor-label" class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Nomor Dokumen</label>
+                    <input type="text" id="arsip-in-nomor" placeholder="Contoh: SK.101/CU/KCI/2026" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label id="arsip-in-tanggal-label" class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Tanggal Dokumen <span class="text-red-500">*</span></label>
+                    <input type="date" id="arsip-in-tanggal" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Kategori <span class="text-red-500">*</span></label>
+                    <select id="arsip-in-kategori" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"></select>
+                </div>
+                <div id="arsip-in-status-wrap">
+                    <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Status Berlaku</label>
+                    <select id="arsip-in-status" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer">
+                        <option value="Berlaku">Berlaku / Aktif</option>
+                        <option value="Perlu Review">Perlu Review</option>
+                        <option value="Dicabut">Tidak Berlaku / Expired</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="arsip-in-lintas-wrap" class="hidden">
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Lintas / Koridor</label>
+                <input type="text" id="arsip-in-lintas" placeholder="Contoh: Lintas Bogor - Jakarta Kota" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-red-500">
+            </div>
+
+            <div id="arsip-in-versi-wrap" class="hidden">
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Versi Gapeka</label>
+                <input type="text" id="arsip-in-versi" placeholder="Contoh: Gapeka 2026 Rev.1" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <p class="text-[10px] text-slate-400 font-semibold mt-1">Pembaruan berikutnya dicatat lewat tombol <strong>Perbarui Versi</strong> di tabel, bukan dengan mengubah kolom ini.</p>
+            </div>
+
+            <div>
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Keterangan / Ringkasan Isi</label>
+                <textarea id="arsip-in-deskripsi" rows="3" placeholder="Ringkasan isi dokumen, poin penting, atau catatan pelaksanaan..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+            </div>
+
+            <div>
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Berkas Dokumen</label>
+                <div class="border-2 border-dashed border-slate-300 rounded-2xl p-5 text-center hover:border-amber-500 transition cursor-pointer bg-slate-50/50" onclick="document.getElementById('arsip-in-file').click()">
+                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-400 mb-1"></i>
+                    <p class="font-bold text-slate-700">Klik untuk memilih berkas (PDF / DOC / XLS / gambar)</p>
+                    <p class="text-[10px] text-slate-400 font-semibold mt-0.5">Berkas disimpan ke folder ArsipDokumen di Google Drive</p>
+                    <p id="arsip-file-name" class="hidden text-[11px] text-emerald-600 font-bold mt-1.5"></p>
+                </div>
+                <input type="file" id="arsip-in-file" class="hidden" onchange="handleArsipFileSelect(event)">
+                <p id="arsip-file-lama" class="hidden mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-semibold text-slate-600"></p>
+
+                <!--
+                  PRATINJAU SEBELUM SIMPAN - berkas yang baru dipilih langsung
+                  ditampilkan di sini, jadi user bisa memastikan yang terpilih
+                  memang dokumen yang benar SEBELUM menekan Simpan. Sebelumnya
+                  kekeliruan berkas baru ketahuan setelah tersimpan & harus
+                  diunggah ulang.
+                -->
+                <div id="arsip-file-pratinjau" class="hidden mt-3 border border-slate-200 rounded-2xl overflow-hidden">
+                    <div class="px-3 py-2 bg-slate-800 text-white flex items-center justify-between">
+                        <span class="text-[11px] font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-eye text-[#d4af37]"></i>Pratinjau Berkas
+                        </span>
+                        <button type="button" onclick="bukaViewerBerkasBaru()" class="text-[10px] font-bold text-slate-300 hover:text-white flex items-center gap-1">
+                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i><span>Perbesar</span>
+                        </button>
+                    </div>
+                    <div id="arsip-file-pratinjau-isi" class="bg-slate-100 max-h-64 overflow-auto flex items-center justify-center p-3"></div>
+                </div>
+            </div>
+
+            <p id="arsip-form-error" class="hidden p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] font-bold text-red-700"></p>
+
+            <div class="flex items-center gap-2 pt-1">
+                <!-- Riwayat hanya bermakna untuk dokumen yang sudah ada -->
+                <button type="button" id="arsip-btn-riwayat" onclick="toggleArsipRiwayat()" class="hidden px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-800 text-slate-600 font-bold rounded-xl transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span>Riwayat</span>
+                </button>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button type="button" onclick="closeArsipFormModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition">Batal</button>
+                    <button type="submit" id="arsip-submit-btn" class="px-6 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2">
+                        <i class="fa-solid fa-check text-[#d4af37]"></i><span>Simpan Dokumen</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Daftar riwayat perubahan dokumen ini -->
+            <div id="arsip-riwayat-box" class="hidden p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Riwayat Perubahan Dokumen</p>
+                <div id="arsip-riwayat-list" class="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. PREVIEW DOKUMEN (hanya baca) -->
+<div id="modal-arsip-preview" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-eye text-[#d4af37]"></i><span>Detail Dokumen</span>
+                </h3>
+                <p id="arsip-prev-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button onclick="closeArsipPreviewModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 overflow-y-auto flex-1 bg-white">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+                <h4 id="arsip-prev-judul" class="text-base font-black text-[#0c1d37] leading-snug flex-1 min-w-0">-</h4>
+                <span id="arsip-prev-status" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border shrink-0">-</span>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Nomor</p>
+                    <p id="arsip-prev-nomor" class="text-xs font-black text-[#0c1d37] mt-0.5 font-mono break-all">-</p>
+                </div>
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Tanggal</p>
+                    <p id="arsip-prev-tanggal" class="text-xs font-black text-[#0c1d37] mt-0.5">-</p>
+                </div>
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Kategori</p>
+                    <p id="arsip-prev-kategori" class="text-xs font-black text-[#0c1d37] mt-0.5">-</p>
+                </div>
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Versi</p>
+                    <p id="arsip-prev-versi" class="text-xs font-black text-[#0c1d37] mt-0.5">-</p>
+                </div>
+            </div>
+
+            <div id="arsip-prev-lintas-wrap" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p class="text-[9px] font-extrabold text-red-400 uppercase tracking-wider">Lintas / Koridor</p>
+                <p id="arsip-prev-lintas" class="text-xs font-black text-red-700 mt-0.5">-</p>
+            </div>
+
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Keterangan</p>
+                <p id="arsip-prev-deskripsi" class="text-xs font-semibold text-slate-600 whitespace-pre-line leading-relaxed">-</p>
+            </div>
+
+            <!-- Riwayat versi - hanya untuk Gapeka -->
+            <div id="arsip-prev-riwayat-wrap" class="hidden">
+                <p class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Riwayat Versi</p>
+                <div id="arsip-prev-riwayat" class="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+
+            <p id="arsip-prev-jejak" class="text-[10px] text-slate-400 font-bold"></p>
+        </div>
+
+        <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <div class="flex items-center gap-2">
+                <button id="arsip-prev-buka" onclick="bukaViewerDokumen(arsipPreviewId)" class="px-4 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-up-right-and-down-left-from-center text-[#d4af37]"></i><span>Buka Dokumen</span>
+                </button>
+                <button id="arsip-prev-unduh" onclick="unduhArsipDokumen()" class="px-4 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-download text-[#d4af37]"></i><span>Unduh</span>
+                </button>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="closeArsipPreviewModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+                <button id="arsip-prev-edit" onclick="editArsipDariPreview()" class="px-5 py-2 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-pen-to-square text-[#d4af37]"></i><span>Edit Dokumen</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. PERBARUI VERSI (khusus Gapeka) -->
+<div id="modal-arsip-versi" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-code-branch text-[#d4af37]"></i><span>Perbarui Versi Gapeka</span>
+                </h3>
+                <p id="arsip-versi-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5 truncate">-</p>
+            </div>
+            <button onclick="closeArsipVersiModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <form id="form-arsip-versi" onsubmit="handleArsipVersiSubmit(event)" class="p-6 space-y-4 overflow-y-auto flex-1 bg-white text-xs">
+            <div class="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+                <i class="fa-solid fa-circle-info text-[#0c1d37] mt-0.5"></i>
+                <span class="text-[11px] text-slate-600 font-semibold leading-relaxed">Versi yang berlaku sekarang tetap tersimpan sebagai riwayat &mdash; tidak ditimpa. Dokumen pokoknya akan menunjuk ke versi baru ini.</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Versi Baru <span class="text-red-500">*</span></label>
+                    <input type="text" id="arsip-versi-nomor" required placeholder="Contoh: Gapeka 2026 Rev.2" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Tanggal Berlaku <span class="text-red-500">*</span></label>
+                    <input type="date" id="arsip-versi-tanggal" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Dampak Perubahan</label>
+                <select id="arsip-versi-dampak" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer">
+                    <option value="Perubahan Jadwal Perjalanan">Perubahan Jadwal Perjalanan</option>
+                    <option value="Perubahan Pola Operasi">Perubahan Pola Operasi</option>
+                    <option value="Penyesuaian Headway">Penyesuaian Headway</option>
+                    <option value="Perubahan Rangkaian / Stamformasi">Perubahan Rangkaian / Stamformasi</option>
+                    <option value="Perbaikan Redaksional">Perbaikan Redaksional</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Catatan Perubahan</label>
+                <textarea id="arsip-versi-catatan" rows="3" placeholder="Apa yang berubah dari versi sebelumnya..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+            </div>
+
+            <div>
+                <label class="block font-extrabold text-slate-700 uppercase tracking-wider mb-1">Berkas Versi Baru (opsional)</label>
+                <div class="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center hover:border-amber-500 transition cursor-pointer bg-slate-50/50" onclick="document.getElementById('arsip-versi-file').click()">
+                    <i class="fa-solid fa-file-arrow-up text-xl text-slate-400 mb-1"></i>
+                    <p class="font-bold text-slate-700">Pilih berkas Gapeka versi baru</p>
+                    <p id="arsip-versi-file-name" class="hidden text-[11px] text-emerald-600 font-bold mt-1.5"></p>
+                </div>
+                <input type="file" id="arsip-versi-file" class="hidden" onchange="handleArsipVersiFileSelect(event)">
+            </div>
+
+            <p id="arsip-versi-error" class="hidden p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] font-bold text-red-700"></p>
+
+            <div class="flex items-center justify-end gap-2 pt-1">
+                <button type="button" onclick="closeArsipVersiModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition">Batal</button>
+                <button type="submit" id="arsip-versi-btn" class="px-6 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2">
+                    <i class="fa-solid fa-check text-[#d4af37]"></i><span>Catat Versi Baru</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 4. KELOLA KATEGORI -->
+<div id="modal-arsip-param" class="hidden fixed inset-0 z-[65] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-[#d4af37]"></i><span>Kelola Kategori</span>
+                </h3>
+                <p id="arsip-param-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5">-</p>
+            </div>
+            <button onclick="closeArsipParamModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+
+        <div class="p-6 space-y-3 overflow-y-auto flex-1 bg-white">
+            <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl text-[11px] text-slate-600 font-semibold flex items-start gap-2.5">
+                <i class="fa-solid fa-circle-info text-[#0c1d37] mt-0.5"></i>
+                <span>Mengubah nama kategori otomatis memperbarui seluruh dokumen yang memakainya, jadi arsipnya tidak terpecah gara-gara salah ketik.</span>
+            </div>
+            <div id="arsip-param-list" class="space-y-1.5"></div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 shrink-0">
+            <div class="flex items-center gap-2">
+                <input type="text" id="arsip-param-input" placeholder="Nama kategori baru..." class="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <button id="btn-arsip-param-add" onclick="tambahArsipParam()" class="px-4 py-2.5 bg-[#0c1d37] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i><span>Tambah</span>
+                </button>
+                <button onclick="closeArsipParamModal()" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--
+  VIEWER DOKUMEN - pembaca berkas utuh dengan zoom, putar 360 derajat,
+  layar penuh, & unduh.
+
+  Kenapa berkasnya digambar sebagai <img>/<iframe> di dalam kotak yang
+  diputar lewat CSS transform, bukan memakai pemutar bawaan browser:
+  aplikasi ini berjalan di dalam iframe sandbox Apps Script, sehingga
+  window.open(blob:) diblokir. Menggambar sendiri memberi kendali penuh
+  atas zoom & rotasi tanpa bergantung pada pemutar luar.
+-->
+<div id="modal-arsip-viewer" class="hidden fixed inset-0 z-[80] flex flex-col bg-slate-900/95 animate-fade-in">
+    <div class="px-5 py-3 bg-slate-900 border-b border-slate-700 flex items-center justify-between gap-3 shrink-0">
+        <div class="min-w-0">
+            <h3 id="viewer-judul" class="text-sm font-bold text-white truncate">Dokumen</h3>
+            <p id="viewer-sub" class="text-[11px] text-slate-400 truncate">-</p>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="viewerZoom(-0.2)" title="Perkecil" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-minus text-xs"></i></button>
+            <span id="viewer-zoom-label" class="text-[11px] font-bold text-slate-300 w-12 text-center">100%</span>
+            <button onclick="viewerZoom(0.2)" title="Perbesar" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-magnifying-glass-plus text-xs"></i></button>
+
+            <span class="w-px h-5 bg-slate-700 mx-1"></span>
+
+            <button onclick="viewerPutar(-90)" title="Putar kiri 90&deg;" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-rotate-left text-xs"></i></button>
+            <span id="viewer-rotasi-label" class="text-[11px] font-bold text-slate-300 w-10 text-center">0&deg;</span>
+            <button onclick="viewerPutar(90)" title="Putar kanan 90&deg;" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-rotate-right text-xs"></i></button>
+
+            <span class="w-px h-5 bg-slate-700 mx-1"></span>
+
+            <button onclick="viewerReset()" title="Kembalikan ke tampilan awal" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
+            <button onclick="viewerLayarPenuh()" title="Layar penuh" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition"><i class="fa-solid fa-expand text-xs"></i></button>
+            <button id="viewer-btn-unduh" onclick="viewerUnduh()" title="Unduh dokumen" class="w-8 h-8 rounded-lg bg-[#d4af37] hover:bg-[#b8902c] text-white flex items-center justify-center transition"><i class="fa-solid fa-download text-xs"></i></button>
+            <button onclick="tutupViewer()" title="Tutup" class="w-8 h-8 rounded-lg bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>
+    </div>
+
+    <div id="viewer-panggung" class="flex-1 overflow-auto flex items-center justify-center p-6">
+        <div id="viewer-isi" class="transition-transform duration-150 origin-center"></div>
+    </div>
+
+    <!-- Navigasi halaman - hanya muncul untuk dokumen lebih dari satu halaman -->
+    <div id="viewer-nav" class="hidden px-5 py-2.5 bg-slate-900 border-t border-slate-700 flex items-center justify-center gap-3 shrink-0">
+        <button onclick="viewerHalamanSebelumnya()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-chevron-left text-[10px]"></i><span>Sebelumnya</span>
+        </button>
+        <span id="viewer-hal-label" class="text-[11px] font-bold text-slate-300 min-w-[140px] text-center">Halaman 1 dari 1</span>
+        <button onclick="viewerHalamanBerikutnya()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold transition flex items-center gap-1.5">
+            <span>Selanjutnya</span><i class="fa-solid fa-chevron-right text-[10px]"></i>
+        </button>
+    </div>
+
+    <div class="px-5 py-2 bg-slate-900 border-t border-slate-700 text-[10px] text-slate-500 text-center shrink-0">
+        Gunakan tombol di atas untuk zoom, putar 360&deg;, layar penuh, atau unduh dokumen.
+    </div>
+</div>
+
+<!--
+  KONFIRMASI HAPUS - menggantikan confirm() bawaan browser yang tampilannya
+  polos & mudah ditekan tanpa dibaca. Modal ini menyebutkan nama dokumennya
+  secara jelas & menjelaskan akibatnya sebelum user menekan Hapus.
+-->
+<div id="modal-arsip-hapus" class="hidden fixed inset-0 z-[75] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div class="px-6 py-5 flex items-start gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center text-xl shrink-0">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-sm font-black text-slate-900">Hapus dokumen ini?</h3>
+                <p id="arsip-hapus-nama" class="text-xs font-bold text-slate-700 mt-1.5 break-words">-</p>
+                <p id="arsip-hapus-detail" class="text-[11px] text-slate-500 font-medium mt-1"></p>
+            </div>
+        </div>
+
+        <div class="px-6 pb-4">
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold flex items-start gap-2">
+                <i class="fa-solid fa-circle-info mt-0.5"></i>
+                <span id="arsip-hapus-catatan">Berkas &amp; seluruh riwayat versinya ikut terhapus permanen dari Google Drive.</span>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+            <button onclick="tutupKonfirmasiHapusArsip()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Batal</button>
+            <button id="arsip-hapus-btn" onclick="jalankanHapusArsip()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i><span>Ya, Hapus Dokumen</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- RIWAYAT SATU ARSIP - aktivitas seluruh dokumen di arsip yang dibuka -->
+<div id="modal-arsip-riwayat-arsip" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div class="min-w-0">
+                <h3 id="arsip-riwayat-arsip-judul" class="font-extrabold text-sm tracking-tight flex items-center gap-2 truncate">
+                    <i class="fa-solid fa-clock-rotate-left text-[#d4af37]"></i><span>Riwayat Arsip</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Siapa mengubah apa, dan kapan</p>
+            </div>
+            <button onclick="closeArsipRiwayatModal()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div id="arsip-riwayat-arsip-list" class="p-6 space-y-2 overflow-y-auto flex-1 bg-slate-50/60"></div>
+        <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+            <button onclick="unduhRiwayatArsip()" class="px-4 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-excel text-emerald-600"></i><span>Unduh Riwayat</span>
+            </button>
+            <button onclick="closeArsipRiwayatModal()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!--
+  PUSAT AKTIVITAS - dibuka dari ikon lonceng di topbar.
+  Berisi seluruh aktivitas user di Document Repository, dan bisa diunduh
+  sebagai Excel untuk keperluan audit.
+-->
+<div id="modal-pusat-aktivitas" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 modal-backdrop animate-fade-in">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-[#0c1d37] text-white flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="font-extrabold text-sm tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-bell text-[#d4af37]"></i><span>Pusat Aktivitas</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 font-medium mt-0.5">Seluruh aktivitas pengguna pada Document Repository</p>
+            </div>
+            <button onclick="closePusatAktivitas()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <!-- Filter aktivitas -->
+        <div class="px-6 py-3 bg-white border-b border-slate-200 shrink-0">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                <div class="lg:col-span-2 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]"></i>
+                    <input type="text" id="aktivitas-filter-cari" onkeyup="if(event.key==='Enter')muatPusatAktivitas_()" placeholder="Cari keterangan atau nama petugas..." class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-red-500/20">
+                </div>
+                <select id="aktivitas-filter-modul" onchange="muatPusatAktivitas_()" class="py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:outline-none">
+                    <option value="Semua">Semua Menu</option>
+                </select>
+                <input type="date" id="aktivitas-filter-dari" onchange="muatPusatAktivitas_()" title="Dari tanggal" class="py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 focus:outline-none">
+                <input type="date" id="aktivitas-filter-sampai" onchange="muatPusatAktivitas_()" title="Sampai tanggal" class="py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 focus:outline-none">
+            </div>
+            <div class="flex items-center justify-between mt-2">
+                <span id="aktivitas-info" class="text-[10px] font-bold text-slate-400">-</span>
+                <button onclick="resetFilterAktivitas()" class="text-[10px] font-bold text-slate-400 hover:text-red-600 transition flex items-center gap-1">
+                    <i class="fa-solid fa-rotate-left"></i><span>Reset Filter</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="pusat-aktivitas-list" class="p-6 space-y-2 overflow-y-auto flex-1 bg-slate-50/60"></div>
+        <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+            <button onclick="unduhAktivitas()" class="px-4 py-2 bg-white border border-slate-200 hover:border-[#0c1d37] text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-excel text-emerald-600"></i><span>Download Riwayat</span>
+            </button>
+            <button onclick="closePusatAktivitas()" class="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition">Tutup</button>
+        </div>
+    </div>
+</div>

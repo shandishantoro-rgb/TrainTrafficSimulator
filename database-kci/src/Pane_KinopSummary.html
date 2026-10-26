@@ -1,0 +1,41 @@
+<!--
+  Pane_KinopSummary.html
+  Pane/menu: Kinerja Operasi - Summary Performa
+  File ini BERDIRI SENDIRI: perbaikan atau perubahan tampilan di menu ini
+  tidak akan memengaruhi pane/menu lain.
+-->
+            <section id="pane-kinop-summary" class="hidden space-y-6 animate-fade-in">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center stat-card">
+                        <span class="text-xs font-bold text-slate-400 uppercase">On-Time Performance (OTP)</span>
+                        <div class="flex justify-center my-3 relative">
+                            <svg class="w-24 h-24 transform -rotate-90">
+                                <circle cx="48" cy="48" r="38" stroke="#f1f5f9" stroke-width="8" fill="transparent" />
+                                <circle cx="48" cy="48" r="38" stroke="#10b981" stroke-width="8" fill="transparent" stroke-dasharray="238.7" stroke-dashoffset="11.9" stroke-linecap="round" />
+                            </svg>
+                            <span class="absolute inset-0 flex items-center justify-center font-black text-slate-800 text-lg">95.0%</span>
+                        </div>
+                        <p class="text-[9px] text-emerald-500 font-black">Target Rencana: 94.5%</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center flex flex-col justify-center stat-card">
+                        <span class="text-xs font-bold text-slate-400 uppercase">Total Perjalanan Terlaksana</span>
+                        <h3 id="kinop-total-trips" class="text-3xl font-black text-[#0c1d37] my-2">1,089</h3>
+                        <p class="text-[9px] text-slate-400 font-bold">Terhitung di Lintas Jabodetabek &amp; Wil 6</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center flex flex-col justify-center stat-card">
+                        <span class="text-xs font-bold text-slate-400 uppercase">Rata-rata Kelambatan</span>
+                        <h3 class="text-3xl font-black text-rose-600 my-2">2.4 mnt</h3>
+                        <p class="text-[9px] text-rose-500 font-bold">Batas Toleransi Maks: 5 mnt</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center flex flex-col justify-center stat-card">
+                        <span class="text-xs font-bold text-slate-400 uppercase">Efisiensi Daya &amp; AC</span>
+                        <h3 class="text-3xl font-black text-emerald-600 my-2">99.1%</h3>
+                        <p class="text-[9px] text-emerald-500 font-bold">Evaluasi Dipo Sarana Depot</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Performa Keandalan Lintas Perjalanan (OTP %)</h4>
+                    <div class="space-y-3" id="kinop-bar-lines"></div>
+                </div>
+            </section>
