@@ -839,6 +839,7 @@
             }
             const ctx = lastSummaryContext_;
             const data = ctx.dataTersaring || [];
+            const cakupan = `${ctx.filterLabel} · ${ctx.wilayahLabel} · ${ctx.unitLabel} · ${ctx.tahunLabel}`;
 
             try {
                 const pptx = new PptxGenJS();
@@ -851,96 +852,65 @@
                 let nomor = 0;
                 const slide = function (judul, sub) { nomor++; return buatSlideKCI_(pptx, { judul: judul, subJudul: sub, nomor: nomor, total: totalSlide }); };
 
-                // ══ SLIDE 1: RINGKASAN & KPI ══
-                const s1 = slide('Summary Rekapitulasi Gangguan', `${ctx.filterLabel} - ${ctx.wilayahLabel} - ${ctx.unitLabel} - ${ctx.tahunLabel}`);
-                const lainnyaLabel = (ctx.lainnya && ctx.lainnya.count > 0) ? `${ctx.lainnya.count} UNIT LAIN` : 'UNIT LAINNYA';
-                kartuKpiKCI_(pptx, s1, [
-                    { label: 'TOTAL GANGGUAN', val: String(ctx.total), color: KCI_PPT.TEAL },
-                    { label: 'UNIT #1 ' + potongTeksPpt_(ctx.top1 ? ctx.top1.label.toUpperCase() : '-', 14), val: String(ctx.top1 ? ctx.top1.val : 0), color: KCI_PPT.NAVY },
-                    { label: 'UNIT #2 ' + potongTeksPpt_(ctx.top2 ? ctx.top2.label.toUpperCase() : '-', 14), val: String(ctx.top2 ? ctx.top2.val : 0), color: KCI_PPT.UNGU },
-                    { label: 'UNIT #3 ' + potongTeksPpt_(ctx.top3 ? ctx.top3.label.toUpperCase() : '-', 14), val: String(ctx.top3 ? ctx.top3.val : 0), color: KCI_PPT.MERAH_TUA },
-                    { label: lainnyaLabel, val: String(ctx.lainnya ? ctx.lainnya.val : 0), color: '475569' },
-                    { label: 'PENYEBAB DOMINAN', val: potongTeksPpt_(ctx.dominan || '-', 16), color: KCI_PPT.GOLD }
-                ], 0.9, 0.95);
+                // ══ SLIDE 1: RINGKASAN ══
+                const s1 = slide('Ringkasan Gangguan', 'Cakupan: ' + cakupan);
+                kpiDS_(pptx, s1, [
+                    { label: 'Total gangguan', nilai: angkaId_(ctx.total), aksen: true },
+                    { label: 'Unit #1 · ' + potongTeksPpt_(ctx.top1 ? ctx.top1.label : '-', 18), nilai: angkaId_(ctx.top1 ? ctx.top1.val : 0) },
+                    { label: 'Unit #2 · ' + potongTeksPpt_(ctx.top2 ? ctx.top2.label : '-', 18), nilai: angkaId_(ctx.top2 ? ctx.top2.val : 0) },
+                    { label: 'Unit #3 · ' + potongTeksPpt_(ctx.top3 ? ctx.top3.label : '-', 18), nilai: angkaId_(ctx.top3 ? ctx.top3.val : 0) },
+                    { label: (ctx.lainnya && ctx.lainnya.count > 0) ? `${ctx.lainnya.count} unit lainnya` : 'Unit lainnya', nilai: angkaId_(ctx.lainnya ? ctx.lainnya.val : 0) }
+                ], DS.Y, 0.95);
 
-                judulBagianKCI_(pptx, s1, 'TOP 5 PENYEBAB - JUMLAH KEJADIAN', 0.45, 2.05, KCI_PPT.MERAH_TUA);
-                const bj = ctx.breakdownJumlah.length ? ctx.breakdownJumlah : [{ name: 'Tidak ada data', value: 0 }];
-                s1.addChart(pptx.ChartType.bar, [{ name: 'Kejadian', labels: bj.map(function (r) { return potongTeksPpt_(r.name, 22); }), values: bj.map(function (r) { return r.value; }) }], {
-                    x: 0.45, y: 2.32, w: 4.4, h: 2.78, barDir: 'bar', chartColors: [KCI_PPT.MERAH_TUA],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
-                judulBagianKCI_(pptx, s1, 'TOP 5 PENYEBAB - TOTAL ANDIL (MENIT)', 5.15, 2.05, KCI_PPT.GOLD);
-                const ba = ctx.breakdownAndil.length ? ctx.breakdownAndil : [{ name: 'Tidak ada data', value: 0 }];
-                s1.addChart(pptx.ChartType.bar, [{ name: 'Andil (menit)', labels: ba.map(function (r) { return potongTeksPpt_(r.name, 22); }), values: ba.map(function (r) { return r.value; }) }], {
-                    x: 5.15, y: 2.32, w: 4.4, h: 2.78, barDir: 'bar', chartColors: [KCI_PPT.GOLD],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                const hP = DS.BAWAH - 2.65, wP = (DS.W - DS.GAP) / 2;
+                const bj = ctx.breakdownJumlah || [], ba = ctx.breakdownAndil || [];
+                let a = panelDS_(pptx, s1, DS.X, 2.65, wP, hP, 'Top penyebab', 'Jumlah kejadian');
+                batangDS_(pptx, s1, a, bj.map(function (r) { return potongTeksPpt_(r.name, 26); }), bj.map(function (r) { return r.value; }), DS.NAVY, 'Kejadian');
+                a = panelDS_(pptx, s1, DS.X + wP + DS.GAP, 2.65, wP, hP, 'Top penyebab', 'Total andil (menit)');
+                batangDS_(pptx, s1, a, ba.map(function (r) { return potongTeksPpt_(r.name, 26); }), ba.map(function (r) { return r.value; }), DS.MERAH, 'Andil (menit)');
 
                 // ══ SLIDE 2: PROPORSI ══
-                // Sumbu pie mengikuti tema filter, PERSIS seperti panel donut di
-                // layar - supaya paparan menjawab pertanyaan yang sama dengan
-                // yang sedang dilihat user saat menekan Export.
-                const s2 = slide('Proporsi Kejadian', ctx.pieJudul || 'Persentase per Unit Terkait');
+                const s2 = slide('Proporsi Kejadian', ctx.pieJudul || 'Persentase per unit terkait');
                 const pieItems = ctx.pieItems || [];
-                s2.addChart(pptx.ChartType.pie, [{
-                    name: 'Proporsi',
-                    labels: pieItems.map(function (r) { return potongTeksPpt_(r.nama, 20); }),
-                    values: pieItems.map(function (r) { return r.nilai; })
-                }], {
-                    x: 0.45, y: 0.95, w: 5.0, h: 4.15, chartColors: KCI_PALET, showPercent: true, showLegend: true,
-                    legendPos: 'b', legendFontSize: 9, dataLabelFontSize: 10, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
-                judulBagianKCI_(pptx, s2, 'RINCIAN ANGKA', 5.65, 0.95, KCI_PPT.NAVY);
                 const totalPie = pieItems.reduce(function (t, r) { return t + r.nilai; }, 0) || 1;
-                const barisPie = [[{ text: 'Nama', options: mkHeadKCI_({ align: 'left' }) }, { text: 'Jml', options: mkHeadKCI_() }, { text: '%', options: mkHeadKCI_() }]];
-                (pieItems.length ? pieItems : [{ nama: 'Tidak ada data', nilai: 0 }]).forEach(function (r, i) {
+                a = panelDS_(pptx, s2, DS.X, DS.Y, 5.1, DS.BAWAH - DS.Y, ctx.pieJudul || 'Proporsi kejadian', angkaId_(totalPie) + ' kejadian');
+                donatDS_(pptx, s2, a, pieItems.map(function (r) { return potongTeksPpt_(r.nama, 22); }), pieItems.map(function (r) { return r.nilai; }), 'Proporsi');
+
+                const xT = DS.X + 5.1 + DS.GAP, wT = DS.W - 5.1 - DS.GAP;
+                const aT = panelDS_(pptx, s2, xT, DS.Y, wT, DS.BAWAH - DS.Y, 'Rincian angka', 'Jumlah & porsi');
+                const barisPie = [[{ text: 'Nama', options: kepalaTabelDS_('left') }, { text: 'Jumlah', options: kepalaTabelDS_() }, { text: 'Porsi', options: kepalaTabelDS_() }]];
+                (pieItems.length ? pieItems : [{ nama: 'Tidak ada data', nilai: 0 }]).slice(0, 8).forEach(function (r, i) {
                     barisPie.push([
-                        { text: potongTeksPpt_(r.nama, 26), options: mkSelKCI_(i % 2 === 1) },
-                        { text: String(r.nilai), options: mkSelKCI_(i % 2 === 1, { align: 'center', bold: true }) },
-                        { text: (r.nilai / totalPie * 100).toFixed(1) + '%', options: mkSelKCI_(i % 2 === 1, { align: 'center' }) }
+                        { text: potongTeksPpt_(r.nama, 24), options: selTabelDS_(i % 2 === 1) },
+                        { text: angkaId_(r.nilai), options: selTabelDS_(i % 2 === 1, { align: 'center', bold: true }) },
+                        { text: (r.nilai / totalPie * 100).toFixed(1) + '%', options: selTabelDS_(i % 2 === 1, { align: 'center' }) }
                     ]);
                 });
-                s2.addTable(barisPie, { x: 5.65, y: 1.23, w: 3.9, colW: [2.2, 0.8, 0.9], border: { type: 'solid', color: 'E2E8F0', pt: 0.75 }, autoPage: false });
+                s2.addTable(barisPie, { x: aT.x + 0.08, y: aT.y + 0.05, w: aT.w - 0.16, colW: [aT.w - 0.16 - 1.5, 0.75, 0.75], rowH: 0.3, autoPage: false, border: { type: 'solid', color: 'E3E8EF', pt: 0.5 }, margin: [0, 0.06, 0, 0.06] });
 
                 // ══ SLIDE 3: TREN & WILAYAH ══
-                const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                const perBulan = new Array(12).fill(0);
-                data.forEach(function (it) {
-                    const b = bulanDariTanggal_(it.tanggal);
-                    if (b >= 1 && b <= 12) perBulan[b - 1]++;
-                });
-                const s3 = slide('Tren & Sebaran Wilayah', `${ctx.filterLabel} - ${ctx.tahunLabel}`);
-                judulBagianKCI_(pptx, s3, 'JUMLAH KEJADIAN PER BULAN', 0.45, 0.92, KCI_PPT.TEAL);
-                s3.addChart(pptx.ChartType.line, [{ name: 'Kejadian', labels: NAMA_BULAN, values: perBulan }], {
-                    x: 0.45, y: 1.2, w: 9.1, h: 1.9, chartColors: [KCI_PPT.TEAL], lineDataSymbol: 'circle', lineSize: 3,
-                    showValue: true, dataLabelFontSize: 8, dataLabelColor: '1E293B', catAxisLabelFontSize: 8.5,
-                    valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                const bulan = perBulanDS_(data);
+                const s3 = slide('Tren & Sebaran Wilayah', 'Cakupan: ' + cakupan);
+                a = panelDS_(pptx, s3, DS.X, DS.Y, DS.W, 1.45, 'Jumlah kejadian per bulan');
+                garisDS_(pptx, s3, a, NAMA_BULAN_DS, bulan.kejadian, DS.NAVY, 'Kejadian');
+
+                const yB = DS.Y + 1.45 + DS.GAP, hB = DS.BAWAH - yB;
                 const wilayahItems = Object.keys(ctx.areaMap || {}).map(function (k) { return { nama: k, nilai: ctx.areaMap[k] }; })
-                    .sort(function (a, b) { return b.nilai - a.nilai; }).slice(0, 8);
-                judulBagianKCI_(pptx, s3, 'PROPORSI PER WILAYAH', 0.45, 3.28, KCI_PPT.NAVY);
-                s3.addChart(pptx.ChartType.doughnut, [{
-                    name: 'Wilayah', labels: wilayahItems.map(function (r) { return potongTeksPpt_(r.nama, 18); }),
-                    values: wilayahItems.map(function (r) { return r.nilai; })
-                }], {
-                    x: 0.45, y: 3.5, w: 4.4, h: 1.6, chartColors: KCI_PALET, holeSize: 45, showPercent: true,
-                    showLegend: true, legendPos: 'r', legendFontSize: 7.5, dataLabelFontSize: 7.5, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
+                    .sort(function (x, y) { return y.nilai - x.nilai; }).slice(0, 5);
+                a = panelDS_(pptx, s3, DS.X, yB, 5.6, hB, 'Kejadian per wilayah');
+                batangDS_(pptx, s3, a, wilayahItems.map(function (r) { return potongTeksPpt_(r.nama, 22); }), wilayahItems.map(function (r) { return r.nilai; }), DS.BIRU, 'Kejadian');
+
+                const puncak = bulan.kejadian.indexOf(Math.max.apply(null, bulan.kejadian));
+                const xR = DS.X + 5.6 + DS.GAP, wR = DS.W - 5.6 - DS.GAP;
+                kartuDS_(pptx, s3, xR, yB, wR, hB);
+                s3.addText('Sorotan', { x: xR + 0.2, y: yB + 0.12, w: wR - 0.4, h: 0.26, margin: 0, isTextBox: true, fontSize: 11, bold: true, color: DS.NAVY, fontFace: DS.FONT });
+                [['Bulan tertinggi', `${NAMA_BULAN_DS[puncak]} · ${angkaId_(bulan.kejadian[puncak])} kejadian`],
+                 ['Penyebab dominan', potongTeksPpt_(ctx.dominan || '-', 34)],
+                 ['Unit tertinggi', ctx.top1 ? `${ctx.top1.label} · ${angkaId_(ctx.top1.val)}` : '-']].forEach(function (b, i) {
+                    const yy = yB + 0.5 + i * ((hB - 0.6) / 3);
+                    s3.addText(b[0], { x: xR + 0.2, y: yy, w: wR - 0.4, h: 0.18, margin: 0, isTextBox: true, fontSize: 8, color: DS.ABU, fontFace: DS.FONT });
+                    s3.addText(b[1], { x: xR + 0.2, y: yy + 0.18, w: wR - 0.4, h: 0.24, margin: 0, isTextBox: true, fontSize: 11, bold: true, color: DS.TEKS, fontFace: DS.FONT, fit: 'shrink' });
                 });
-                judulBagianKCI_(pptx, s3, 'RINGKASAN', 5.15, 3.28, KCI_PPT.GOLD);
-                const puncakBulan = perBulan.indexOf(Math.max.apply(null, perBulan));
-                s3.addShape(pptx.ShapeType.roundRect, { x: 5.15, y: 3.5, w: 4.4, h: 1.6, fill: { color: KCI_PPT.ABU_MUDA }, rectRadius: 0.05, line: { type: 'none' } });
-                s3.addText([
-                    { text: 'Bulan tertinggi: ', options: { bold: true } },
-                    { text: `${NAMA_BULAN[puncakBulan]} (${perBulan[puncakBulan]} kejadian)\n` },
-                    { text: 'Penyebab dominan: ', options: { bold: true } },
-                    { text: `${ctx.dominan || '-'}\n` },
-                    { text: 'Unit tertinggi: ', options: { bold: true } },
-                    { text: `${ctx.top1 ? ctx.top1.label + ' (' + ctx.top1.val + ')' : '-'}\n` },
-                    { text: 'Cakupan: ', options: { bold: true } },
-                    { text: `${ctx.filterLabel} - ${ctx.wilayahLabel} - ${ctx.unitLabel} - ${ctx.tahunLabel}` }
-                ], { x: 5.32, y: 3.62, w: 4.1, h: 1.36, fontSize: 9, color: '1E293B', fontFace: 'Arial', valign: 'top', lineSpacingMultiple: 1.35 });
 
                 buatPenutupKCI_(pptx);
                 pptx.writeFile({ fileName: `Summary_Gangguan_KCI_${ctx.filterLabel}_${ctx.tahunLabel}.pptx` });
@@ -3224,13 +3194,13 @@
 
             if (!opsi.tanpaJudul) {
                 s.addText(String(opsi.judul || ''), {
-                    x: 2.45, y: 0.06, w: 5.0, h: 0.32, margin: 0, isTextBox: true, valign: 'middle',
-                    fontSize: 17, bold: true, color: KCI_PPT.BIRU_TUA, fontFace: 'Arial', fit: 'shrink'
+                    x: 0.5, y: 0.78, w: 9.0, h: 0.42, margin: 0, isTextBox: true, valign: 'middle',
+                    fontSize: 21, bold: true, color: '12275E', fontFace: 'Arial', fit: 'shrink'
                 });
                 if (opsi.subJudul) {
-                    s.addText(potongTeksPpt_(String(opsi.subJudul), 90), {
-                        x: 2.45, y: 0.37, w: 5.0, h: 0.17, margin: 0, isTextBox: true, valign: 'middle',
-                        fontSize: 8, bold: true, color: '5A6B85', fontFace: 'Arial'
+                    s.addText(potongTeksPpt_(String(opsi.subJudul), 130), {
+                        x: 0.5, y: 1.18, w: 9.0, h: 0.22, margin: 0, isTextBox: true, valign: 'middle',
+                        fontSize: 10, color: '64748B', fontFace: 'Arial'
                     });
                 }
             }
@@ -3245,6 +3215,170 @@
                 { x: 5.4, y: 5.33, w: 2.7, h: 0.22, margin: 0, isTextBox: true, align: 'right', valign: 'middle', fontSize: 7, color: 'FFFFFF', fontFace: 'Arial' }
             );
             return s;
+        }
+
+        // ================================================================
+        // SISTEM DESAIN SLIDE (26 Okt 2026) - dipakai ketiga export PPT
+        // ================================================================
+        // Satu kerangka untuk semua slide isi supaya rapi & seragam:
+        //   - Judul selalu di posisi yang sama (kiri atas area putih)
+        //   - Konten di dalam kartu putih berbayang tipis, sejajar grid
+        //   - Warna mengikuti template resmi: navy, biru, merah
+        //   - Grafik bersih: tanpa garis grid, angka langsung di batang
+        // Kanvas 10 x 5.625 inci. Area konten: x 0.5-9.5, y 1.5-4.95.
+        const DS = {
+            X: 0.5, W: 9.0, Y: 1.5, BAWAH: 4.95, GAP: 0.2,
+            NAVY: '12275E', BIRU: '1F5FBF', MERAH: 'E31E24', BIRU_MUDA: '9CC3EE',
+            TEKS: '1E293B', ABU: '64748B', GARIS: 'DCE3EC', LATAR_TINT: 'EEF3FA', ZEBRA: 'F4F7FB',
+            PALET: ['12275E', '1F5FBF', 'E31E24', '5B8DEF', '9CC3EE', 'F28B8F', '64748B', 'CBD5E1', '0B1A40', 'B91C1C'],
+            FONT: 'Arial'
+        };
+        function angkaId_(n) { return (Number(n) || 0).toLocaleString('id-ID'); }
+
+        /** Bayangan kartu - objek baru tiap panggilan (PptxGenJS mengubah opsi). */
+        function bayanganDS_() { return { type: 'outer', blur: 6, offset: 1.5, angle: 90, color: '1B2A4A', opacity: 0.12 }; }
+
+        /** Kartu putih berbayang. */
+        function kartuDS_(pptx, s, x, y, w, h) {
+            s.addShape(pptx.ShapeType.roundRect, {
+                x: x, y: y, w: w, h: h, rectRadius: 0.06,
+                fill: { color: 'FFFFFF' }, line: { color: DS.GARIS, width: 0.75 }, shadow: bayanganDS_()
+            });
+        }
+
+        /**
+         * Panel = kartu + judul panel. Mengembalikan area dalam untuk grafik.
+         * @return {{x:number,y:number,w:number,h:number}}
+         */
+        function panelDS_(pptx, s, x, y, w, h, judul, keterangan) {
+            kartuDS_(pptx, s, x, y, w, h);
+            s.addText(judul, {
+                x: x + 0.2, y: y + 0.12, w: w - 0.4, h: 0.26, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 11, bold: true, color: DS.NAVY, fontFace: DS.FONT
+            });
+            if (keterangan) {
+                s.addText(keterangan, {
+                    x: x + 0.2, y: y + 0.37, w: w - 0.4, h: 0.18, margin: 0, isTextBox: true, valign: 'middle',
+                    fontSize: 8, color: DS.ABU, fontFace: DS.FONT
+                });
+            }
+            const atas = keterangan ? 0.6 : 0.45;
+            return { x: x + 0.12, y: y + atas, w: w - 0.24, h: h - atas - 0.1 };
+        }
+
+        /** Baris kartu angka ringkasan. item: {label, nilai, aksen} */
+        function kpiDS_(pptx, s, item, y, h) {
+            const n = item.length;
+            const w = (DS.W - DS.GAP * (n - 1)) / n;
+            item.forEach(function (k, i) {
+                const x = DS.X + i * (w + DS.GAP);
+                kartuDS_(pptx, s, x, y, w, h);
+                const nilai = String(k.nilai);
+                const ukuran = nilai.length > 12 ? 13 : (nilai.length > 8 ? 17 : 24);
+                s.addText(nilai, {
+                    x: x + 0.18, y: y + 0.12, w: w - 0.3, h: h * 0.52, margin: 0, isTextBox: true, valign: 'middle',
+                    fontSize: ukuran, bold: true, color: k.aksen ? DS.MERAH : DS.NAVY, fontFace: DS.FONT, fit: 'shrink'
+                });
+                s.addText(k.label, {
+                    x: x + 0.18, y: y + h * 0.6, w: w - 0.3, h: h * 0.3, margin: 0, isTextBox: true, valign: 'top',
+                    fontSize: 8.5, color: DS.ABU, fontFace: DS.FONT
+                });
+            });
+        }
+
+        /** Kotak catatan/sorotan berwarna biru muda (tanpa garis tepi). */
+        function catatanDS_(pptx, s, teksRuns, x, y, w, h) {
+            s.addShape(pptx.ShapeType.roundRect, { x: x, y: y, w: w, h: h, rectRadius: 0.06, fill: { color: DS.LATAR_TINT }, line: { type: 'none' } });
+            s.addText(teksRuns, {
+                x: x + 0.2, y: y + 0.05, w: w - 0.4, h: h - 0.1, margin: 0, isTextBox: true, valign: 'middle',
+                fontSize: 10, color: DS.TEKS, fontFace: DS.FONT
+            });
+        }
+
+        /** Opsi dasar grafik - selalu objek baru. */
+        function opsiGrafikDS_(area, tambahan) {
+            return Object.assign({
+                x: area.x, y: area.y, w: area.w, h: area.h,
+                catAxisLabelColor: '334155', catAxisLabelFontSize: 9, catAxisLabelFontFace: DS.FONT,
+                valAxisLabelColor: DS.ABU, valAxisLabelFontSize: 8, valAxisLabelFontFace: DS.FONT,
+                dataLabelColor: DS.TEKS, dataLabelFontSize: 9, dataLabelFontFace: DS.FONT,
+                legendFontFace: DS.FONT, legendFontSize: 9, legendColor: '334155',
+                showLegend: false
+            }, tambahan || {});
+        }
+
+        /** Grafik batang mendatar (peringkat). warna: DS.NAVY untuk kejadian, DS.MERAH untuk andil. */
+        function batangDS_(pptx, s, area, label, nilai, warna, namaSeri) {
+            const adaData = nilai.some(function (v) { return v > 0; });
+            if (!adaData) { label = ['Tidak ada data']; nilai = [0]; }
+            // Urutan dibalik agar nilai terbesar berada paling atas.
+            s.addChart(pptx.ChartType.bar, [{ name: namaSeri || 'Nilai', labels: label.slice().reverse(), values: nilai.slice().reverse() }],
+                opsiGrafikDS_(area, {
+                    barDir: 'bar', chartColors: [warna], barGapWidthPct: 55,
+                    showValue: true, dataLabelPosition: 'outEnd', dataLabelFontBold: true, dataLabelFormatCode: '#,##0',
+                    valAxisHidden: true, valGridLine: { style: 'none' }, catGridLine: { style: 'none' },
+                    catAxisLineShow: false
+                }));
+        }
+
+        /** Grafik kolom per bulan. */
+        function kolomDS_(pptx, s, area, label, nilai, warna, namaSeri) {
+            s.addChart(pptx.ChartType.bar, [{ name: namaSeri || 'Nilai', labels: label, values: nilai }],
+                opsiGrafikDS_(area, {
+                    barDir: 'col', chartColors: [warna], barGapWidthPct: 45,
+                    showValue: true, dataLabelPosition: 'outEnd', dataLabelFontSize: 8, dataLabelFormatCode: '#,##0;-#,##0;;',
+                    valAxisHidden: true, valGridLine: { style: 'none' }, catGridLine: { style: 'none' }
+                }));
+        }
+
+        /** Grafik garis per bulan. */
+        function garisDS_(pptx, s, area, label, nilai, warna, namaSeri) {
+            s.addChart(pptx.ChartType.line, [{ name: namaSeri || 'Nilai', labels: label, values: nilai }],
+                opsiGrafikDS_(area, {
+                    chartColors: [warna], lineSize: 2.5, lineDataSymbol: 'circle', lineDataSymbolSize: 7,
+                    showValue: true, dataLabelPosition: 't', dataLabelFontSize: 8, dataLabelFormatCode: '#,##0;-#,##0;;',
+                    valAxisHidden: true, valGridLine: { color: 'EEF2F6', size: 0.5 }, catGridLine: { style: 'none' }
+                }));
+        }
+
+        /** Grafik donat dengan persentase & legenda di kanan. */
+        function donatDS_(pptx, s, area, label, nilai, namaSeri) {
+            if (!nilai.length) { label = ['Tidak ada data']; nilai = [1]; }
+            s.addChart(pptx.ChartType.doughnut, [{ name: namaSeri || 'Proporsi', labels: label, values: nilai }],
+                opsiGrafikDS_(area, {
+                    chartColors: DS.PALET.slice(0, Math.max(label.length, 1)), holeSize: 58,
+                    showPercent: true, showValue: false, dataLabelColor: 'FFFFFF', dataLabelFontBold: true, dataLabelFontSize: 9,
+                    showLegend: true, legendPos: 'r'
+                }));
+        }
+
+        /** Gaya sel tabel. */
+        function kepalaTabelDS_(rata) {
+            return { bold: true, color: 'FFFFFF', fill: { color: DS.NAVY }, fontFace: DS.FONT, fontSize: 8.5, align: rata || 'center', valign: 'middle' };
+        }
+        function selTabelDS_(zebra, tambahan) {
+            const b = { fontFace: DS.FONT, fontSize: 8, color: DS.TEKS, valign: 'middle' };
+            if (zebra) b.fill = { color: DS.ZEBRA };
+            return Object.assign(b, tambahan || {});
+        }
+        function tabelDS_(s, baris, colW, y) {
+            s.addTable(baris, {
+                x: DS.X, y: y || DS.Y, w: DS.W, colW: colW, rowH: 0.3, autoPage: false,
+                border: { type: 'solid', color: 'E3E8EF', pt: 0.5 }, margin: [0, 0.06, 0, 0.06]
+            });
+        }
+
+        /** Tanggal ringkas untuk tabel slide: buang nama hari ("Jum, 23 Okt 2026" -> "23 Okt 2026"). */
+        function tglPendekDS_(t) { return String(formatTanggalDisplay(t) || '').replace(/^[A-Za-z]+,\s*/, ''); }
+
+        const NAMA_BULAN_DS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        function perBulanDS_(data) {
+            const kejadian = new Array(12).fill(0), andil = new Array(12).fill(0);
+            data.forEach(function (it) {
+                const b = bulanDariTanggal_(it.tanggal);
+                if (b >= 1 && b <= 12) { kejadian[b - 1]++; andil[b - 1] += Number(it.andil) || 0; }
+            });
+            return { kejadian: kejadian, andil: andil };
         }
 
         /** Kerangka kop/kaki versi LAMA - tidak dipakai lagi, disimpan agar
@@ -3471,7 +3605,7 @@
                 pptx.layout = 'LAYOUT_16x9';
                 pptx.author = 'PT Kereta Commuter Indonesia';
                 pptx.title = 'Rincian Rekapitulasi Gangguan';
-                buatCoverKCI_(pptx, { sub: 'Rincian Gangguan Operasional', keterangan: `${data.length} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
+                buatCoverKCI_(pptx, { sub: 'Rincian Gangguan Operasional', keterangan: `${angkaId_(data.length)} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
 
                 const ROWS = 10;
                 const totalSlideTabel = Math.ceil(data.length / ROWS);
@@ -3481,125 +3615,84 @@
 
                 const totalAndil = data.reduce(function (t, i) { return t + (Number(i.andil) || 0); }, 0);
                 const totalBatal = data.reduce(function (t, i) { return t + (Number(i.kaBatalJumlah) || 0); }, 0);
-                const rataAndil = Math.round(totalAndil / data.length);
                 const unitTeratas = sebaranRincian_(data, 'unitTerkait', 1)[0];
                 const penyebabTeratas = sebaranRincian_(data, 'penyebab', 1)[0];
+                const wP = (DS.W - DS.GAP) / 2;
 
                 // ══ SLIDE 1: RINGKASAN ══
-                const s1 = slide('Rincian Rekapitulasi Gangguan', 'Ringkasan & Sebaran Penyebab');
-                s1.addShape(pptx.ShapeType.roundRect, { x: 0.45, y: 0.86, w: 9.1, h: 0.44, fill: { color: KCI_PPT.ABU_MUDA }, rectRadius: 0.05, line: { type: 'none' } });
-                s1.addText('FILTER AKTIF', { x: 0.6, y: 0.89, w: 1.3, h: 0.18, fontSize: 6.5, bold: true, color: '64748B', fontFace: 'Arial', charSpacing: 1 });
-                s1.addText(potongTeksPpt_(filter.ringkas, 150), { x: 0.6, y: 1.04, w: 8.8, h: 0.22, fontSize: 8.5, color: '1E293B', bold: true, fontFace: 'Arial' });
-
-                kartuKpiKCI_(pptx, s1, [
-                    { label: 'TOTAL KEJADIAN', val: String(data.length), color: KCI_PPT.TEAL },
-                    { label: 'TOTAL KA BATAL', val: String(totalBatal), color: KCI_PPT.MERAH_TUA },
-                    { label: 'TOTAL ANDIL (MENIT)', val: String(totalAndil), color: KCI_PPT.GOLD },
-                    { label: 'RATA-RATA ANDIL', val: rataAndil + ' mnt', color: KCI_PPT.NAVY },
-                    { label: 'UNIT DOMINAN', val: potongTeksPpt_(unitTeratas ? unitTeratas.nama : '-', 16), color: '475569' }
-                ], 1.4, 0.92);
-
+                const s1 = slide('Ringkasan Gangguan', 'Cakupan: ' + filter.ringkas.replace(/\s+\|\s+/g, ' · '));
+                kpiDS_(pptx, s1, [
+                    { label: 'Total kejadian', nilai: angkaId_(data.length), aksen: true },
+                    { label: 'KA batal', nilai: angkaId_(totalBatal) },
+                    { label: 'Total andil (menit)', nilai: angkaId_(totalAndil) },
+                    { label: 'Rata-rata andil', nilai: Math.round(totalAndil / data.length) + ' mnt' },
+                    { label: 'Unit dominan', nilai: potongTeksPpt_(unitTeratas ? unitTeratas.nama : '-', 16) }
+                ], DS.Y, 0.95);
                 const topPenyebab = sebaranRincian_(data, 'penyebab', 6);
-                judulBagianKCI_(pptx, s1, 'PENYEBAB TERBANYAK', 0.45, 2.52, KCI_PPT.MERAH_TUA);
-                s1.addChart(pptx.ChartType.bar, [{ name: 'Kejadian', labels: topPenyebab.map(function (r) { return potongTeksPpt_(r.nama, 20); }), values: topPenyebab.map(function (r) { return r.jumlah; }) }], {
-                    x: 0.45, y: 2.78, w: 4.4, h: 2.35, barDir: 'bar', chartColors: [KCI_PPT.MERAH_TUA],
-                    showValue: true, dataLabelFontSize: 8.5, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
-
-                const topUnitAndil = sebaranRincian_(data, 'unitTerkait', 6).slice().sort(function (a, b) { return b.andil - a.andil; });
-                judulBagianKCI_(pptx, s1, 'UNIT TERKAIT - TOTAL ANDIL (MENIT)', 5.15, 2.52, KCI_PPT.GOLD);
-                s1.addChart(pptx.ChartType.bar, [{ name: 'Andil (menit)', labels: topUnitAndil.map(function (r) { return potongTeksPpt_(r.nama, 20); }), values: topUnitAndil.map(function (r) { return r.andil; }) }], {
-                    x: 5.15, y: 2.78, w: 4.4, h: 2.35, barDir: 'bar', chartColors: [KCI_PPT.GOLD],
-                    showValue: true, dataLabelFontSize: 8.5, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                let a = panelDS_(pptx, s1, DS.X, 2.65, wP, DS.BAWAH - 2.65, 'Penyebab terbanyak', 'Jumlah kejadian');
+                batangDS_(pptx, s1, a, topPenyebab.map(function (r) { return potongTeksPpt_(r.nama, 26); }), topPenyebab.map(function (r) { return r.jumlah; }), DS.NAVY, 'Kejadian');
+                const topUnitAndil = sebaranRincian_(data, 'unitTerkait', 6).slice().sort(function (x, y) { return y.andil - x.andil; });
+                a = panelDS_(pptx, s1, DS.X + wP + DS.GAP, 2.65, wP, DS.BAWAH - 2.65, 'Unit terkait', 'Total andil (menit)');
+                batangDS_(pptx, s1, a, topUnitAndil.map(function (r) { return potongTeksPpt_(r.nama, 22); }), topUnitAndil.map(function (r) { return r.andil; }), DS.MERAH, 'Andil (menit)');
 
                 // ══ SLIDE 2: KOMPOSISI ══
-                const s2 = slide('Komposisi Gangguan', 'Proporsi Unit Terkait & Kategori');
-                const semuaUnit = sebaranRincian_(data, 'unitTerkait', 10);
-                judulBagianKCI_(pptx, s2, 'PROPORSI PER UNIT TERKAIT', 0.45, 0.92, KCI_PPT.TEAL);
-                s2.addChart(pptx.ChartType.pie, [{ name: 'Unit', labels: semuaUnit.map(function (r) { return potongTeksPpt_(r.nama, 16); }), values: semuaUnit.map(function (r) { return r.jumlah; }) }], {
-                    x: 0.45, y: 1.2, w: 4.4, h: 3.9, chartColors: KCI_PALET, showPercent: true, showLegend: true,
-                    legendPos: 'b', legendFontSize: 8.5, dataLabelFontSize: 9, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
-                const semuaKat = sebaranRincian_(data, 'kategori', 8);
-                judulBagianKCI_(pptx, s2, 'PROPORSI PER KATEGORI', 5.15, 0.92, KCI_PPT.UNGU);
-                s2.addChart(pptx.ChartType.doughnut, [{ name: 'Kategori', labels: semuaKat.map(function (r) { return potongTeksPpt_(r.nama, 16); }), values: semuaKat.map(function (r) { return r.jumlah; }) }], {
-                    x: 5.15, y: 1.2, w: 4.4, h: 3.9, chartColors: KCI_PALET, holeSize: 45, showPercent: true, showLegend: true,
-                    legendPos: 'b', legendFontSize: 8.5, dataLabelFontSize: 9, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
+                const s2 = slide('Komposisi Gangguan', 'Proporsi per unit terkait dan kategori');
+                const semuaUnit = sebaranRincian_(data, 'unitTerkait', 8);
+                a = panelDS_(pptx, s2, DS.X, DS.Y, wP, DS.BAWAH - DS.Y, 'Per unit terkait', angkaId_(data.length) + ' kejadian');
+                donatDS_(pptx, s2, a, semuaUnit.map(function (r) { return potongTeksPpt_(r.nama, 18); }), semuaUnit.map(function (r) { return r.jumlah; }), 'Unit');
+                const semuaKat = sebaranRincian_(data, 'kategori', 6);
+                a = panelDS_(pptx, s2, DS.X + wP + DS.GAP, DS.Y, wP, DS.BAWAH - DS.Y, 'Per kategori', angkaId_(data.length) + ' kejadian');
+                donatDS_(pptx, s2, a, semuaKat.map(function (r) { return potongTeksPpt_(normalizeKategoriDisplay(r.nama), 18); }), semuaKat.map(function (r) { return r.jumlah; }), 'Kategori');
 
                 // ══ SLIDE 3: TREN BULANAN ══
-                const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                const kejadianBulan = new Array(12).fill(0), andilBulan = new Array(12).fill(0);
-                data.forEach(function (it) {
-                    const b = bulanDariTanggal_(it.tanggal);
-                    if (b >= 1 && b <= 12) { kejadianBulan[b - 1]++; andilBulan[b - 1] += Number(it.andil) || 0; }
-                });
-                const s3 = slide('Tren Bulanan', 'Jumlah Kejadian & Total Andil');
-                judulBagianKCI_(pptx, s3, 'JUMLAH KEJADIAN PER BULAN', 0.45, 0.92, KCI_PPT.TEAL);
-                s3.addChart(pptx.ChartType.line, [{ name: 'Kejadian', labels: NAMA_BULAN, values: kejadianBulan }], {
-                    x: 0.45, y: 1.2, w: 9.1, h: 1.8, chartColors: [KCI_PPT.TEAL], lineDataSymbol: 'circle', lineSize: 3,
-                    showValue: true, dataLabelFontSize: 8, dataLabelColor: '1E293B', catAxisLabelFontSize: 8.5,
-                    valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
-                judulBagianKCI_(pptx, s3, 'TOTAL ANDIL PER BULAN (MENIT)', 0.45, 3.18, KCI_PPT.GOLD);
-                s3.addChart(pptx.ChartType.bar, [{ name: 'Andil (menit)', labels: NAMA_BULAN, values: andilBulan }], {
-                    x: 0.45, y: 3.46, w: 9.1, h: 1.65, chartColors: [KCI_PPT.GOLD],
-                    showValue: true, dataLabelFontSize: 8, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                const bulan = perBulanDS_(data);
+                const s3 = slide('Tren Bulanan', 'Jumlah kejadian dan total andil per bulan');
+                const hT = (DS.BAWAH - DS.Y - DS.GAP) / 2;
+                a = panelDS_(pptx, s3, DS.X, DS.Y, DS.W, hT, 'Jumlah kejadian per bulan');
+                garisDS_(pptx, s3, a, NAMA_BULAN_DS, bulan.kejadian, DS.NAVY, 'Kejadian');
+                a = panelDS_(pptx, s3, DS.X, DS.Y + hT + DS.GAP, DS.W, hT, 'Total andil per bulan (menit)');
+                kolomDS_(pptx, s3, a, NAMA_BULAN_DS, bulan.andil, DS.MERAH, 'Andil (menit)');
 
                 // ══ SLIDE 4: SEBARAN WILAYAH & KODEFIKASI ══
-                const s4 = slide('Sebaran Gangguan', 'Wilayah & Kodefikasi');
+                const s4 = slide('Sebaran Gangguan', 'Wilayah dan kodefikasi');
+                let yIsi = DS.Y;
                 if (penyebabTeratas) {
-                    s4.addShape(pptx.ShapeType.roundRect, { x: 0.45, y: 0.86, w: 9.1, h: 0.46, fill: { color: 'FEF3C7' }, rectRadius: 0.05, line: { color: 'FDE68A', pt: 1 } });
-                    s4.addText(`Penyebab dominan: ${penyebabTeratas.nama} - ${penyebabTeratas.jumlah} kejadian, ${penyebabTeratas.andil} menit andil, dari total ${data.length} kejadian.`,
-                        { x: 0.62, y: 0.88, w: 8.8, h: 0.42, fontSize: 9, color: '78350F', bold: true, fontFace: 'Arial', valign: 'middle' });
+                    catatanDS_(pptx, s4, [
+                        { text: 'Penyebab dominan: ', options: { bold: true, color: DS.NAVY } },
+                        { text: `${penyebabTeratas.nama} — ${angkaId_(penyebabTeratas.jumlah)} kejadian, ${angkaId_(penyebabTeratas.andil)} menit andil, dari total ${angkaId_(data.length)} kejadian.` }
+                    ], DS.X, DS.Y, DS.W, 0.46);
+                    yIsi = DS.Y + 0.46 + DS.GAP;
                 }
                 const topWilayah = sebaranRincian_(data, 'area', 8);
-                judulBagianKCI_(pptx, s4, 'PROPORSI PER WILAYAH', 0.45, 1.5, KCI_PPT.NAVY);
-                s4.addChart(pptx.ChartType.pie, [{ name: 'Wilayah', labels: topWilayah.map(function (r) { return potongTeksPpt_(r.nama, 18); }), values: topWilayah.map(function (r) { return r.jumlah; }) }], {
-                    x: 0.45, y: 1.78, w: 4.4, h: 3.3, chartColors: KCI_PALET, showPercent: true, showLegend: true,
-                    legendPos: 'b', legendFontSize: 8, dataLabelFontSize: 8.5, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
+                a = panelDS_(pptx, s4, DS.X, yIsi, wP, DS.BAWAH - yIsi, 'Proporsi per wilayah');
+                donatDS_(pptx, s4, a, topWilayah.map(function (r) { return potongTeksPpt_(r.nama, 18); }), topWilayah.map(function (r) { return r.jumlah; }), 'Wilayah');
                 const topKode = sebaranRincian_(data, 'kodeTipe', 6);
-                judulBagianKCI_(pptx, s4, 'JUMLAH PER KODEFIKASI', 5.15, 1.5, KCI_PPT.MERAH_TUA);
-                s4.addChart(pptx.ChartType.bar, [{ name: 'Kejadian', labels: topKode.map(function (r) { return potongTeksPpt_(r.nama, 14); }), values: topKode.map(function (r) { return r.jumlah; }) }], {
-                    x: 5.15, y: 1.78, w: 4.4, h: 3.3, barDir: 'bar', chartColors: [KCI_PPT.MERAH_TUA],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 7.5, showLegend: false, valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                a = panelDS_(pptx, s4, DS.X + wP + DS.GAP, yIsi, wP, DS.BAWAH - yIsi, 'Jumlah per kodefikasi');
+                batangDS_(pptx, s4, a, topKode.map(function (r) { return 'Kode ' + potongTeksPpt_(r.nama, 10); }), topKode.map(function (r) { return r.jumlah; }), DS.NAVY, 'Kejadian');
 
                 // ══ SLIDE 5..n: TABEL RINCIAN ══
-                const judulKolom = ['NO', 'TANGGAL', 'JUDUL', 'NO KA', 'LOKASI', 'PENYEBAB', 'UNIT', 'ANDIL', 'BATAL'];
-                // Total tetap 9.10 inci. Lebar tiap kolom disetel agar JUDUL
-                // BARISNYA muat satu baris - kolom yang terlalu sempit membuat
-                // "NO" terpecah jadi "N O" & nomor KA terpotong dua baris.
-                const lebarKolom = [0.42, 0.90, 1.91, 0.70, 1.50, 1.55, 0.95, 0.55, 0.62];
+                const kolom = [['No', 'center', 0.42], ['Tanggal', 'center', 0.95], ['Judul', 'left', 1.95], ['No KA', 'center', 0.68],
+                    ['Lokasi', 'left', 1.45], ['Penyebab', 'left', 1.55], ['Unit', 'left', 0.92], ['Andil', 'center', 0.55], ['Batal', 'center', 0.53]];
                 for (let p = 0; p < totalSlideTabel; p++) {
                     const mulai = p * ROWS;
                     const potongan = data.slice(mulai, mulai + ROWS);
-                    const sT = slide('Rincian Kejadian', `Data ${mulai + 1}-${mulai + potongan.length} dari ${data.length}`);
-                    const baris = [judulKolom.map(function (h) {
-                        return { text: h, options: mkHeadKCI_({ align: (h === 'JUDUL' || h === 'LOKASI' || h === 'PENYEBAB' || h === 'UNIT') ? 'left' : 'center' }) };
-                    })];
+                    const sT = slide('Rincian Kejadian', `Data ${mulai + 1}–${mulai + potongan.length} dari ${angkaId_(data.length)}`);
+                    const baris = [kolom.map(function (k) { return { text: k[0], options: kepalaTabelDS_(k[1]) }; })];
                     potongan.forEach(function (it, i) {
-                        const alt = i % 2 === 1;
+                        const z = i % 2 === 1, batal = Number(it.kaBatalJumlah) || 0;
                         baris.push([
-                            { text: String(mulai + i + 1), options: mkSelKCI_(alt, { align: 'center', color: '64748B' }) },
-                            { text: potongTeksPpt_(formatTanggalDisplay(it.tanggal), 16), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.judul, 42), options: mkSelKCI_(alt, { bold: true }) },
-                            { text: potongTeksPpt_(it.noKa, 10), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.tempat, 34), options: mkSelKCI_(alt) },
-                            { text: potongTeksPpt_(it.penyebab, 34), options: mkSelKCI_(alt) },
-                            { text: potongTeksPpt_(it.unitTerkait, 20), options: mkSelKCI_(alt) },
-                            { text: String(Number(it.andil) || 0), options: mkSelKCI_(alt, { align: 'center', bold: true, color: 'B45309' }) },
-                            { text: String(Number(it.kaBatalJumlah) || 0), options: mkSelKCI_(alt, { align: 'center', color: (Number(it.kaBatalJumlah) > 0 ? 'B91535' : '94A3B8') }) }
+                            { text: String(mulai + i + 1), options: selTabelDS_(z, { align: 'center', color: DS.ABU }) },
+                            { text: potongTeksPpt_(tglPendekDS_(it.tanggal), 14), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.judul, 40), options: selTabelDS_(z, { bold: true }) },
+                            { text: potongTeksPpt_(it.noKa, 10), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.tempat, 30), options: selTabelDS_(z) },
+                            { text: potongTeksPpt_(it.penyebab, 32), options: selTabelDS_(z) },
+                            { text: potongTeksPpt_(it.unitTerkait, 18), options: selTabelDS_(z) },
+                            { text: angkaId_(it.andil), options: selTabelDS_(z, { align: 'center', bold: true }) },
+                            { text: String(batal), options: selTabelDS_(z, { align: 'center', bold: batal > 0, color: batal > 0 ? DS.MERAH : DS.ABU }) }
                         ]);
                     });
-                    sT.addTable(baris, { x: 0.45, y: 0.86, w: 9.1, colW: lebarKolom, border: { type: 'solid', color: 'E2E8F0', pt: 0.75 }, autoPage: false, rowH: 0.36 });
+                    tabelDS_(sT, baris, kolom.map(function (k) { return k[2]; }));
                 }
 
                 buatPenutupKCI_(pptx);
@@ -4454,172 +4547,91 @@
             const data = saranaTampil_.length ? saranaTampil_ : saranaData;
             if (!data.length) { showToast('Tidak ada data untuk diexport.'); return; }
 
-            const NAVY = '0C1D37', GOLD = 'D4AF37', TEAL = '107573', RED = 'B91535', UNGU = '7030A0', SLATE = '475569', WHITE = 'FFFFFF';
-            const KCI_PALET = [TEAL, NAVY, GOLD, UNGU, RED, '0E7490', '65A30D', 'C2410C', 'DB2777', '4338CA'];
-
             try {
                 const pptx = new PptxGenJS();
                 pptx.layout = 'LAYOUT_16x9';
                 pptx.author = 'PT Kereta Commuter Indonesia';
                 pptx.title = 'Rekap Gangguan Sarana';
-                buatCoverKCI_(pptx, { judul2: 'GANGGUAN SARANA', sub: 'Rekap Gangguan Sarana', keterangan: `${data.length} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
+                buatCoverKCI_(pptx, { judul2: 'GANGGUAN SARANA', sub: 'Rekap Gangguan Sarana', keterangan: `${angkaId_(data.length)} kejadian · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` });
 
                 const ROWS = 10;
                 const totalSlideTabel = Math.ceil(data.length / ROWS);
                 const totalSlide = 4 + totalSlideTabel;
                 let nomor = 0;
-
-                // Memakai template slide KCI yang SAMA dengan dua export lain,
-                // supaya ketiga paparan tampil seragam.
                 const slide = function (judul, sub) { nomor++; return buatSlideKCI_(pptx, { judul: judul, subJudul: sub, nomor: nomor, total: totalSlide }); };
 
                 const totalAndil = data.reduce(function (t, i) { return t + (Number(i.andil) || 0); }, 0);
                 const totalBatal = data.reduce(function (t, i) { return t + (Number(i.kaBatalJumlah) || 0); }, 0);
-                const rataAndil = Math.round(totalAndil / data.length);
+                const wP = (DS.W - DS.GAP) / 2;
 
                 // ══ SLIDE 1: RINGKASAN ══
-                const s1 = slide('Rekap Gangguan Sarana', 'Ringkasan, Jenis Sarana & Komponen');
-                const kpi = [
-                    { label: 'TOTAL GANGGUAN SARANA', val: String(data.length), color: KCI_PPT.TEAL },
-                    { label: 'TOTAL ANDIL (MENIT)', val: String(totalAndil), color: KCI_PPT.GOLD },
-                    { label: 'RATA-RATA ANDIL', val: rataAndil + ' mnt', color: KCI_PPT.NAVY },
-                    { label: 'TOTAL KA BATAL', val: String(totalBatal), color: KCI_PPT.MERAH_TUA }
-                ];
-                kartuKpiKCI_(pptx, s1, kpi, 0.9, 0.95);
+                const s1 = slide('Ringkasan Gangguan Sarana', 'Jenis sarana dan komponen');
+                kpiDS_(pptx, s1, [
+                    { label: 'Total gangguan sarana', nilai: angkaId_(data.length), aksen: true },
+                    { label: 'Total andil (menit)', nilai: angkaId_(totalAndil) },
+                    { label: 'Rata-rata andil', nilai: Math.round(totalAndil / data.length) + ' mnt' },
+                    { label: 'KA batal', nilai: angkaId_(totalBatal) }
+                ], DS.Y, 0.95);
+                const topJenis = sebaranRincian_(data, 'jenisSarana', 6);
+                let a = panelDS_(pptx, s1, DS.X, 2.65, wP, DS.BAWAH - 2.65, 'Jenis sarana terbanyak', 'Jumlah kejadian');
+                batangDS_(pptx, s1, a, topJenis.map(function (r) { return potongTeksPpt_(r.nama, 20); }), topJenis.map(function (r) { return r.jumlah; }), DS.NAVY, 'Kejadian');
+                const topKomponen = sebaranRincian_(data, 'komponen', 6).slice().sort(function (x, y) { return y.andil - x.andil; });
+                a = panelDS_(pptx, s1, DS.X + wP + DS.GAP, 2.65, wP, DS.BAWAH - 2.65, 'Komponen', 'Total andil (menit)');
+                batangDS_(pptx, s1, a, topKomponen.map(function (r) { return potongTeksPpt_(r.nama, 20); }), topKomponen.map(function (r) { return r.andil; }), DS.MERAH, 'Andil (menit)');
 
-                // Bar mendatar: 5 jenis sarana dengan kejadian terbanyak
-                const topJenis = sebaranRincian_(data, 'jenisSarana', 5);
-                judulBagianKCI_(pptx, s1, 'JENIS SARANA TERBANYAK', 0.45, 2.05, KCI_PPT.TEAL);
-                s1.addChart(pptx.ChartType.bar, [{
-                    name: 'Kejadian',
-                    labels: topJenis.map(function (r) { return potongTeksPpt_(r.nama, 14); }),
-                    values: topJenis.map(function (r) { return r.jumlah; })
-                }], {
-                    x: 0.45, y: 2.32, w: 4.4, h: 2.55, barDir: 'bar', chartColors: [KCI_PPT.TEAL],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 9, valAxisLabelFontSize: 8, showLegend: false,
-                    valGridLine: { style: 'dash', color: 'E2E8F0' }, catAxisLabelColor: '334155'
-                });
-
-                // Bar mendatar: 5 komponen dengan andil terbesar
-                const topKomponen = sebaranRincian_(data, 'komponen', 5).slice().sort(function (a, b) { return b.andil - a.andil; });
-                judulBagianKCI_(pptx, s1, 'KOMPONEN - TOTAL ANDIL (MENIT)', 5.15, 2.05, KCI_PPT.GOLD);
-                s1.addChart(pptx.ChartType.bar, [{
-                    name: 'Andil (menit)',
-                    labels: topKomponen.map(function (r) { return potongTeksPpt_(r.nama, 14); }),
-                    values: topKomponen.map(function (r) { return r.andil; })
-                }], {
-                    x: 5.15, y: 2.32, w: 4.4, h: 2.55, barDir: 'bar', chartColors: [KCI_PPT.GOLD],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 9, valAxisLabelFontSize: 8, showLegend: false,
-                    valGridLine: { style: 'dash', color: 'E2E8F0' }, catAxisLabelColor: '334155'
-                });
-
-                // ══ SLIDE 2: KOMPOSISI (pie + doughnut, ber-persentase) ══
-                const s2 = slide('Komposisi Gangguan Sarana', 'Proporsi Jenis Sarana & ID Gangguan');
-                const semuaJenis = sebaranRincian_(data, 'jenisSarana', 10);
-                judulBagianKCI_(pptx, s2, 'PROPORSI PER JENIS SARANA', 0.45, 0.92, KCI_PPT.TEAL);
-                s2.addChart(pptx.ChartType.pie, [{
-                    name: 'Jenis Sarana',
-                    labels: semuaJenis.map(function (r) { return potongTeksPpt_(r.nama, 16); }),
-                    values: semuaJenis.map(function (r) { return r.jumlah; })
-                }], {
-                    x: 0.45, y: 1.2, w: 4.4, h: 3.9, chartColors: KCI_PALET,
-                    showPercent: true, showLegend: true, legendPos: 'b', legendFontSize: 8.5,
-                    dataLabelFontSize: 9, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
-
-                const semuaId = sebaranRincian_(data, 'idGangguan', 10);
-                judulBagianKCI_(pptx, s2, 'PROPORSI PER ID GANGGUAN', 5.15, 0.92, KCI_PPT.UNGU);
-                s2.addChart(pptx.ChartType.doughnut, [{
-                    name: 'ID Gangguan',
-                    labels: semuaId.map(function (r) { return potongTeksPpt_(r.nama, 16); }),
-                    values: semuaId.map(function (r) { return r.jumlah; })
-                }], {
-                    x: 5.15, y: 1.2, w: 4.4, h: 3.9, chartColors: KCI_PALET, holeSize: 45,
-                    showPercent: true, showLegend: true, legendPos: 'b', legendFontSize: 8.5,
-                    dataLabelFontSize: 9, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
+                // ══ SLIDE 2: KOMPOSISI ══
+                const s2 = slide('Komposisi Gangguan Sarana', 'Proporsi jenis sarana dan ID gangguan');
+                const semuaJenis = sebaranRincian_(data, 'jenisSarana', 8);
+                a = panelDS_(pptx, s2, DS.X, DS.Y, wP, DS.BAWAH - DS.Y, 'Per jenis sarana', angkaId_(data.length) + ' kejadian');
+                donatDS_(pptx, s2, a, semuaJenis.map(function (r) { return potongTeksPpt_(r.nama, 18); }), semuaJenis.map(function (r) { return r.jumlah; }), 'Jenis sarana');
+                const semuaId = sebaranRincian_(data, 'idGangguan', 8);
+                a = panelDS_(pptx, s2, DS.X + wP + DS.GAP, DS.Y, wP, DS.BAWAH - DS.Y, 'Per ID gangguan', angkaId_(data.length) + ' kejadian');
+                donatDS_(pptx, s2, a, semuaId.map(function (r) { return potongTeksPpt_(r.nama, 18); }), semuaId.map(function (r) { return r.jumlah; }), 'ID gangguan');
 
                 // ══ SLIDE 3: TREN BULANAN ══
-                const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                const kejadianBulan = new Array(12).fill(0);
-                const andilBulan = new Array(12).fill(0);
-                data.forEach(function (it) {
-                    const b = bulanDariTanggal_(it.tanggal);
-                    if (b >= 1 && b <= 12) { kejadianBulan[b - 1]++; andilBulan[b - 1] += Number(it.andil) || 0; }
-                });
-                const s3 = slide('Tren Bulanan', 'Jumlah Kejadian & Total Andil');
-                judulBagianKCI_(pptx, s3, 'JUMLAH KEJADIAN PER BULAN', 0.45, 0.92, KCI_PPT.TEAL);
-                s3.addChart(pptx.ChartType.line, [{ name: 'Kejadian', labels: NAMA_BULAN, values: kejadianBulan }], {
-                    x: 0.45, y: 1.2, w: 9.1, h: 1.8, chartColors: [KCI_PPT.TEAL], lineDataSymbol: 'circle', lineSize: 3,
-                    showValue: true, dataLabelFontSize: 8, dataLabelColor: '1E293B',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 8, showLegend: false,
-                    valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
-                judulBagianKCI_(pptx, s3, 'TOTAL ANDIL PER BULAN (MENIT)', 0.45, 3.18, KCI_PPT.GOLD);
-                s3.addChart(pptx.ChartType.bar, [{ name: 'Andil (menit)', labels: NAMA_BULAN, values: andilBulan }], {
-                    x: 0.45, y: 3.46, w: 9.1, h: 1.65, chartColors: [KCI_PPT.GOLD],
-                    showValue: true, dataLabelFontSize: 8, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 8, showLegend: false,
-                    valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                const bulan = perBulanDS_(data);
+                const s3 = slide('Tren Bulanan', 'Jumlah kejadian dan total andil per bulan');
+                const hT = (DS.BAWAH - DS.Y - DS.GAP) / 2;
+                a = panelDS_(pptx, s3, DS.X, DS.Y, DS.W, hT, 'Jumlah kejadian per bulan');
+                garisDS_(pptx, s3, a, NAMA_BULAN_DS, bulan.kejadian, DS.NAVY, 'Kejadian');
+                a = panelDS_(pptx, s3, DS.X, DS.Y + hT + DS.GAP, DS.W, hT, 'Total andil per bulan (menit)');
+                kolomDS_(pptx, s3, a, NAMA_BULAN_DS, bulan.andil, DS.MERAH, 'Andil (menit)');
 
-                // ══ SLIDE 4: SEBARAN PENYEBAB & WILAYAH ══
-                const s4 = slide('Sebaran Penyebab & Wilayah', 'Analisis Gangguan Sarana');
+                // ══ SLIDE 4: PENYEBAB & WILAYAH ══
+                const s4 = slide('Sebaran Penyebab & Wilayah', 'Analisis gangguan sarana');
                 const topPenyebab = sebaranRincian_(data, 'penyebab', 6);
-                judulBagianKCI_(pptx, s4, 'PENYEBAB TERBANYAK', 0.45, 0.92, KCI_PPT.MERAH_TUA);
-                s4.addChart(pptx.ChartType.bar, [{
-                    name: 'Kejadian', labels: topPenyebab.map(function (r) { return potongTeksPpt_(r.nama, 20); }),
-                    values: topPenyebab.map(function (r) { return r.jumlah; })
-                }], {
-                    x: 0.45, y: 1.2, w: 4.4, h: 3.9, barDir: 'bar', chartColors: [KCI_PPT.MERAH_TUA],
-                    showValue: true, dataLabelFontSize: 9, dataLabelColor: '1E293B', dataLabelPosition: 'outEnd',
-                    catAxisLabelFontSize: 8.5, valAxisLabelFontSize: 8, showLegend: false,
-                    valGridLine: { style: 'dash', color: 'E2E8F0' }
-                });
+                a = panelDS_(pptx, s4, DS.X, DS.Y, wP, DS.BAWAH - DS.Y, 'Penyebab terbanyak', 'Jumlah kejadian');
+                batangDS_(pptx, s4, a, topPenyebab.map(function (r) { return potongTeksPpt_(r.nama, 24); }), topPenyebab.map(function (r) { return r.jumlah; }), DS.NAVY, 'Kejadian');
                 const topWilayah = sebaranRincian_(data, 'area', 8);
-                judulBagianKCI_(pptx, s4, 'PROPORSI PER WILAYAH', 5.15, 0.92, KCI_PPT.NAVY);
-                s4.addChart(pptx.ChartType.pie, [{
-                    name: 'Wilayah', labels: topWilayah.map(function (r) { return potongTeksPpt_(r.nama, 18); }),
-                    values: topWilayah.map(function (r) { return r.jumlah; })
-                }], {
-                    x: 5.15, y: 1.2, w: 4.4, h: 3.9, chartColors: KCI_PALET,
-                    showPercent: true, showLegend: true, legendPos: 'b', legendFontSize: 8.5,
-                    dataLabelFontSize: 9, dataLabelColor: 'FFFFFF', dataLabelFontBold: true
-                });
+                a = panelDS_(pptx, s4, DS.X + wP + DS.GAP, DS.Y, wP, DS.BAWAH - DS.Y, 'Proporsi per wilayah');
+                donatDS_(pptx, s4, a, topWilayah.map(function (r) { return potongTeksPpt_(r.nama, 18); }), topWilayah.map(function (r) { return r.jumlah; }), 'Wilayah');
 
                 // ══ SLIDE 5..n: TABEL RINCIAN ══
-                const judulKolom = ['NO', 'TANGGAL', 'JUDUL', 'NO KA', 'JENIS', 'STAMFORMASI', 'KOMPONEN', 'ID GANGGUAN', 'ID SARANA', 'KOMENTAR', 'ANDIL'];
-                // Total tetap 9.10 inci - alasannya sama seperti di
-                // exportRincianToPPT(). Jatah untuk kolom KOMENTAR diambil dari
-                // JUDUL & ID SARANA, dua kolom terlebar yang isinya paling bisa
-                // dipendekkan tanpa kehilangan arti.
-                const lebarKolom = [0.42, 0.80, 1.22, 0.62, 0.86, 0.82, 0.86, 0.82, 0.95, 1.23, 0.50];
+                const kolom = [['No', 'center', 0.4], ['Tanggal', 'center', 0.82], ['Judul', 'left', 1.3], ['No KA', 'center', 0.6],
+                    ['Jenis', 'center', 0.8], ['Stamformasi', 'center', 0.88], ['Komponen', 'center', 0.85], ['ID gangguan', 'center', 0.85],
+                    ['ID sarana', 'left', 0.85], ['Komentar', 'left', 1.2], ['Andil', 'center', 0.45]];
                 for (let p = 0; p < totalSlideTabel; p++) {
                     const mulai = p * ROWS;
                     const potongan = data.slice(mulai, mulai + ROWS);
-                    const s = slide('Rincian Gangguan Sarana', `Data ${mulai + 1}-${mulai + potongan.length} dari ${data.length}`);
-                    const baris = [judulKolom.map(function (h) {
-                        return { text: h, options: mkHeadKCI_({ align: (h === 'JUDUL' || h === 'ID SARANA' || h === 'KOMENTAR') ? 'left' : 'center' }) };
-                    })];
+                    const s = slide('Rincian Gangguan Sarana', `Data ${mulai + 1}–${mulai + potongan.length} dari ${angkaId_(data.length)}`);
+                    const baris = [kolom.map(function (k) { return { text: k[0], options: kepalaTabelDS_(k[1]) }; })];
                     potongan.forEach(function (it, i) {
-                        const alt = i % 2 === 1;
+                        const z = i % 2 === 1;
                         baris.push([
-                            { text: String(mulai + i + 1), options: mkSelKCI_(alt, { align: 'center', color: '64748B' }) },
-                            { text: potongTeksPpt_(formatTanggalDisplay(it.tanggal), 16), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.judul, 36), options: mkSelKCI_(alt, { bold: true }) },
-                            { text: potongTeksPpt_(it.noKa, 10), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.jenisSarana, 20), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.stamformasi, 16), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.komponen, 18), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.idGangguan, 16), options: mkSelKCI_(alt, { align: 'center' }) },
-                            { text: potongTeksPpt_(it.ketSarana, 20), options: mkSelKCI_(alt) },
-                            { text: potongTeksPpt_(it.komentar, 34), options: mkSelKCI_(alt) },
-                            { text: String(Number(it.andil) || 0), options: mkSelKCI_(alt, { align: 'center', bold: true, color: 'B45309' }) }
+                            { text: String(mulai + i + 1), options: selTabelDS_(z, { align: 'center', color: DS.ABU }) },
+                            { text: potongTeksPpt_(tglPendekDS_(it.tanggal), 14), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.judul, 28), options: selTabelDS_(z, { bold: true }) },
+                            { text: potongTeksPpt_(it.noKa, 10), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.jenisSarana, 16), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.stamformasi, 16), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.komponen, 16), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.idGangguan, 16), options: selTabelDS_(z, { align: 'center' }) },
+                            { text: potongTeksPpt_(it.ketSarana, 18), options: selTabelDS_(z) },
+                            { text: potongTeksPpt_(it.komentar, 28), options: selTabelDS_(z) },
+                            { text: angkaId_(it.andil), options: selTabelDS_(z, { align: 'center', bold: true }) }
                         ]);
                     });
-                    s.addTable(baris, { x: 0.45, y: 0.86, w: 9.1, colW: lebarKolom, border: { type: 'solid', color: 'E2E8F0', pt: 0.75 }, autoPage: false, rowH: 0.36 });
+                    tabelDS_(s, baris, kolom.map(function (k) { return k[2]; }));
                 }
 
                 buatPenutupKCI_(pptx);
