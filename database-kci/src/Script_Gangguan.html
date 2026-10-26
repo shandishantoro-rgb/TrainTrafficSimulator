@@ -2689,108 +2689,109 @@
          * @param {Object} opsi {judul, subJudul, filterTeks, kpi[], sorotan, isi}
          * @return {string} HTML utuh siap dicetak.
          */
+        // ================================================================
+        // KERANGKA CETAK — gaya laporan resmi monokrom (hitam–abu–putih)
+        // ================================================================
+        // Diperbarui 26 Okt 2026 atas permintaan pengguna: template lama
+        // berwarna-warni (strip pelangi, kartu pastel, pita diagonal) diganti
+        // tata letak laporan dinas yang tenang dan tetap rapi saat dicetak
+        // hitam-putih. Semua pemanggil (Rincian, Summary, Rekap Sarana) tidak
+        // perlu diubah: warna yang mereka kirim dinetralkan oleh CSS di sini.
+        //
+        // Nomor halaman memakai kotak margin @page (didukung Chrome/Edge
+        // terbaru); di peramban lain kaki halaman tetap tampil tanpa nomor.
+
         function bangunDokumenPdf_(opsi) {
             const now = new Date();
-
-            // CATATAN TATA LETAK: kop, kartu KPI, & kaki halaman disusun dengan
-            // <table>, BUKAN flexbox. Mesin cetak berbeda-beda dalam menangani
-            // flexbox - sebagian mengabaikannya sama sekali sehingga kartu KPI
-            // menumpuk ke bawah & dokumennya berantakan. Tata letak tabel
-            // dipahami sama oleh semua mesin cetak, termasuk saat dokumen ini
-            // dibuka di aplikasi lain.
-            // Kartu KPI gaya korporat: latar pastel, angka besar berwarna,
-            // label abu di bawahnya, & garis warna tipis di tepi kiri.
-            const kpiSel = (opsi.kpi || []).map(function (k) {
-                const p = pastelDari_(k.warna || PDF_WARNA.biru);
-                return `<td class="kpi" style="background:${p.bg};border-left:3px solid ${p.fg};border-radius:5px;padding:9px 8px;text-align:left;vertical-align:middle">
-                    <div class="kpi-val" style="color:${p.fg}">${escapeHtml(k.nilai)}</div>
-                    <div class="kpi-lbl">${escapeHtml(k.label)}</div>
-                </td>`;
-            }).join('<td style="width:7px"></td>');
-
             const tglCetak = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
             const jamCetak = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            const pencetak = (typeof currentUser !== 'undefined' && currentUser && currentUser.nama) ? currentUser.nama : '';
 
-            return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(opsi.judul)}</title>
+            const kpiSel = (opsi.kpi || []).map(function (k) {
+                return `<td class="kpi"><div class="kpi-lbl">${escapeHtml(k.label)}</div><div class="kpi-val">${escapeHtml(k.nilai)}</div></td>`;
+            }).join('');
+
+            return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>${escapeHtml(opsi.judul)}</title>
             <style>
-                /* Kaki halaman memakai position:fixed supaya pita navy-nya
-                   muncul di SETIAP halaman seperti paparan resmi, bukan sekali
-                   di ujung dokumen. Karena itu body diberi padding bawah
-                   seukuran pitanya agar isi tidak pernah tertimpa. */
-                @page { size: A4 landscape; margin: 9mm 9mm 14mm 9mm; }
+                @page {
+                    size: A4 landscape;
+                    margin: 12mm 11mm 14mm 11mm;
+                    @bottom-left  { content: "PT Kereta Commuter Indonesia · COTP Department · Dokumen internal"; font: 7pt Arial, sans-serif; color: #6b6b6b; }
+                    @bottom-right { content: "Halaman " counter(page) " dari " counter(pages); font: 7pt Arial, sans-serif; color: #6b6b6b; }
+                }
                 * { box-sizing: border-box; }
-                body { font-family: Arial, Helvetica, sans-serif; color:#1e293b; margin:0;
-                       padding-bottom:10mm;
-                       -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+                body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; font-size: 8pt;
+                       -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-                table.layout { width:100%; border-collapse:collapse; }
-                table.layout td { border:none; padding:0; }
+                table.layout { width: 100%; border-collapse: collapse; }
+                table.layout td { border: none; padding: 0; vertical-align: bottom; }
 
-                /* ── KOP: latar terang, judul navy besar, aksen merah ── */
-                .kop td { padding:0 0 8px; vertical-align:top; }
-                .kop-perusahaan { font-size:6.5px; letter-spacing:2.4px; color:#8795ab; font-weight:bold;
-                                  text-transform:uppercase; margin-bottom:3px; }
-                .kop-judul { font-size:21px; font-weight:bold; color:${PDF_WARNA.biruTua}; line-height:1.1;
-                             letter-spacing:-.3px; }
-                .kop-sub { font-size:10.5px; font-weight:bold; color:#5a6b85; margin-top:3px; }
-                .kop-garis { width:46px; height:3px; background:${PDF_WARNA.merahKai}; margin-top:5px; }
-                /* Pita diagonal di pojok kanan atas - geometri polos, bukan
-                   tiruan logo (lihat catatan di bagian PPT). */
-                .swoosh { height:30px; text-align:right; white-space:nowrap; }
-                .swoosh i { display:inline-block; width:9px; height:42px; margin-left:4px;
-                            transform:skewX(-24deg); vertical-align:middle; }
-                .garis-kop { height:2px; background:${PDF_WARNA.garisTabel}; margin:0 0 9px; }
+                /* KOP */
+                .kop { border-bottom: 1.5pt solid #111; padding-bottom: 6pt; margin-bottom: 2pt; }
+                .kop-instansi { font-size: 7pt; font-weight: bold; letter-spacing: 1.6pt; text-transform: uppercase; color: #444; }
+                .kop-judul { font-size: 15pt; font-weight: bold; color: #111; margin-top: 3pt; line-height: 1.15; }
+                .kop-sub { font-size: 8.5pt; color: #555; margin-top: 2pt; }
+                .kop-meta { text-align: right; font-size: 7pt; color: #555; line-height: 1.5; white-space: nowrap; }
+                .kop-meta b { color: #111; }
+                .garis-tipis { border-bottom: 0.5pt solid #111; margin-bottom: 9pt; }
 
-                .filter { background:#F4F7FB; border-left:3px solid ${PDF_WARNA.merahKai};
-                          padding:6px 10px; margin:0 0 9px; font-size:8.5px; font-weight:bold; color:#2f4260; }
-                .filter span { color:#8795ab; font-weight:normal; letter-spacing:.5px; }
+                .filter { font-size: 7.5pt; color: #333; margin: 0 0 8pt; }
+                .filter span { font-weight: bold; text-transform: uppercase; letter-spacing: .6pt; color: #111; }
 
-                table.kpi-baris { width:100%; table-layout:fixed; border-collapse:separate;
-                                  border-spacing:0; margin-bottom:10px; }
-                .kpi-val { font-size:19px; font-weight:bold; line-height:1.05; letter-spacing:-.4px; }
-                .kpi-lbl { font-size:6.4px; font-weight:bold; margin-top:3px; letter-spacing:.4px;
-                           color:#6b7a91; text-transform:uppercase; }
+                /* RINGKASAN ANGKA */
+                table.kpi-baris { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 8pt; }
+                td.kpi { border: 0.6pt solid #9a9a9a; padding: 5pt 7pt; vertical-align: top; }
+                .kpi-lbl { font-size: 6.3pt; font-weight: bold; text-transform: uppercase; letter-spacing: .5pt; color: #555; }
+                .kpi-val { font-size: 14pt; font-weight: bold; color: #111; margin-top: 2pt; line-height: 1.1;
+                           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-                /* Panel sorotan meniru kotak keterangan pada paparan resmi:
-                   biru sangat muda dengan batang biru di kiri. */
-                .sorotan { background:#EDF3FA; border-left:4px solid ${PDF_WARNA.biru}; border-radius:0 5px 5px 0;
-                           padding:8px 11px; font-size:9px; font-weight:bold; color:#1d3557; margin-bottom:10px; }
-                .sorotan u { text-decoration:none; color:${PDF_WARNA.merahKai}; }
+                .sorotan { border-left: 2pt solid #111; background: #f2f2f2; padding: 5pt 8pt; margin-bottom: 9pt; font-size: 8pt; }
+                .sorotan u { text-decoration: none; font-weight: bold; }
 
-                .judul-bagian { font-size:10px; font-weight:bold; color:#ffffff; background:${PDF_WARNA.kepalaTabel};
-                                margin:11px 0 0; padding:6px 11px; border-radius:5px 5px 0 0;
-                                letter-spacing:.5px; }
+                .judul-bagian { font-size: 8.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: .8pt;
+                                color: #111; margin: 12pt 0 4pt; padding-bottom: 2pt; border-bottom: 0.6pt solid #111; }
 
-                table.data { width:100%; border-collapse:collapse; font-size:7.6px; }
-                table.data thead { display:table-header-group; }
-                table.data tr { page-break-inside: avoid; }
+                /* TABEL DATA */
+                table.data { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 7.2pt; }
+                table.data thead { display: table-header-group; }
+                table.data th { background: #2b2b2b; color: #fff; font-weight: bold; text-transform: uppercase; font-size: 6.5pt;
+                                letter-spacing: .4pt; padding: 4pt 4pt; border: 0.5pt solid #2b2b2b; }
+                table.data td { padding: 3.5pt 4pt; border: 0.5pt solid #c4c4c4; vertical-align: top;
+                                word-wrap: break-word; overflow-wrap: break-word; }
+                table.data tbody tr:nth-child(even) td { background: #f3f3f3; }
+                table.data tr { page-break-inside: avoid; break-inside: avoid; }
+                /* Warna yang dikirim pemanggil lama dinetralkan jadi hitam/abu */
+                table.data td * { color: #111 !important; background: transparent !important; }
 
-                .kaki { position:fixed; left:0; right:0; bottom:0; height:7mm;
-                        background:${PDF_WARNA.kepalaTabel}; color:#c6d2e4; }
-                .kaki td { padding:0 11px; font-size:6.8px; vertical-align:middle; height:7mm; border:none; }
-                .kaki b { color:#ffffff; }
+                /* PENGESAHAN */
+                table.ttd { width: 100%; border-collapse: collapse; margin-top: 18pt; page-break-inside: avoid; }
+                table.ttd td { border: none; padding: 0; font-size: 8pt; vertical-align: top; }
+                .ttd-nama { margin-top: 38pt; font-weight: bold; text-decoration: underline; }
             </style></head><body>
                 <table class="layout kop"><tr>
-                    <td style="vertical-align:top">
-                        <div class="kop-perusahaan">PT Kereta Commuter Indonesia &middot; COTP Department</div>
+                    <td>
+                        <div class="kop-instansi">PT Kereta Commuter Indonesia &nbsp;·&nbsp; COTP Department</div>
                         <div class="kop-judul">${escapeHtml(opsi.judul)}</div>
                         ${opsi.subJudul ? `<div class="kop-sub">${escapeHtml(opsi.subJudul)}</div>` : ''}
-                        <div class="kop-garis"></div>
                     </td>
-                    <td class="swoosh" style="width:150px;vertical-align:middle">
-                        <i style="background:${PDF_WARNA.merahKai}"></i><i style="background:${PDF_WARNA.biru}"></i><i style="background:${PDF_WARNA.biruTua}"></i><i style="background:#D9E2EC"></i>
+                    <td class="kop-meta" style="width:42%">
+                        Dicetak <b>${tglCetak}, ${jamCetak} WIB</b><br>
+                        ${pencetak ? `Oleh <b>${escapeHtml(pencetak)}</b><br>` : ''}
+                        Sumber: Database KCI – COTP
                     </td>
                 </tr></table>
-                <div class="garis-kop"></div>
+                <div class="garis-tipis"></div>
 
-                ${opsi.filterTeks ? `<div class="filter"><span>FILTER AKTIF &nbsp;</span> ${escapeHtml(opsi.filterTeks)}</div>` : ''}
+                ${opsi.filterTeks ? `<div class="filter"><span>Cakupan data:</span> ${escapeHtml(opsi.filterTeks)}</div>` : ''}
                 ${kpiSel ? `<table class="kpi-baris"><tr>${kpiSel}</tr></table>` : ''}
                 ${opsi.sorotan ? `<div class="sorotan">${opsi.sorotan}</div>` : ''}
                 ${opsi.isi || ''}
 
-                <table class="layout kaki"><tr>
-                    <td>COTP DEPARTMENT DATABASE &nbsp;&middot;&nbsp; <b>CONFIDENTIAL</b></td>
-                    <td style="text-align:right">Dicetak ${tglCetak} &nbsp;&middot;&nbsp; ${jamCetak} WIB</td>
+                <table class="ttd"><tr>
+                    <td style="width:65%"></td>
+                    <td>Jakarta, ${tglCetak}<br>Dibuat oleh,
+                        <div class="ttd-nama">${pencetak ? escapeHtml(pencetak) : '(............................................)'}</div>
+                    </td>
                 </tr></table>
             </body></html>`;
         }
@@ -2804,37 +2805,18 @@
             win.onload = function () { win.focus(); win.print(); };
         }
 
-        /** Membuat tabel HTML dari daftar kolom & baris. */
+        /** Membuat tabel HTML dari daftar kolom & baris (gaya diatur CSS kerangka). */
         function tabelPdf_(kolom, baris) {
-            // Gaya sel ditulis INLINE, tidak hanya mengandalkan kelas CSS.
-            // Alasannya: sebagian mesin cetak & aplikasi pembaca mengabaikan
-            // aturan CSS untuk th/td di dalam <style>, sehingga tabel keluar
-            // polos tanpa garis & tanpa kop berwarna. Gaya inline selalu
-            // dipatuhi, apa pun yang membuka dokumennya.
-            const gayaTh = `background:${PDF_WARNA.kepalaTabel};color:#ffffff;padding:6px 5px;font-size:7px;` +
-                `letter-spacing:.5px;border:none;border-right:1px solid #2a3f6d;font-weight:bold;text-transform:uppercase;`;
-            const gayaTd = `padding:5px 5px;border:none;border-bottom:1px solid ${PDF_WARNA.garisTabel};` +
-                `vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;`;
-
             const th = kolom.map(function (k) {
-                return `<th style="${gayaTh}width:${k.lebar || 'auto'};text-align:${k.rata || 'left'}">${escapeHtml(k.judul)}</th>`;
+                return `<th style="width:${k.lebar || 'auto'};text-align:${k.rata || 'left'}">${escapeHtml(k.judul)}</th>`;
             }).join('');
-
-            const tr = baris.map(function (r, iBaris) {
-                // Baris selang-seling biru sangat muda + strip warna di tepi
-                // kiri yang berputar, persis gaya tabel pada paparan resmi.
-                const latar = iBaris % 2 === 1 ? `background:${PDF_WARNA.barisAlt};` : 'background:#ffffff;';
-                const strip = PDF_STRIP[iBaris % PDF_STRIP.length];
-                return '<tr style="page-break-inside:avoid">' + r.map(function (sel, i) {
+            const tr = baris.map(function (r) {
+                return '<tr>' + r.map(function (sel, i) {
                     const k = kolom[i] || {};
-                    const tepi = i === 0 ? `border-left:3px solid ${strip};` : '';
-                    return `<td style="${gayaTd}${latar}${tepi}text-align:${k.rata || 'left'}">${sel}</td>`;
+                    return `<td style="text-align:${k.rata || 'left'}">${sel}</td>`;
                 }).join('') + '</tr>';
             }).join('');
-
-            return `<table class="data" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:7.6px;` +
-                   `border:1px solid ${PDF_WARNA.garisTabel};border-top:none;">` +
-                   `<thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
+            return `<table class="data"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
         }
 
         // ─── PDF 1: RINCIAN GANGGUAN ─────────────────────────────────────
